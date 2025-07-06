@@ -351,8 +351,17 @@ func (f *fsFile) SetNonblock(bool) experimentalsys.Errno {
 	return experimentalsys.ENOSYS
 }
 
+// pollable has just the Poll function.
+type pollable interface {
+	Poll(fsapi.Pflag, int32) (ready bool, errno experimentalsys.Errno)
+}
+
 // Poll implements the same method as documented on fsapi.File
-func (f *fsFile) Poll(fsapi.Pflag, int32) (ready bool, errno experimentalsys.Errno) {
+func (f *fsFile) Poll(flag fsapi.Pflag, timeoutMillis int32) (ready bool, errno experimentalsys.Errno) {
+	if p, isPollable := f.fs.(pollable); isPollable {
+		return p.Poll(flag, timeoutMillis)
+	}
+
 	return false, experimentalsys.ENOSYS
 }
 
