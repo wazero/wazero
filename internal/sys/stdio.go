@@ -24,6 +24,24 @@ func (f *StdinFile) Read(buf []byte) (int, experimentalsys.Errno) {
 	return n, experimentalsys.UnwrapOSError(err)
 }
 
+// pollable has just the Poll function.
+type pollable interface {
+	Poll(fsapi.Pflag, int32) (ready bool, errno experimentalsys.Errno)
+}
+
+// Poll implements the same method as documented on fsapi.File
+func (f *StdinFile) Poll(flag fsapi.Pflag, timeoutMillis int32) (ready bool, errno experimentalsys.Errno) {
+	if flag != fsapi.POLLIN {
+		return false, experimentalsys.ENOTSUP
+	}
+
+	if p, isPollable := f.Reader.(pollable); isPollable {
+		return p.Poll(flag, timeoutMillis)
+	}
+
+	return true, 0 // always ready to read nothing
+}
+
 type writerFile struct {
 	noopStdoutFile
 
