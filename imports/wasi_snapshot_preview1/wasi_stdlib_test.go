@@ -21,7 +21,7 @@ import (
 	"github.com/tetratelabs/wazero/api"
 	experimentalsock "github.com/tetratelabs/wazero/experimental/sock"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
-	"github.com/tetratelabs/wazero/internal/fsapi"
+	"github.com/tetratelabs/wazero/experimental/fsapi"
 	"github.com/tetratelabs/wazero/internal/fstest"
 	internalsys "github.com/tetratelabs/wazero/internal/sys"
 	"github.com/tetratelabs/wazero/internal/testing/require"
