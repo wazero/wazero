@@ -11,7 +11,7 @@ import (
 	gofstest "testing/fstest"
 
 	experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
-	"github.com/tetratelabs/wazero/internal/fsapi"
+	"github.com/tetratelabs/wazero/experimental/fsapi"
 	"github.com/tetratelabs/wazero/internal/testing/require"
 	"github.com/tetratelabs/wazero/sys"
 )
