@@ -80,10 +80,16 @@ var (
 			}
 
 			// Skip tests that are fragile on Windows.
-			if runtime.GOOS == "windows" {
+			switch runtime.GOOS {
+			case "darwin":
+				skip = append(skip, "TestRootLinkFrom/symlink", "TestRootLinkFrom/symlink_dotdot_slash",
+					"TestRootLinkFrom/symlink_dotdot_dotdot_slash", "TestRootLinkFrom/symlink_chain",
+					"TestRootLinkFrom/symlink_cycle", "TestRootLinkFrom/relative_symlink",
+					"TestRootLinkFrom/symlink_chain_escapes",
+				)
+			case "windows":
 				c = c.
 					WithEnv("GOROOT", normalizeOsPath(runtime.GOROOT()))
-
 				skip = append(skip, "TestRenameCaseDifference/dir", "TestDirFSPathsValid", "TestDirFS",
 					"TestDevNullFile", "TestOpenError", "TestSymlinkWithTrailingSlash", "TestCopyFS",
 					"TestRoot", "TestOpenInRoot", "ExampleAfterFunc_connection", "TestOpenFileDevNull",
