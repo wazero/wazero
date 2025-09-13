@@ -21,11 +21,6 @@ func BenchmarkZig(b *testing.B) {
 	runtBenches(b, context.Background(), c, zigTestCase)
 }
 
-func BenchmarkTinyGo(b *testing.B) {
-	c := wazero.NewRuntimeConfigCompiler()
-	runtBenches(b, context.Background(), c, tinyGoTestCase)
-}
-
 func BenchmarkWasip1(b *testing.B) {
 	c := wazero.NewRuntimeConfigCompiler()
 	runtBenches(b, context.Background(), c, wasip1TestCase)
@@ -45,26 +40,6 @@ var (
 			c, stdout, stderr = defaultModuleConfig()
 			c = c.WithFSConfig(wazero.NewFSConfig().WithDirMount(".", "/")).
 				WithArgs("test.wasm")
-			return bin, c, stdout, stderr, err
-		},
-	}
-	tinyGoTestCase = testCase{
-		name: "tinygo",
-		dir:  "testdata/tinygo/",
-		readTestCase: func(fpath string, fname string) (_ []byte, c wazero.ModuleConfig, stdout, stderr *os.File, err error) {
-			if !strings.HasSuffix(fname, ".test") {
-				return nil, nil, nil, nil, nil
-			}
-			bin, err := os.ReadFile(fpath)
-
-			fsconfig := wazero.NewFSConfig().
-				WithDirMount(".", "/").
-				WithDirMount(os.TempDir(), "/tmp")
-
-			c, stdout, stderr = defaultModuleConfig()
-			c = c.WithFSConfig(fsconfig).
-				WithArgs(fname, "-test.v")
-
 			return bin, c, stdout, stderr, err
 		},
 	}

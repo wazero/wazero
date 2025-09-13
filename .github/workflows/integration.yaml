@@ -19,7 +19,6 @@ defaults:
 
 env:  # Update this prior to requiring a higher minor version in go.mod
   GO_VERSION: "1.25"
-  TINYGO_VERSION: "0.38.0"
   ZIG_VERSION: "0.11.0"
   BINARYEN_VERSION: "116"
   STDLIB_TESTS: "internal/integration_test/stdlibs"
@@ -119,85 +118,6 @@ jobs:
         run: |
           cd ${{ env.STDLIB_TESTS }}
           go test -bench='BenchmarkZig' -timeout=20m -benchtime=1x
-
-  build_tinygo_test_binary:
-    name: Build TinyGo test binary
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout wazero
-        uses: actions/checkout@v4
-
-      - uses: actions/cache@v4
-        id: binary-cache
-        with:
-          # Use share the cache containing archives across OSes.
-          enableCrossOsArchive: true
-          key: tinygo-test-binaries-${{ env.TINYGO_VERSION }}-${{ hashFiles(format('{0}/Makefile', env.STDLIB_TESTS)) }}
-          path:
-            ${{ env.STDLIB_TESTS }}/testdata/tinygo
-
-      - name: Install TinyGo
-        if: steps.binary-cache.outputs.cache-hit != 'true'
-        run: | # installing via curl so commands are similar on OS/x
-          tinygo_version=${{ env.TINYGO_VERSION }}
-          curl -sSL https://github.com/tinygo-org/tinygo/releases/download/v${tinygo_version}/tinygo${tinygo_version}.linux-amd64.tar.gz | sudo tar -C /usr/local -xzf -
-          echo "TINYGOROOT=/usr/local/tinygo" >> $GITHUB_ENV
-          echo "/usr/local/tinygo/bin" >> $GITHUB_PATH
-
-      - uses: actions/setup-go@v5
-        if: steps.binary-cache.outputs.cache-hit != 'true'
-        with:
-          go-version: 1.24 # Latest supported by TinyGo 0.38
-
-      - name: Build Test Binaries
-        if: steps.binary-cache.outputs.cache-hit != 'true'
-        run: |
-          cd ${{ env.STDLIB_TESTS }}
-          make build.tinygo
-
-  tinygo:
-    needs: build_tinygo_test_binary
-    name: TinyGo (${{ matrix.os.name }}, ${{ matrix.os.arch }})
-    runs-on: ${{ matrix.os.version }}
-    strategy:
-      fail-fast: false # don't fail fast as sometimes failures are arch/OS specific
-      matrix:
-        # version is too verbose to be present in the name, so we use the name instead.
-        # Note that it'd be better to use runner.os in the name, but the runner context is not available in the name field.
-        os:
-          - version: ubuntu-22.04
-            name: Ubuntu
-            arch: amd64
-          - version: macos-14
-            name: macOS
-            arch: arm64
-          - version: windows-2022
-            name: Windows
-            arch: amd64
-
-    steps:
-      - name: Checkout wazero
-        uses: actions/checkout@v4
-
-      - uses: actions/cache@v4
-        id: binary-cache
-        with:
-          # Use share the cache containing archives across OSes.
-          enableCrossOsArchive: true
-          # We need this cache to run tests.
-          fail-on-cache-miss: true
-          key: tinygo-test-binaries-${{ env.TINYGO_VERSION }}
-          path:
-            ${{ env.STDLIB_TESTS }}/testdata/tinygo
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version:  1.24 # Latest supported by TinyGo 0.38
-
-      - name: Run test binaries
-        run: |
-          cd ${{ env.STDLIB_TESTS }}
-          go test -bench='BenchmarkTinyGo' -timeout=20m -benchtime=1x
 
   wasi-testsuite:
     name: wasi-testsuite
