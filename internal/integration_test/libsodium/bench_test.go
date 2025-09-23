@@ -8,10 +8,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tetratelabs/wazero"
-	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
-	"github.com/tetratelabs/wazero/internal/platform"
-	"github.com/tetratelabs/wazero/internal/testing/require"
+	"github.com/wazero/wazero"
+	"github.com/wazero/wazero/imports/wasi_snapshot_preview1"
+	"github.com/wazero/wazero/internal/platform"
+	"github.com/wazero/wazero/internal/testing/require"
 )
 
 //go:embed testdata/*

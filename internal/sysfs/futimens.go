@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/tetratelabs/wazero/experimental/sys"
+	"github.com/wazero/wazero/experimental/sys"
 )
 
 func timesToPtr(times *[2]syscall.Timespec) unsafe.Pointer { //nolint:unused

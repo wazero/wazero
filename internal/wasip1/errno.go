@@ -3,7 +3,7 @@ package wasip1
 import (
 	"fmt"
 
-	"github.com/tetratelabs/wazero/experimental/sys"
+	"github.com/wazero/wazero/experimental/sys"
 )
 
 // Errno is neither uint16 nor an alias for parity with wasm.ValueType.

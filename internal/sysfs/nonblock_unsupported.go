@@ -2,7 +2,7 @@
 
 package sysfs
 
-import "github.com/tetratelabs/wazero/experimental/sys"
+import "github.com/wazero/wazero/experimental/sys"
 
 func setNonblock(fd uintptr, enable bool) sys.Errno {
 	return sys.ENOSYS

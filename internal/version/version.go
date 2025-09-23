@@ -13,9 +13,9 @@ var version string
 
 // GetWazeroVersion returns the current version of wazero either in the go.mod or set by ldflag for wazero CLI.
 //
-// If this is not CLI, this assumes that downstream users of wazero imports wazero as "github.com/tetratelabs/wazero".
+// If this is not CLI, this assumes that downstream users of wazero imports wazero as "github.com/wazero/wazero".
 // To be precise, the returned string matches the require statement there.
-// For example, if the go.mod has "require github.com/tetratelabs/wazero 0.1.2-12314124-abcd",
+// For example, if the go.mod has "require github.com/wazero/wazero 0.1.2-12314124-abcd",
 // then this returns "0.1.2-12314124-abcd".
 //
 // Note: this is tested in ./testdata/main_test.go with a separate go.mod to pretend as the wazero user.
@@ -27,8 +27,8 @@ func GetWazeroVersion() (ret string) {
 	info, ok := debug.ReadBuildInfo()
 	if ok {
 		for _, dep := range info.Deps {
-			// Note: here's the assumption that wazero is imported as github.com/tetratelabs/wazero.
-			if strings.Contains(dep.Path, "github.com/tetratelabs/wazero") {
+			// Note: here's the assumption that wazero is imported as github.com/wazero/wazero.
+			if strings.Contains(dep.Path, "github.com/wazero/wazero") {
 				ret = dep.Version
 			}
 		}

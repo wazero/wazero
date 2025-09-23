@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/tetratelabs/wazero"
-	"github.com/tetratelabs/wazero/api"
-	"github.com/tetratelabs/wazero/experimental"
-	"github.com/tetratelabs/wazero/internal/testing/require"
+	"github.com/wazero/wazero"
+	"github.com/wazero/wazero/api"
+	"github.com/wazero/wazero/experimental"
+	"github.com/wazero/wazero/internal/testing/require"
 )
 
 func TestSnapshotNestedWasmInvocation(t *testing.T) {

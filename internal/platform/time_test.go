@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tetratelabs/wazero/internal/testing/require"
-	"github.com/tetratelabs/wazero/sys"
+	"github.com/wazero/wazero/internal/testing/require"
+	"github.com/wazero/wazero/sys"
 )
 
 func Test_NewFakeWalltime(t *testing.T) {

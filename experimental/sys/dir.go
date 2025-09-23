@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 
-	"github.com/tetratelabs/wazero/sys"
+	"github.com/wazero/wazero/sys"
 )
 
 // FileType is fs.FileMode masked on fs.ModeType. For example, zero is a

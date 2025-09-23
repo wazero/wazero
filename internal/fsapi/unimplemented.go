@@ -1,6 +1,6 @@
 package fsapi
 
-import experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
+import experimentalsys "github.com/wazero/wazero/experimental/sys"
 
 func Adapt(f experimentalsys.File) File {
 	if f, ok := f.(File); ok {

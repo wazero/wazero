@@ -3,10 +3,10 @@ package wazero
 import (
 	"testing"
 
-	"github.com/tetratelabs/wazero/experimental/sys"
-	"github.com/tetratelabs/wazero/internal/sysfs"
-	testfs "github.com/tetratelabs/wazero/internal/testing/fs"
-	"github.com/tetratelabs/wazero/internal/testing/require"
+	"github.com/wazero/wazero/experimental/sys"
+	"github.com/wazero/wazero/internal/sysfs"
+	testfs "github.com/wazero/wazero/internal/testing/fs"
+	"github.com/wazero/wazero/internal/testing/require"
 )
 
 // TestFSConfig only tests the cases that change the inputs to sysfs.ValidatePreopens.

@@ -6,7 +6,7 @@ import (
 	"io/fs"
 	"os"
 
-	"github.com/tetratelabs/wazero/experimental/sys"
+	"github.com/wazero/wazero/experimental/sys"
 )
 
 // openFile is like os.OpenFile except it accepts a sys.Oflag and returns

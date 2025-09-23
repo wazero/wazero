@@ -10,16 +10,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tetratelabs/wazero"
-	"github.com/tetratelabs/wazero/api"
-	"github.com/tetratelabs/wazero/experimental"
-	"github.com/tetratelabs/wazero/experimental/logging"
-	"github.com/tetratelabs/wazero/internal/integration_test/spectest"
-	v1 "github.com/tetratelabs/wazero/internal/integration_test/spectest/v1"
-	"github.com/tetratelabs/wazero/internal/platform"
-	"github.com/tetratelabs/wazero/internal/testing/binaryencoding"
-	"github.com/tetratelabs/wazero/internal/testing/require"
-	"github.com/tetratelabs/wazero/internal/wasm"
+	"github.com/wazero/wazero"
+	"github.com/wazero/wazero/api"
+	"github.com/wazero/wazero/experimental"
+	"github.com/wazero/wazero/experimental/logging"
+	"github.com/wazero/wazero/internal/integration_test/spectest"
+	v1 "github.com/wazero/wazero/internal/integration_test/spectest/v1"
+	"github.com/wazero/wazero/internal/platform"
+	"github.com/wazero/wazero/internal/testing/binaryencoding"
+	"github.com/wazero/wazero/internal/testing/require"
+	"github.com/wazero/wazero/internal/wasm"
 )
 
 func TestFileCache_compiler(t *testing.T) {

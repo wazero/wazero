@@ -3,7 +3,7 @@ package wasm
 import (
 	"testing"
 
-	"github.com/tetratelabs/wazero/internal/testing/require"
+	"github.com/wazero/wazero/internal/testing/require"
 )
 
 func TestModule_SectionElementCount(t *testing.T) {

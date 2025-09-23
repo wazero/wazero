@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/tetratelabs/wazero"
+	"github.com/wazero/wazero"
 )
 
 // This is a basic example of using the file system compilation cache via wazero.NewCompilationCacheWithDir.

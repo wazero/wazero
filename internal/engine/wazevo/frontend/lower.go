@@ -7,11 +7,11 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/tetratelabs/wazero/api"
-	"github.com/tetratelabs/wazero/internal/engine/wazevo/ssa"
-	"github.com/tetratelabs/wazero/internal/engine/wazevo/wazevoapi"
-	"github.com/tetratelabs/wazero/internal/leb128"
-	"github.com/tetratelabs/wazero/internal/wasm"
+	"github.com/wazero/wazero/api"
+	"github.com/wazero/wazero/internal/engine/wazevo/ssa"
+	"github.com/wazero/wazero/internal/engine/wazevo/wazevoapi"
+	"github.com/wazero/wazero/internal/leb128"
+	"github.com/wazero/wazero/internal/wasm"
 )
 
 type (

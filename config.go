@@ -10,15 +10,15 @@ import (
 	"net"
 	"time"
 
-	"github.com/tetratelabs/wazero/api"
-	experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
-	"github.com/tetratelabs/wazero/internal/filecache"
-	"github.com/tetratelabs/wazero/internal/internalapi"
-	"github.com/tetratelabs/wazero/internal/platform"
-	internalsock "github.com/tetratelabs/wazero/internal/sock"
-	internalsys "github.com/tetratelabs/wazero/internal/sys"
-	"github.com/tetratelabs/wazero/internal/wasm"
-	"github.com/tetratelabs/wazero/sys"
+	"github.com/wazero/wazero/api"
+	experimentalsys "github.com/wazero/wazero/experimental/sys"
+	"github.com/wazero/wazero/internal/filecache"
+	"github.com/wazero/wazero/internal/internalapi"
+	"github.com/wazero/wazero/internal/platform"
+	internalsock "github.com/wazero/wazero/internal/sock"
+	internalsys "github.com/wazero/wazero/internal/sys"
+	"github.com/wazero/wazero/internal/wasm"
+	"github.com/wazero/wazero/sys"
 )
 
 // RuntimeConfig controls runtime behavior, with the default implementation as
@@ -133,7 +133,7 @@ type RuntimeConfig interface {
 	// However, if you use this in tests of a package not named as `main`, then wazero cannot obtain the correct
 	// version of wazero due to the known issue of debug.BuildInfo function: https://github.com/golang/go/issues/33976.
 	// As a consequence, your cache won't contain the correct version information and always be treated as `dev` version.
-	// To avoid this issue, you can pass -ldflags "-X github.com/tetratelabs/wazero/internal/version.version=foo" when running tests.
+	// To avoid this issue, you can pass -ldflags "-X github.com/wazero/wazero/internal/version.version=foo" when running tests.
 	WithCompilationCache(CompilationCache) RuntimeConfig
 
 	// WithCustomSections toggles parsing of "custom sections". Defaults to false.
@@ -231,7 +231,7 @@ const (
 //     before calling any api.Function. This is because the Go runtime does not set up the alternate signal stack
 //     for c-archive or c-shared modes, and wazero uses the different stack than the calling Goroutine.
 //     Hence, the signal handler might get invoked on the wazero's stack, which may cause a stack overflow.
-//     https://github.com/tetratelabs/wazero/blob/2092c0a879f30d49d7b37f333f4547574b8afe0d/internal/integration_test/fuzz/fuzz/tests/sigstack.rs#L19-L36
+//     https://github.com/wazero/wazero/blob/2092c0a879f30d49d7b37f333f4547574b8afe0d/internal/integration_test/fuzz/fuzz/tests/sigstack.rs#L19-L36
 func NewRuntimeConfigCompiler() RuntimeConfig {
 	ret := engineLessConfig.clone()
 	ret.engineKind = engineKindCompiler

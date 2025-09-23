@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 
-	"github.com/tetratelabs/wazero"
-	"github.com/tetratelabs/wazero/api"
-	"github.com/tetratelabs/wazero/experimental"
+	"github.com/wazero/wazero"
+	"github.com/wazero/wazero/api"
+	"github.com/wazero/wazero/experimental"
 )
 
 // Ensure that validation and compilation do not panic!

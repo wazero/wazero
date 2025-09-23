@@ -7,8 +7,8 @@ package platform
 import (
 	"runtime"
 
-	"github.com/tetratelabs/wazero/api"
-	"github.com/tetratelabs/wazero/experimental"
+	"github.com/wazero/wazero/api"
+	"github.com/wazero/wazero/experimental"
 )
 
 // CompilerSupported includes constraints here and also the assembler.

@@ -5,8 +5,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/tetratelabs/wazero/internal/engine/wazevo/wazevoapi"
-	"github.com/tetratelabs/wazero/internal/testing/require"
+	"github.com/wazero/wazero/internal/engine/wazevo/wazevoapi"
+	"github.com/wazero/wazero/internal/testing/require"
 )
 
 type (

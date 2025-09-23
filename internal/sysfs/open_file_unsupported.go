@@ -3,7 +3,7 @@
 package sysfs
 
 import (
-	"github.com/tetratelabs/wazero/experimental/sys"
+	"github.com/wazero/wazero/experimental/sys"
 )
 
 const supportedSyscallOflag = sys.Oflag(0)

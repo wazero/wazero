@@ -3,7 +3,7 @@ package sysfs
 import (
 	"os"
 
-	"github.com/tetratelabs/wazero/experimental/sys"
+	"github.com/wazero/wazero/experimental/sys"
 )
 
 // toOsOpenFlag converts the input to the flag parameter of os.OpenFile

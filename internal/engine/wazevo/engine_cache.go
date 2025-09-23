@@ -11,15 +11,15 @@ import (
 	"runtime"
 	"unsafe"
 
-	"github.com/tetratelabs/wazero/experimental"
-	"github.com/tetratelabs/wazero/internal/engine/wazevo/backend"
-	"github.com/tetratelabs/wazero/internal/engine/wazevo/ssa"
-	"github.com/tetratelabs/wazero/internal/engine/wazevo/wazevoapi"
-	"github.com/tetratelabs/wazero/internal/filecache"
-	"github.com/tetratelabs/wazero/internal/platform"
-	"github.com/tetratelabs/wazero/internal/u32"
-	"github.com/tetratelabs/wazero/internal/u64"
-	"github.com/tetratelabs/wazero/internal/wasm"
+	"github.com/wazero/wazero/experimental"
+	"github.com/wazero/wazero/internal/engine/wazevo/backend"
+	"github.com/wazero/wazero/internal/engine/wazevo/ssa"
+	"github.com/wazero/wazero/internal/engine/wazevo/wazevoapi"
+	"github.com/wazero/wazero/internal/filecache"
+	"github.com/wazero/wazero/internal/platform"
+	"github.com/wazero/wazero/internal/u32"
+	"github.com/wazero/wazero/internal/u64"
+	"github.com/wazero/wazero/internal/wasm"
 )
 
 var crc = crc32.MakeTable(crc32.Castagnoli)

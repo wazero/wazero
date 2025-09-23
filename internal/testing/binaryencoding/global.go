@@ -1,7 +1,7 @@
 package binaryencoding
 
 import (
-	"github.com/tetratelabs/wazero/internal/wasm"
+	"github.com/wazero/wazero/internal/wasm"
 )
 
 // encodeGlobal returns the wasm.Global encoded in WebAssembly 1.0 (20191205) Binary Format.

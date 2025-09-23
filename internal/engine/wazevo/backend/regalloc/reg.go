@@ -3,7 +3,7 @@ package regalloc
 import (
 	"fmt"
 
-	"github.com/tetratelabs/wazero/internal/engine/wazevo/ssa"
+	"github.com/wazero/wazero/internal/engine/wazevo/ssa"
 )
 
 // VReg represents a register which is assigned to an SSA value. This is used to represent a register in the backend.

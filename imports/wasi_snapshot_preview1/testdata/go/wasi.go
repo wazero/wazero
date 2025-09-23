@@ -246,7 +246,7 @@ func (e echoOnce) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	close(e.ch)
 }
 
-// Reproducer for https://github.com/tetratelabs/wazero/issues/1538
+// Reproducer for https://github.com/wazero/wazero/issues/1538
 func mainStdin() error {
 	go func() {
 		time.Sleep(1 * time.Second)

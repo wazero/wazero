@@ -3,7 +3,7 @@ package experimental
 import (
 	"context"
 
-	"github.com/tetratelabs/wazero/internal/expctxkeys"
+	"github.com/wazero/wazero/internal/expctxkeys"
 )
 
 // MemoryAllocator is a memory allocation hook,

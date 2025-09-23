@@ -3,7 +3,7 @@ package sys
 import (
 	"io/fs"
 
-	"github.com/tetratelabs/wazero/sys"
+	"github.com/wazero/wazero/sys"
 )
 
 // FS is a writeable fs.FS bridge backed by syscall functions needed for ABI

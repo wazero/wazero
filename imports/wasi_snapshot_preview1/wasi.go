@@ -20,11 +20,11 @@ import (
 	"context"
 	"encoding/binary"
 
-	"github.com/tetratelabs/wazero"
-	"github.com/tetratelabs/wazero/api"
-	"github.com/tetratelabs/wazero/experimental/sys"
-	"github.com/tetratelabs/wazero/internal/wasip1"
-	"github.com/tetratelabs/wazero/internal/wasm"
+	"github.com/wazero/wazero"
+	"github.com/wazero/wazero/api"
+	"github.com/wazero/wazero/experimental/sys"
+	"github.com/wazero/wazero/internal/wasip1"
+	"github.com/wazero/wazero/internal/wasm"
 )
 
 // ModuleName is the module name WASI functions are exported into.

@@ -1,7 +1,7 @@
 package backend
 
 import (
-	"github.com/tetratelabs/wazero/internal/engine/wazevo/ssa"
+	"github.com/wazero/wazero/internal/engine/wazevo/ssa"
 )
 
 // SSAValueDefinition represents a definition of an SSA value.

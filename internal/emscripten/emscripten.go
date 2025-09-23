@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/tetratelabs/wazero/api"
-	"github.com/tetratelabs/wazero/internal/wasm"
-	"github.com/tetratelabs/wazero/sys"
+	"github.com/wazero/wazero/api"
+	"github.com/wazero/wazero/internal/wasm"
+	"github.com/wazero/wazero/sys"
 )
 
 const FunctionNotifyMemoryGrowth = "emscripten_notify_memory_growth"
@@ -162,7 +162,7 @@ func (v *InvokeFunc) Call(ctx context.Context, mod api.Module, stack []uint64) {
 // This ensures if the given name is exported before calling it. In other words, this explicitly checks if an api.Function
 // returned by api.Module.ExportedFunction is not nil. This is necessary because directly calling a method which is
 // potentially nil interface can be fatal on some platforms due to a bug? in Go/QEMU.
-// See https://github.com/tetratelabs/wazero/issues/1621
+// See https://github.com/wazero/wazero/issues/1621
 func callOrPanic(ctx context.Context, m api.Module, name string, stack []uint64) {
 	if f := m.ExportedFunction(name); f != nil {
 		err := f.CallWithStack(ctx, stack)

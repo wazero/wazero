@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tetratelabs/wazero/internal/engine/wazevo/backend"
-	"github.com/tetratelabs/wazero/internal/engine/wazevo/backend/regalloc"
-	"github.com/tetratelabs/wazero/internal/engine/wazevo/wazevoapi"
+	"github.com/wazero/wazero/internal/engine/wazevo/backend"
+	"github.com/wazero/wazero/internal/engine/wazevo/backend/regalloc"
+	"github.com/wazero/wazero/internal/engine/wazevo/wazevoapi"
 )
 
 // Encode implements backend.Machine Encode.

@@ -3,8 +3,8 @@ package amd64
 import (
 	"testing"
 
-	"github.com/tetratelabs/wazero/internal/engine/wazevo/ssa"
-	"github.com/tetratelabs/wazero/internal/testing/require"
+	"github.com/wazero/wazero/internal/engine/wazevo/ssa"
+	"github.com/wazero/wazero/internal/testing/require"
 )
 
 func TestMachineCompileEntryPreamble(t *testing.T) {

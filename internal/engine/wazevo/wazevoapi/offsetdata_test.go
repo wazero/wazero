@@ -3,8 +3,8 @@ package wazevoapi
 import (
 	"testing"
 
-	"github.com/tetratelabs/wazero/internal/testing/require"
-	"github.com/tetratelabs/wazero/internal/wasm"
+	"github.com/wazero/wazero/internal/testing/require"
+	"github.com/wazero/wazero/internal/wasm"
 )
 
 func TestNewModuleContextOffsetData(t *testing.T) {

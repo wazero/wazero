@@ -1,8 +1,8 @@
 package sysfs
 
 import (
-	"github.com/tetratelabs/wazero"
-	experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
+	"github.com/wazero/wazero"
+	experimentalsys "github.com/wazero/wazero/experimental/sys"
 )
 
 // FSConfig extends wazero.FSConfig, allowing access to the experimental

@@ -3,8 +3,8 @@ package sysfs
 import (
 	"io/fs"
 
-	experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
-	"github.com/tetratelabs/wazero/sys"
+	experimentalsys "github.com/wazero/wazero/experimental/sys"
+	"github.com/wazero/wazero/sys"
 )
 
 func defaultStatFile(f fs.File) (sys.Stat_t, experimentalsys.Errno) {

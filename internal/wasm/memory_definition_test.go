@@ -3,8 +3,8 @@ package wasm
 import (
 	"testing"
 
-	"github.com/tetratelabs/wazero/api"
-	"github.com/tetratelabs/wazero/internal/testing/require"
+	"github.com/wazero/wazero/api"
+	"github.com/wazero/wazero/internal/testing/require"
 )
 
 func TestModule_BuildMemoryDefinitions(t *testing.T) {

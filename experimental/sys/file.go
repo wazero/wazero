@@ -1,6 +1,6 @@
 package sys
 
-import "github.com/tetratelabs/wazero/sys"
+import "github.com/wazero/wazero/sys"
 
 // File is a writeable fs.File bridge backed by syscall functions needed for ABI
 // including WASI.

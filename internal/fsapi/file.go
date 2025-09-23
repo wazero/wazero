@@ -1,6 +1,6 @@
 package fsapi
 
-import experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
+import experimentalsys "github.com/wazero/wazero/experimental/sys"
 
 // File includes methods not yet ready to document for end users, notably
 // non-blocking functionality.
@@ -9,7 +9,7 @@ import experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
 // be able to choose how to implement timeout or not. Currently, this interface
 // allows the user to choose to sleep or use native polling, and which choice
 // they make impacts thread behavior as summarized here:
-// https://github.com/tetratelabs/wazero/pull/1606#issuecomment-1665475516
+// https://github.com/wazero/wazero/pull/1606#issuecomment-1665475516
 type File interface {
 	experimentalsys.File
 

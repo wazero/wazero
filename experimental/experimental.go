@@ -4,7 +4,7 @@
 package experimental
 
 import (
-	"github.com/tetratelabs/wazero/api"
+	"github.com/wazero/wazero/api"
 )
 
 // InternalModule is an api.Module that exposes additional

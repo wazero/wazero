@@ -1,6 +1,6 @@
 package backend
 
-import "github.com/tetratelabs/wazero/internal/engine/wazevo/ssa"
+import "github.com/wazero/wazero/internal/engine/wazevo/ssa"
 
 // GoFunctionCallRequiredStackSize returns the size of the stack required for the Go function call.
 // argBegin is the index of the first argument in the signature which is not either execution context or module context.

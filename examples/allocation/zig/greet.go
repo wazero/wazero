@@ -8,8 +8,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/tetratelabs/wazero"
-	"github.com/tetratelabs/wazero/api"
+	"github.com/wazero/wazero"
+	"github.com/wazero/wazero/api"
 )
 
 // greetWasm was compiled using `zig build`
