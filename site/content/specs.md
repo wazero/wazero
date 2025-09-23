@@ -72,7 +72,7 @@ removed after the git tag. For example, [`proc_raise`][13] was removed and
 
 For all of these reasons, wazero will not implement all WASI features, just to
 complete the below chart. If you desire something not yet implemented, please
-[raise an issue](https://github.com/tetratelabs/wazero/issues/new) and include
+[raise an issue](https://github.com/wazero/wazero/issues/new) and include
 your use case (ex which language you are using to compile, a.k.a. target Wasm).
 
 Notes:
@@ -143,8 +143,8 @@ Note: 💀 means the function was later removed from WASI.
 [4]: https://github.com/WebAssembly/WASI/blob/snapshot-01/phases/snapshot/docs.md
 [5]: https://github.com/WebAssembly/WASI
 [6]: https://github.com/WebAssembly/spec/tree/wg-1.0/test/core
-[7]: https://pkg.go.dev/github.com/tetratelabs/wazero#RuntimeConfig
-[9]: https://github.com/tetratelabs/wazero/issues/59
+[7]: https://pkg.go.dev/github.com/wazero/wazero#RuntimeConfig
+[9]: https://github.com/wazero/wazero/issues/59
 [10]: https://github.com/WebAssembly/proposals
 [11]: https://github.com/WebAssembly/proposals/blob/main/finished-proposals.md
 [12]: https://www.w3.org/community/webassembly/

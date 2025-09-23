@@ -14,7 +14,7 @@ googleAnalytics = "G-LG7LD9G4ZB"
     # Note: We override the logo via layouts/partials/logo.html
     [languages.en.menu]
       [[languages.en.menu.main]]
-        url = "https://github.com/tetratelabs/wazero/blob/main/examples"
+        url = "https://github.com/wazero/wazero/blob/main/examples"
         name = "Examples"
         weight = 2
       [[languages.en.menu.main]]

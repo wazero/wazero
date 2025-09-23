@@ -22,7 +22,7 @@ curl https://wazero.io/install.sh | sh
 **Embed wazero** in your Go project and extend any app
 
 ```go
-import "github.com/tetratelabs/wazero"
+import "github.com/wazero/wazero"
 
 // ...
 
@@ -55,12 +55,12 @@ production sites.
 
 You can get the latest version of wazero like this.
 ```bash
-go get github.com/tetratelabs/wazero@latest
+go get github.com/wazero/wazero@latest
 ```
 
 Please give us a [star][4] if you end up using wazero!
 
-[1]: https://github.com/tetratelabs/wazero/blob/main/examples
-[2]: https://github.com/tetratelabs/wazero/blob/main/examples/basic
+[1]: https://github.com/wazero/wazero/blob/main/examples
+[2]: https://github.com/wazero/wazero/blob/main/examples/basic
 [3]: https://tetrate.io/blog/introducing-wazero-from-tetrate/
-[4]: https://github.com/tetratelabs/wazero/stargazers
+[4]: https://github.com/wazero/wazero/stargazers

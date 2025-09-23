@@ -187,10 +187,10 @@ source code may reduce binary size further.
 [2]: https://ziglang.org/documentation/0.10.1/#WASI
 [4]: https://ziglang.org/documentation/0.10.1/#WebAssembly
 [5]: https://discord.gg/gxsFFjE
-[6]: https://github.com/tetratelabs/wazero/tree/main/site/content/languages/zig.md
-[7]: https://github.com/tetratelabs/wazero/stargazers
-[9]: https://github.com/tetratelabs/wazero/tree/main/examples/allocation/zig
+[6]: https://github.com/wazero/wazero/tree/main/site/content/languages/zig.md
+[7]: https://github.com/wazero/wazero/stargazers
+[9]: https://github.com/wazero/wazero/tree/main/examples/allocation/zig
 [9b]: https://ziglang.org/documentation/0.10.1/#Memory
-[10]: https://github.com/tetratelabs/wazero/tree/main/imports/wasi_snapshot_preview1/example/testdata/zig
-[11]: https://github.com/tetratelabs/wazero/blob/main/imports/wasi_snapshot_preview1/example/testdata/zig/cat.zig
+[10]: https://github.com/wazero/wazero/tree/main/imports/wasi_snapshot_preview1/example/testdata/zig
+[11]: https://github.com/wazero/wazero/blob/main/imports/wasi_snapshot_preview1/example/testdata/zig/cat.zig
 [13]: https://ziglang.org/documentation/0.10.1/#Build-Mode

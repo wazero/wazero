@@ -10,7 +10,7 @@ binaries, a.k.a. wasm files.
 
 ### wazero community
 
-[tetratelabs/wazero][1] holds the Apache licensed, open source code and tests
+[wazero/wazero][1] holds the Apache licensed, open source code and tests
 that ensure the project. A team of full-time staff at [Tetrate](https://tetrate.io/)
 steward the wazero, and you can read [history]({{< relref "/history.md" >}}) for how everything
 began!
@@ -22,7 +22,7 @@ look at our [users]({{< relref "/users.md" >}}) page, as you may find something 
 ### Keeping up to date
 
 wazero writes detailed release notes. Click Watch, Custom then Releases on the
-[tetratelabs/wazero][1] repository to automatically get notifications. You can
+[wazero/wazero][1] repository to automatically get notifications. You can
 also watch for the tag #wazero on various social media.
 
 We also have a [gophers slack](https://gophers.slack.com/) `#wazero` channel
@@ -40,9 +40,9 @@ a test framework or a feature, check with one of the above channels. Someone may
 already have worked on this in the past and might join your effort. Sometimes,
 features are intentionally absent, usually with rationale documented in an issue.
 Regardless, the best advice is to join the community before proposing change, and
-read one of our [CONTRIBUTING](https://github.com/tetratelabs/wazero/blob/main/CONTRIBUTING.md) files
+read one of our [CONTRIBUTING](https://github.com/wazero/wazero/blob/main/CONTRIBUTING.md) files
 which explains technical aspects of change culture.
 
-[1]: https://github.com/tetratelabs/wazero
+[1]: https://github.com/wazero/wazero
 [2]: https://invite.slack.golangbridge.org/
-[3]: https://github.com/tetratelabs/wazero/stargazers
+[3]: https://github.com/wazero/wazero/stargazers

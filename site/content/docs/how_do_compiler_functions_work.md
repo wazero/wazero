@@ -204,8 +204,8 @@ called a trampoline, and only used between the guest wasm and the host running
 it.
 
 [call-stack]: https://en.wikipedia.org/wiki/Call_stack
-[api-function]: https://pkg.go.dev/github.com/tetratelabs/wazero@v1.0.0-rc.1/api#Function
-[api-module]: https://pkg.go.dev/github.com/tetratelabs/wazero@v1.0.0-rc.1/api#Module
+[api-function]: https://pkg.go.dev/github.com/wazero/wazero@v1.0.0-rc.1/api#Function
+[api-module]: https://pkg.go.dev/github.com/wazero/wazero@v1.0.0-rc.1/api#Module
 [spec-function-instance]: https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#function-instances%E2%91%A0
 [spec-trap]: https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#trap
 [spec-unreachable]: https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#syntax-instr-control

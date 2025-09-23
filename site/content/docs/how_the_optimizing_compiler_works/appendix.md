@@ -86,7 +86,7 @@ control to the caller of the function.
 The arch-specific code can be found in
 `backend/isa/<arch>/abi_entry_preamble.go`.
 
-[wazero-engine-stack]: https://github.com/tetratelabs/wazero/blob/095b49f74a5e36ce401b899a0c16de4eeb46c054/internal/engine/compiler/engine.go#L77-L132
+[wazero-engine-stack]: https://github.com/wazero/wazero/blob/095b49f74a5e36ce401b899a0c16de4eeb46c054/internal/engine/compiler/engine.go#L77-L132
 [abi-arm64]: https://tip.golang.org/src/cmd/compile/abi-internal#arm64-architecture
 [abi-amd64]: https://tip.golang.org/src/cmd/compile/abi-internal#amd64-architecture
 [abi-cc]: https://tip.golang.org/src/cmd/compile/abi-internal#function-call-argument-and-result-passing

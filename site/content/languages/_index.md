@@ -143,8 +143,8 @@ used sequentially.
 For example, [waPC][9] provides a WASM module pool, so host callbacks can be
 invoked in parallel, despite not being able to share memory.
 
-[1]: https://github.com/tetratelabs/wazero/tree/main/site/content/languages
-[2]: https://github.com/tetratelabs/wazero/stargazers
+[1]: https://github.com/wazero/wazero/tree/main/site/content/languages
+[2]: https://github.com/wazero/wazero/stargazers
 [3]: https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/contents.html
 [4]: https://github.com/WebAssembly/wasi-libc
 [5]: https://github.com/WebAssembly/threads
