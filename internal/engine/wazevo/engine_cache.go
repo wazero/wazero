@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"runtime"
 	"unsafe"
 
 	"github.com/tetratelabs/wazero/experimental"
@@ -246,11 +245,8 @@ func deserializeCompiledModule(wazeroVersion string, reader io.ReadCloser) (cm *
 			return nil, false, fmt.Errorf("compilationcache: checksum mismatch (expected %d, got %d)", expected, checksum)
 		}
 
-		if runtime.GOARCH == "arm64" {
-			// On arm64, we cannot give all of rwx at the same time, so we change it to exec.
-			if err = platform.MprotectRX(executable); err != nil {
-				return nil, false, err
-			}
+		if err = platform.MprotectRX(executable); err != nil {
+			return nil, false, err
 		}
 		cm.executable = executable
 	}

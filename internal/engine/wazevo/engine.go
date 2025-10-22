@@ -317,11 +317,8 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 		machine.ResolveRelocations(refToBinaryOffset, importedFns, executable, rels, callTrampolineIslandOffsets)
 	}
 
-	if runtime.GOARCH == "arm64" {
-		// On arm64, we cannot give all of rwx at the same time, so we change it to exec.
-		if err = platform.MprotectRX(executable); err != nil {
-			return nil, err
-		}
+	if err = platform.MprotectRX(executable); err != nil {
+		return nil, err
 	}
 	cm.sharedFunctions = e.sharedFunctions
 	e.setFinalizer(cm.executables, executablesFinalizer)
@@ -475,11 +472,8 @@ func (e *engine) compileHostModule(ctx context.Context, module *wasm.Module, lis
 		wazevoapi.PerfMap.Flush(uintptr(unsafe.Pointer(&executable[0])), cm.functionOffsets)
 	}
 
-	if runtime.GOARCH == "arm64" {
-		// On arm64, we cannot give all of rwx at the same time, so we change it to exec.
-		if err = platform.MprotectRX(executable); err != nil {
-			return nil, err
-		}
+	if err = platform.MprotectRX(executable); err != nil {
+		return nil, err
 	}
 	e.setFinalizer(cm.executables, executablesFinalizer)
 	return cm, nil
@@ -778,11 +772,8 @@ func mmapExecutable(src []byte) []byte {
 
 	copy(executable, src)
 
-	if runtime.GOARCH == "arm64" {
-		// On arm64, we cannot give all of rwx at the same time, so we change it to exec.
-		if err = platform.MprotectRX(executable); err != nil {
-			panic(err)
-		}
+	if err = platform.MprotectRX(executable); err != nil {
+		panic(err)
 	}
 	return executable
 }

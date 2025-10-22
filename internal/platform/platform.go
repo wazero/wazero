@@ -40,11 +40,7 @@ func MmapCodeSegment(size int) ([]byte, error) {
 	if size == 0 {
 		panic("BUG: MmapCodeSegment with zero length")
 	}
-	if runtime.GOARCH == "amd64" {
-		return mmapCodeSegmentAMD64(size)
-	} else {
-		return mmapCodeSegmentARM64(size)
-	}
+	return mmapCodeSegment(size)
 }
 
 // MunmapCodeSegment unmaps the given memory region.
