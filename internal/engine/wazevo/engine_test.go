@@ -16,41 +16,12 @@ import (
 func Test_sharedFunctionsFinalizer(t *testing.T) {
 	sf := &sharedFunctions{}
 
-	b1, err := platform.MmapCodeSegment(100)
+	buf, err := platform.MmapCodeSegment(100)
 	require.NoError(t, err)
-	b2, err := platform.MmapCodeSegment(100)
-	require.NoError(t, err)
-	b3, err := platform.MmapCodeSegment(100)
-	require.NoError(t, err)
-	b6, err := platform.MmapCodeSegment(100)
-	require.NoError(t, err)
-	b7, err := platform.MmapCodeSegment(100)
-	require.NoError(t, err)
-	b8, err := platform.MmapCodeSegment(100)
-	require.NoError(t, err)
-	b9, err := platform.MmapCodeSegment(100)
-	require.NoError(t, err)
-	b10, err := platform.MmapCodeSegment(100)
-	require.NoError(t, err)
-
-	sf.memoryGrowExecutable = b1
-	sf.stackGrowExecutable = b2
-	sf.checkModuleExitCode = b3
-	sf.tableGrowExecutable = b6
-	sf.refFuncExecutable = b7
-	sf.memoryWait32Executable = b8
-	sf.memoryWait64Executable = b9
-	sf.memoryNotifyExecutable = b10
+	sf.executable = buf
 
 	sharedFunctionsFinalizer(sf)
-	require.Nil(t, sf.memoryGrowExecutable)
-	require.Nil(t, sf.stackGrowExecutable)
-	require.Nil(t, sf.checkModuleExitCode)
-	require.Nil(t, sf.tableGrowExecutable)
-	require.Nil(t, sf.refFuncExecutable)
-	require.Nil(t, sf.memoryWait32Executable)
-	require.Nil(t, sf.memoryWait64Executable)
-	require.Nil(t, sf.memoryNotifyExecutable)
+	require.Nil(t, sf.executable)
 }
 
 func Test_executablesFinalizer(t *testing.T) {

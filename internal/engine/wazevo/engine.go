@@ -42,25 +42,32 @@ type (
 	}
 
 	sharedFunctions struct {
-		// memoryGrowExecutable is a compiled trampoline executable for memory.grow builtin function.
-		memoryGrowExecutable []byte
-		// checkModuleExitCode is a compiled trampoline executable for checking module instance exit code. This
-		// is used when ensureTermination is true.
-		checkModuleExitCode []byte
-		// stackGrowExecutable is a compiled executable for growing stack builtin function.
-		stackGrowExecutable []byte
-		// tableGrowExecutable is a compiled trampoline executable for table.grow builtin function.
-		tableGrowExecutable []byte
-		// refFuncExecutable is a compiled trampoline executable for ref.func builtin function.
-		refFuncExecutable []byte
-		// memoryWait32Executable is a compiled trampoline executable for memory.wait32 builtin function
-		memoryWait32Executable []byte
-		// memoryWait64Executable is a compiled trampoline executable for memory.wait64 builtin function
-		memoryWait64Executable []byte
-		// memoryNotifyExecutable is a compiled trampoline executable for memory.notify builtin function
-		memoryNotifyExecutable    []byte
-		listenerBeforeTrampolines map[*wasm.FunctionType][]byte
-		listenerAfterTrampolines  map[*wasm.FunctionType][]byte
+		// The compiled trampolines executable.
+		executable []byte
+		// memoryGrowAddress is the address of memory.grow builtin function.
+		memoryGrowAddress *byte
+		// checkModuleExitCodeAddress is the address of checking module instance exit code.
+		// This is used when ensureTermination is true.
+		checkModuleExitCodeAddress *byte
+		// stackGrowAddress is the address of growing stack builtin function.
+		stackGrowAddress *byte
+		// tableGrowAddress is the address of table.grow builtin function.
+		tableGrowAddress *byte
+		// refFuncAddress is the address of ref.func builtin function.
+		refFuncAddress *byte
+		// memoryWait32Address is the address of memory.wait32 builtin function
+		memoryWait32Address *byte
+		// memoryWait64Address is the address of memory.wait64 builtin function
+		memoryWait64Address *byte
+		// memoryNotifyAddress is the address of memory.notify builtin function
+		memoryNotifyAddress *byte
+		listenerTrampolines listenerTrampolines
+	}
+
+	listenerTrampolines = map[*wasm.FunctionType]struct {
+		executable []byte
+		before     *byte
+		after      *byte
 	}
 
 	// compiledModule is a compiled variant of a wasm.Module and ready to be used for instantiation.
@@ -83,8 +90,9 @@ type (
 	}
 
 	executables struct {
-		executable     []byte
-		entryPreambles [][]byte
+		executable         []byte
+		entryPreambles     []byte
+		entryPreamblesPtrs []*byte
 	}
 )
 
@@ -164,18 +172,35 @@ func (e *engine) CompileModule(ctx context.Context, module *wasm.Module, listene
 }
 
 func (exec *executables) compileEntryPreambles(m *wasm.Module, machine backend.Machine, be backend.Compiler) {
-	exec.entryPreambles = make([][]byte, len(m.TypeSection))
-	for i := range m.TypeSection {
+	if len(m.TypeSection) == 0 {
+		return
+	}
+
+	var preambles []byte
+	sizes := make([]int, len(m.TypeSection))
+
+	for i := range sizes {
 		typ := &m.TypeSection[i]
 		sig := frontend.SignatureForWasmFunctionType(typ)
 		be.Init()
 		buf := machine.CompileEntryPreamble(&sig)
-		executable := mmapExecutable(buf)
-		exec.entryPreambles[i] = executable
+		preambles = append(preambles, buf...)
+		sizes[i] = len(buf)
+	}
+
+	exec.entryPreambles = mmapExecutable(preambles)
+	exec.entryPreamblesPtrs = make([]*byte, len(sizes))
+
+	offset := 0
+	for i, size := range sizes {
+		ptr := &exec.entryPreambles[offset]
+		exec.entryPreamblesPtrs[i] = ptr
+		offset += size
 
 		if wazevoapi.PerfMapEnabled {
-			wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(&executable[0])),
-				uint64(len(executable)), fmt.Sprintf("entry_preamble::type=%s", typ.String()))
+			typ := &m.TypeSection[i]
+			wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(ptr)),
+				uint64(size), fmt.Sprintf("entry_preamble::type=%s", typ.String()))
 		}
 	}
 }
@@ -591,10 +616,8 @@ func (e *engine) NewModuleEngine(m *wasm.Module, mi *wasm.ModuleInstance) (wasm.
 }
 
 func (e *engine) compileSharedFunctions() {
-	e.sharedFunctions = &sharedFunctions{
-		listenerBeforeTrampolines: make(map[*wasm.FunctionType][]byte),
-		listenerAfterTrampolines:  make(map[*wasm.FunctionType][]byte),
-	}
+	var sizes [8]int
+	var trampolines []byte
 
 	e.be.Init()
 	{
@@ -602,11 +625,8 @@ func (e *engine) compileSharedFunctions() {
 			Params:  []ssa.Type{ssa.TypeI64 /* exec context */, ssa.TypeI32},
 			Results: []ssa.Type{ssa.TypeI32},
 		}, false)
-		e.sharedFunctions.memoryGrowExecutable = mmapExecutable(src)
-		if wazevoapi.PerfMapEnabled {
-			exe := e.sharedFunctions.memoryGrowExecutable
-			wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(&exe[0])), uint64(len(exe)), "memory_grow_trampoline")
-		}
+		trampolines = append(trampolines, src...)
+		sizes[0] = len(src)
 	}
 
 	e.be.Init()
@@ -615,11 +635,8 @@ func (e *engine) compileSharedFunctions() {
 			Params:  []ssa.Type{ssa.TypeI64 /* exec context */, ssa.TypeI32 /* table index */, ssa.TypeI32 /* num */, ssa.TypeI64 /* ref */},
 			Results: []ssa.Type{ssa.TypeI32},
 		}, false)
-		e.sharedFunctions.tableGrowExecutable = mmapExecutable(src)
-		if wazevoapi.PerfMapEnabled {
-			exe := e.sharedFunctions.tableGrowExecutable
-			wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(&exe[0])), uint64(len(exe)), "table_grow_trampoline")
-		}
+		trampolines = append(trampolines, src...)
+		sizes[1] = len(src)
 	}
 
 	e.be.Init()
@@ -628,11 +645,8 @@ func (e *engine) compileSharedFunctions() {
 			Params:  []ssa.Type{ssa.TypeI32 /* exec context */},
 			Results: []ssa.Type{ssa.TypeI32},
 		}, false)
-		e.sharedFunctions.checkModuleExitCode = mmapExecutable(src)
-		if wazevoapi.PerfMapEnabled {
-			exe := e.sharedFunctions.checkModuleExitCode
-			wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(&exe[0])), uint64(len(exe)), "check_module_exit_code_trampoline")
-		}
+		trampolines = append(trampolines, src...)
+		sizes[2] = len(src)
 	}
 
 	e.be.Init()
@@ -641,21 +655,15 @@ func (e *engine) compileSharedFunctions() {
 			Params:  []ssa.Type{ssa.TypeI64 /* exec context */, ssa.TypeI32 /* function index */},
 			Results: []ssa.Type{ssa.TypeI64}, // returns the function reference.
 		}, false)
-		e.sharedFunctions.refFuncExecutable = mmapExecutable(src)
-		if wazevoapi.PerfMapEnabled {
-			exe := e.sharedFunctions.refFuncExecutable
-			wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(&exe[0])), uint64(len(exe)), "ref_func_trampoline")
-		}
+		trampolines = append(trampolines, src...)
+		sizes[3] = len(src)
 	}
 
 	e.be.Init()
 	{
 		src := e.machine.CompileStackGrowCallSequence()
-		e.sharedFunctions.stackGrowExecutable = mmapExecutable(src)
-		if wazevoapi.PerfMapEnabled {
-			exe := e.sharedFunctions.stackGrowExecutable
-			wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(&exe[0])), uint64(len(exe)), "stack_grow_trampoline")
-		}
+		trampolines = append(trampolines, src...)
+		sizes[4] = len(src)
 	}
 
 	e.be.Init()
@@ -666,11 +674,8 @@ func (e *engine) compileSharedFunctions() {
 			// Returns the status.
 			Results: []ssa.Type{ssa.TypeI32},
 		}, false)
-		e.sharedFunctions.memoryWait32Executable = mmapExecutable(src)
-		if wazevoapi.PerfMapEnabled {
-			exe := e.sharedFunctions.memoryWait32Executable
-			wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(&exe[0])), uint64(len(exe)), "memory_wait32_trampoline")
-		}
+		trampolines = append(trampolines, src...)
+		sizes[5] = len(src)
 	}
 
 	e.be.Init()
@@ -681,11 +686,8 @@ func (e *engine) compileSharedFunctions() {
 			// Returns the status.
 			Results: []ssa.Type{ssa.TypeI32},
 		}, false)
-		e.sharedFunctions.memoryWait64Executable = mmapExecutable(src)
-		if wazevoapi.PerfMapEnabled {
-			exe := e.sharedFunctions.memoryWait64Executable
-			wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(&exe[0])), uint64(len(exe)), "memory_wait64_trampoline")
-		}
+		trampolines = append(trampolines, src...)
+		sizes[6] = len(src)
 	}
 
 	e.be.Init()
@@ -696,62 +698,59 @@ func (e *engine) compileSharedFunctions() {
 			// Returns the number notified.
 			Results: []ssa.Type{ssa.TypeI32},
 		}, false)
-		e.sharedFunctions.memoryNotifyExecutable = mmapExecutable(src)
-		if wazevoapi.PerfMapEnabled {
-			exe := e.sharedFunctions.memoryNotifyExecutable
-			wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(&exe[0])), uint64(len(exe)), "memory_notify_trampoline")
-		}
+		trampolines = append(trampolines, src...)
+		sizes[7] = len(src)
 	}
 
-	e.setFinalizer(e.sharedFunctions, sharedFunctionsFinalizer)
+	fns := &sharedFunctions{
+		executable:          mmapExecutable(trampolines),
+		listenerTrampolines: make(listenerTrampolines),
+	}
+	e.setFinalizer(fns, sharedFunctionsFinalizer)
+
+	offset := 0
+	fns.memoryGrowAddress = &fns.executable[offset]
+	offset += sizes[0]
+	fns.tableGrowAddress = &fns.executable[offset]
+	offset += sizes[1]
+	fns.checkModuleExitCodeAddress = &fns.executable[offset]
+	offset += sizes[2]
+	fns.refFuncAddress = &fns.executable[offset]
+	offset += sizes[3]
+	fns.stackGrowAddress = &fns.executable[offset]
+	offset += sizes[4]
+	fns.memoryWait32Address = &fns.executable[offset]
+	offset += sizes[5]
+	fns.memoryWait64Address = &fns.executable[offset]
+	offset += sizes[6]
+	fns.memoryNotifyAddress = &fns.executable[offset]
+
+	if wazevoapi.PerfMapEnabled {
+		wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(fns.memoryGrowAddress)), uint64(sizes[0]), "memory_grow_trampoline")
+		wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(fns.tableGrowAddress)), uint64(sizes[1]), "table_grow_trampoline")
+		wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(fns.checkModuleExitCodeAddress)), uint64(sizes[2]), "check_module_exit_code_trampoline")
+		wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(fns.refFuncAddress)), uint64(sizes[3]), "ref_func_trampoline")
+		wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(fns.stackGrowAddress)), uint64(sizes[4]), "stack_grow_trampoline")
+		wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(fns.memoryWait32Address)), uint64(sizes[5]), "memory_wait32_trampoline")
+		wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(fns.memoryWait64Address)), uint64(sizes[6]), "memory_wait64_trampoline")
+		wazevoapi.PerfMap.AddEntry(uintptr(unsafe.Pointer(fns.memoryNotifyAddress)), uint64(sizes[7]), "memory_notify_trampoline")
+	}
+
+	e.sharedFunctions = fns
 }
 
 func sharedFunctionsFinalizer(sf *sharedFunctions) {
-	if err := platform.MunmapCodeSegment(sf.memoryGrowExecutable); err != nil {
+	if err := platform.MunmapCodeSegment(sf.executable); err != nil {
 		panic(err)
 	}
-	if err := platform.MunmapCodeSegment(sf.checkModuleExitCode); err != nil {
-		panic(err)
-	}
-	if err := platform.MunmapCodeSegment(sf.stackGrowExecutable); err != nil {
-		panic(err)
-	}
-	if err := platform.MunmapCodeSegment(sf.tableGrowExecutable); err != nil {
-		panic(err)
-	}
-	if err := platform.MunmapCodeSegment(sf.refFuncExecutable); err != nil {
-		panic(err)
-	}
-	if err := platform.MunmapCodeSegment(sf.memoryWait32Executable); err != nil {
-		panic(err)
-	}
-	if err := platform.MunmapCodeSegment(sf.memoryWait64Executable); err != nil {
-		panic(err)
-	}
-	if err := platform.MunmapCodeSegment(sf.memoryNotifyExecutable); err != nil {
-		panic(err)
-	}
-	for _, f := range sf.listenerBeforeTrampolines {
-		if err := platform.MunmapCodeSegment(f); err != nil {
-			panic(err)
-		}
-	}
-	for _, f := range sf.listenerAfterTrampolines {
-		if err := platform.MunmapCodeSegment(f); err != nil {
+	for _, f := range sf.listenerTrampolines {
+		if err := platform.MunmapCodeSegment(f.executable); err != nil {
 			panic(err)
 		}
 	}
 
-	sf.memoryGrowExecutable = nil
-	sf.checkModuleExitCode = nil
-	sf.stackGrowExecutable = nil
-	sf.tableGrowExecutable = nil
-	sf.refFuncExecutable = nil
-	sf.memoryWait32Executable = nil
-	sf.memoryWait64Executable = nil
-	sf.memoryNotifyExecutable = nil
-	sf.listenerBeforeTrampolines = nil
-	sf.listenerAfterTrampolines = nil
+	sf.executable = nil
+	sf.listenerTrampolines = nil
 }
 
 func executablesFinalizer(exec *executables) {
@@ -762,12 +761,13 @@ func executablesFinalizer(exec *executables) {
 	}
 	exec.executable = nil
 
-	for _, f := range exec.entryPreambles {
-		if err := platform.MunmapCodeSegment(f); err != nil {
+	if len(exec.entryPreambles) > 0 {
+		if err := platform.MunmapCodeSegment(exec.entryPreambles); err != nil {
 			panic(err)
 		}
 	}
 	exec.entryPreambles = nil
+	exec.entryPreamblesPtrs = nil
 }
 
 func mmapExecutable(src []byte) []byte {
@@ -804,25 +804,28 @@ func (e *engine) getListenerTrampolineForType(functionType *wasm.FunctionType) (
 	e.mux.Lock()
 	defer e.mux.Unlock()
 
-	beforeBuf, ok := e.sharedFunctions.listenerBeforeTrampolines[functionType]
-	afterBuf := e.sharedFunctions.listenerAfterTrampolines[functionType]
-	if ok {
-		return &beforeBuf[0], &afterBuf[0]
+	trampoline, ok := e.sharedFunctions.listenerTrampolines[functionType]
+	if !ok {
+		var executable []byte
+		beforeSig, afterSig := frontend.SignatureForListener(functionType)
+
+		e.be.Init()
+		buf := e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeCallListenerBefore, beforeSig, false)
+		executable = append(executable, buf...)
+
+		offset := len(buf)
+
+		e.be.Init()
+		buf = e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeCallListenerAfter, afterSig, false)
+		executable = append(executable, buf...)
+
+		trampoline.executable = mmapExecutable(executable)
+		trampoline.before = &trampoline.executable[0]
+		trampoline.after = &trampoline.executable[offset]
+
+		e.sharedFunctions.listenerTrampolines[functionType] = trampoline
 	}
-
-	beforeSig, afterSig := frontend.SignatureForListener(functionType)
-
-	e.be.Init()
-	buf := e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeCallListenerBefore, beforeSig, false)
-	beforeBuf = mmapExecutable(buf)
-
-	e.be.Init()
-	buf = e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeCallListenerAfter, afterSig, false)
-	afterBuf = mmapExecutable(buf)
-
-	e.sharedFunctions.listenerBeforeTrampolines[functionType] = beforeBuf
-	e.sharedFunctions.listenerAfterTrampolines[functionType] = afterBuf
-	return &beforeBuf[0], &afterBuf[0]
+	return trampoline.before, trampoline.after
 }
 
 func (cm *compiledModule) getSourceOffset(pc uintptr) uint64 {
