@@ -31,7 +31,7 @@ func TestEngine_CompiledModuleCount(t *testing.T) {
 	e, ok := NewEngine(ctx, api.CoreFeaturesV1, nil).(*engine)
 	require.True(t, ok)
 	require.Equal(t, uint32(0), e.CompiledModuleCount())
-	e.compiledModules[wasm.ModuleID{}] = &compiledModule{}
+	e.compiledModules[wasm.ModuleID{}] = &compiledModuleWithCount{compiledModule: &compiledModule{}, refCount: 1}
 	require.Equal(t, uint32(1), e.CompiledModuleCount())
 }
 
