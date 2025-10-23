@@ -50,7 +50,7 @@ func (e *engine) addCompiledModule(module *wasm.Module, cm *compiledModule) (err
 }
 
 func (e *engine) getCompiledModule(module *wasm.Module, listeners []experimental.FunctionListener, ensureTermination bool) (cm *compiledModule, ok bool, err error) {
-	cm, ok = e.getCompiledModuleFromMemory(module)
+	cm, ok = e.getCompiledModuleFromMemory(module, true)
 	if ok {
 		return
 	}
@@ -87,16 +87,23 @@ func (e *engine) getCompiledModule(module *wasm.Module, listeners []experimental
 func (e *engine) addCompiledModuleToMemory(m *wasm.Module, cm *compiledModule) {
 	e.mux.Lock()
 	defer e.mux.Unlock()
-	e.compiledModules[m.ID] = cm
+	e.compiledModules[m.ID] = &compiledModuleWithCount{compiledModule: cm, refCount: 1}
 	if len(cm.executable) > 0 {
 		e.addCompiledModuleToSortedList(cm)
 	}
 }
 
-func (e *engine) getCompiledModuleFromMemory(module *wasm.Module) (cm *compiledModule, ok bool) {
-	e.mux.RLock()
-	defer e.mux.RUnlock()
-	cm, ok = e.compiledModules[module.ID]
+func (e *engine) getCompiledModuleFromMemory(module *wasm.Module, increaseRefCount bool) (cm *compiledModule, ok bool) {
+	e.mux.Lock()
+	defer e.mux.Unlock()
+
+	cmWithCount, ok := e.compiledModules[module.ID]
+	if ok {
+		cm = cmWithCount.compiledModule
+		if increaseRefCount {
+			cmWithCount.refCount++
+		}
+	}
 	return
 }
 
