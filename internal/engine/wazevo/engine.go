@@ -207,6 +207,10 @@ func (exec *executables) compileEntryPreambles(m *wasm.Module, machine backend.M
 }
 
 func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listeners []experimental.FunctionListener, ensureTermination bool) (*compiledModule, error) {
+	if module.IsHostModule {
+		return e.compileHostModule(ctx, module, listeners)
+	}
+
 	withListener := len(listeners) > 0
 	cm := &compiledModule{
 		offsets: wazevoapi.NewModuleContextOffsetData(module, withListener), parent: e, module: module,
@@ -214,17 +218,23 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 		executables:       &executables{},
 	}
 
-	if module.IsHostModule {
-		return e.compileHostModule(ctx, module, listeners)
-	}
-
 	importedFns, localFns := int(module.ImportFunctionCount), len(module.FunctionSection)
 	if localFns == 0 {
 		return cm, nil
 	}
 
-	rels := make([]backend.RelocationInfo, 0)
-	refToBinaryOffset := make([]int, importedFns+localFns)
+	machine := newMachine()
+	relocator, err := newEngineRelocator(machine, importedFns, localFns)
+	if err != nil {
+		return nil, err
+	}
+
+	needSourceInfo := module.DWARFLines != nil
+
+	ssaBuilder := ssa.NewBuilder()
+	be := backend.NewCompiler(ctx, machine, ssaBuilder)
+	cm.executables.compileEntryPreambles(module, machine, be)
+	cm.functionOffsets = make([]int, localFns)
 
 	var indexes []int
 	if wazevoapi.DeterministicCompilationVerifierEnabled {
@@ -232,169 +242,113 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 		indexes = wazevoapi.DeterministicCompilationVerifierRandomizeIndexes(ctx)
 	}
 
-	needSourceInfo := module.DWARFLines != nil
+	if workers := experimental.GetCompilationWorkers(ctx); workers <= 1 {
+		// Compile with a single goroutine.
+		fe := frontend.NewFrontendCompiler(module, ssaBuilder, &cm.offsets, ensureTermination, withListener, needSourceInfo)
 
-	// Creates new compiler instances which are reused for each function.
-	ssaBuilder := ssa.NewBuilder()
-	machine := newMachine()
-	be := backend.NewCompiler(ctx, machine, ssaBuilder)
+		for i := range module.CodeSection {
+			if wazevoapi.DeterministicCompilationVerifierEnabled {
+				i = indexes[i]
+			}
 
-	cm.executables.compileEntryPreambles(module, machine, be)
+			fidx := wasm.Index(i + importedFns)
+			fctx := functionContext(ctx, module, i, fidx)
 
-	totalSize := 0 // Total binary size of the executable.
-	cm.functionOffsets = make([]int, localFns)
-	bodies := make([][]byte, localFns)
+			needListener := len(listeners) > i && listeners[i] != nil
+			body, relsPerFunc, err := e.compileLocalWasmFunction(fctx, module, wasm.Index(i), fe, ssaBuilder, be, needListener)
+			if err != nil {
+				return nil, fmt.Errorf("compile function %d/%d: %v", i, len(module.CodeSection)-1, err)
+			}
 
-	// Trampoline relocation related variables.
-	trampolineInterval, callTrampolineIslandSize, err := machine.CallTrampolineIslandInfo(localFns)
-	if err != nil {
-		return nil, err
-	}
-	needCallTrampoline := callTrampolineIslandSize > 0
-	var callTrampolineIslandOffsets []int // Holds the offsets of trampoline islands.
+			relocator.appendFunction(fctx, module, cm, i, fidx, body, relsPerFunc, be.SourceOffsetInfo())
+		}
+	} else {
+		// Compile with N worker goroutines.
+		// Collect compiled functions across workers in a slice,
+		// to be added to the relocator in-order and resolved serially at the end.
+		// This uses more memory and CPU (across cores), but can be significantly faster.
+		type compiledFunc struct {
+			fctx        context.Context
+			fnum        int
+			fidx        wasm.Index
+			body        []byte
+			relsPerFunc []backend.RelocationInfo
+			offsPerFunc []backend.SourceOffsetInfo
+		}
 
-	type CompiledLocalFuncResult struct {
-		Body             []byte
-		RelsPerFunc      []backend.RelocationInfo
-		IDX              wasm.Index
-		SourceOffsetInfo []backend.SourceOffsetInfo
-	}
+		compiledFuncs := make([]compiledFunc, len(module.CodeSection))
+		ctx, cancel := context.WithCancelCause(ctx)
+		defer cancel(nil)
 
-	compiledFuncs := make([]CompiledLocalFuncResult, len(module.CodeSection))
+		var count atomic.Uint32
+		var wg sync.WaitGroup
+		wg.Add(workers)
 
-	workers := experimental.GetCompilationWorkers(ctx)
+		for range workers {
+			go func() {
+				defer wg.Done()
 
-	wg := sync.WaitGroup{}
-	wg.Add(workers)
+				// Creates new compiler instances which are reused for each function.
+				machine := newMachine()
+				ssaBuilder := ssa.NewBuilder()
+				be := backend.NewCompiler(ctx, machine, ssaBuilder)
+				fe := frontend.NewFrontendCompiler(module, ssaBuilder, &cm.offsets, ensureTermination, withListener, needSourceInfo)
 
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(nil)
-
-	var count atomic.Uint32
-
-	for range workers {
-		go func() {
-			defer wg.Done()
-
-			ssaBuilder := ssa.NewBuilder()
-			machine := newMachine()
-			fe := frontend.NewFrontendCompiler(module, ssaBuilder, &cm.offsets, ensureTermination, withListener, needSourceInfo)
-			be := backend.NewCompiler(ctx, machine, ssaBuilder)
-
-			for {
-				if err := ctx.Err(); err != nil {
-					// Compilation canceled!
-					return
-				}
-
-				i := int(count.Add(1)) - 1
-				if i >= len(module.CodeSection) {
-					return
-				}
-
-				if wazevoapi.DeterministicCompilationVerifierEnabled {
-					i = indexes[i]
-				}
-
-				fidx := wasm.Index(i + importedFns)
-
-				// The iteration ctx may have properties specific to the current local wasm function we are about to compile.
-				// Copy the function's root context as we do not want modify it beyond the scope of this iteration.
-				iterationCtx := ctx
-
-				if wazevoapi.NeedFunctionNameInContext {
-					def := module.FunctionDefinition(fidx)
-					name := def.DebugName()
-					if len(def.ExportNames()) > 0 {
-						name = def.ExportNames()[0]
+				for {
+					if err := ctx.Err(); err != nil {
+						// Compilation canceled!
+						return
 					}
-					iterationCtx = wazevoapi.SetCurrentFunctionName(iterationCtx, i, fmt.Sprintf("[%d/%d]%s", i, len(module.CodeSection)-1, name))
+
+					i := int(count.Add(1)) - 1
+					if i >= len(module.CodeSection) {
+						return
+					}
+
+					if wazevoapi.DeterministicCompilationVerifierEnabled {
+						i = indexes[i]
+					}
+
+					fidx := wasm.Index(i + importedFns)
+					fctx := functionContext(ctx, module, i, fidx)
+
+					needListener := len(listeners) > i && listeners[i] != nil
+					body, relsPerFunc, err := e.compileLocalWasmFunction(fctx, module, wasm.Index(i), fe, ssaBuilder, be, needListener)
+					if err != nil {
+						cancel(fmt.Errorf("compile function %d/%d: %v", i, len(module.CodeSection)-1, err))
+						return
+					}
+
+					compiledFuncs[i] = compiledFunc{
+						fctx, i, fidx, body,
+						// These slices are internal to the backend compiler and since we are going to buffer them instead
+						// of process them immediately we need to copy the memory.
+						cloneSlice(relsPerFunc),
+						cloneSlice(be.SourceOffsetInfo()),
+					}
 				}
-
-				needListener := len(listeners) > 0 && listeners[i] != nil
-
-				body, relsPerFunc, err := e.compileLocalWasmFunction(iterationCtx, module, wasm.Index(i), fe, ssaBuilder, be, needListener)
-				if err != nil {
-					cancel(fmt.Errorf("compile function %d/%d: %v", i, len(module.CodeSection)-1, err))
-					return
-				}
-				compiledFuncs[i] = CompiledLocalFuncResult{
-					IDX:  fidx,
-					Body: body,
-					// These slices are internal to the backend compiler and since we are going to buffer them instead
-					// of process them immediately we need to copy the memory.
-					RelsPerFunc:      copySlice(relsPerFunc),
-					SourceOffsetInfo: copySlice(be.SourceOffsetInfo()),
-				}
-			}
-		}()
-	}
-
-	wg.Wait()
-
-	if err := context.Cause(ctx); err != nil {
-		return nil, err
-	}
-
-	var offsetSize int
-	if needSourceInfo {
-		for _, fn := range compiledFuncs {
-			offsetSize += 1 + len(fn.SourceOffsetInfo)
-		}
-		cm.sourceMap.executableOffsets = make([]uintptr, 0, offsetSize)
-		cm.sourceMap.wasmBinaryOffsets = make([]uint64, 0, offsetSize)
-	}
-
-	for i, fn := range compiledFuncs {
-		// Align 16-bytes boundary.
-		totalSize = (totalSize + 15) &^ 15
-		cm.functionOffsets[i] = totalSize
-
-		if needSourceInfo {
-			// At the beginning of the function, we add the offset of the function body so that
-			// we can resolve the source location of the call site of before listener call.
-			cm.sourceMap.executableOffsets = append(cm.sourceMap.executableOffsets, uintptr(totalSize))
-			cm.sourceMap.wasmBinaryOffsets = append(cm.sourceMap.wasmBinaryOffsets, module.CodeSection[i].BodyOffsetInCodeSection)
-
-			for _, info := range fn.SourceOffsetInfo {
-				cm.sourceMap.executableOffsets = append(cm.sourceMap.executableOffsets, uintptr(totalSize)+uintptr(info.ExecutableOffset))
-				cm.sourceMap.wasmBinaryOffsets = append(cm.sourceMap.wasmBinaryOffsets, uint64(info.SourceOffset))
-			}
+			}()
 		}
 
-		fref := frontend.FunctionIndexToFuncRef(fn.IDX)
-		refToBinaryOffset[fref] = totalSize
-
-		// At this point, relocation offsets are relative to the start of the function body,
-		// so we adjust it to the start of the executable.
-		for _, r := range fn.RelsPerFunc {
-			r.Offset += int64(totalSize)
-			rels = append(rels, r)
+		wg.Wait()
+		if err := context.Cause(ctx); err != nil {
+			return nil, err
 		}
 
-		bodies[i] = fn.Body
-		totalSize += len(fn.Body)
-		if wazevoapi.PrintMachineCodeHexPerFunction {
-			fmt.Printf("[[[machine code for %s]]]\n%s\n\n", wazevoapi.GetCurrentFunctionName(ctx), hex.EncodeToString(fn.Body))
-		}
-
-		if needCallTrampoline {
-			// If the total size exceeds the trampoline interval, we need to add a trampoline island.
-			if totalSize/trampolineInterval > len(callTrampolineIslandOffsets) {
-				callTrampolineIslandOffsets = append(callTrampolineIslandOffsets, totalSize)
-				totalSize += callTrampolineIslandSize
-			}
+		for i := range compiledFuncs {
+			fn := &compiledFuncs[i]
+			relocator.appendFunction(fn.fctx, module, cm, fn.fnum, fn.fidx, fn.body, fn.relsPerFunc, fn.offsPerFunc)
 		}
 	}
 
 	// Allocate executable memory and then copy the generated machine code.
-	executable, err := platform.MmapCodeSegment(totalSize)
+	executable, err := platform.MmapCodeSegment(relocator.totalSize)
 	if err != nil {
 		panic(err)
 	}
 	cm.executable = executable
 
-	for i, b := range bodies {
+	for i, b := range relocator.bodies {
 		offset := cm.functionOffsets[i]
 		copy(executable[offset:], b)
 	}
@@ -409,10 +363,7 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 		}
 	}
 
-	// Resolve relocations for local function calls.
-	if len(rels) > 0 {
-		machine.ResolveRelocations(refToBinaryOffset, importedFns, executable, rels, callTrampolineIslandOffsets)
-	}
+	relocator.resolveRelocations(machine, executable, importedFns)
 
 	if err = platform.MprotectRX(executable); err != nil {
 		return nil, err
@@ -420,6 +371,96 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 	cm.sharedFunctions = e.sharedFunctions
 	e.setFinalizer(cm.executables, executablesFinalizer)
 	return cm, nil
+}
+
+func functionContext(ctx context.Context, module *wasm.Module, fnum int, fidx wasm.Index) context.Context {
+	if wazevoapi.NeedFunctionNameInContext {
+		def := module.FunctionDefinition(fidx)
+		name := def.DebugName()
+		if len(def.ExportNames()) > 0 {
+			name = def.ExportNames()[0]
+		}
+		ctx = wazevoapi.SetCurrentFunctionName(ctx, fnum, fmt.Sprintf("[%d/%d]%s", fnum, len(module.CodeSection)-1, name))
+	}
+	return ctx
+}
+
+type engineRelocator struct {
+	bodies                      [][]byte
+	refToBinaryOffset           []int
+	rels                        []backend.RelocationInfo
+	totalSize                   int // Total binary size of the executable.
+	trampolineInterval          int
+	callTrampolineIslandSize    int
+	callTrampolineIslandOffsets []int // Holds the offsets of trampoline islands.
+}
+
+func newEngineRelocator(
+	machine backend.Machine,
+	importedFns, localFns int,
+) (r engineRelocator, err error) {
+	// Trampoline relocation related variables.
+	r.trampolineInterval, r.callTrampolineIslandSize, err = machine.CallTrampolineIslandInfo(localFns)
+	r.refToBinaryOffset = make([]int, importedFns+localFns)
+	return
+}
+
+func (r *engineRelocator) resolveRelocations(machine backend.Machine, executable []byte, importedFns int) {
+	// Resolve relocations for local function calls.
+	if len(r.rels) > 0 {
+		machine.ResolveRelocations(r.refToBinaryOffset, importedFns, executable, r.rels, r.callTrampolineIslandOffsets)
+	}
+}
+
+func (r *engineRelocator) appendFunction(
+	ctx context.Context,
+	module *wasm.Module,
+	cm *compiledModule,
+	fnum int, fidx wasm.Index,
+	body []byte,
+	relsPerFunc []backend.RelocationInfo,
+	offsPerFunc []backend.SourceOffsetInfo,
+) {
+	// Align 16-bytes boundary.
+	r.totalSize = (r.totalSize + 15) &^ 15
+	cm.functionOffsets[fnum] = r.totalSize
+
+	needSourceInfo := module.DWARFLines != nil
+	if needSourceInfo {
+		// At the beginning of the function, we add the offset of the function body so that
+		// we can resolve the source location of the call site of before listener call.
+		cm.sourceMap.executableOffsets = append(cm.sourceMap.executableOffsets, uintptr(r.totalSize))
+		cm.sourceMap.wasmBinaryOffsets = append(cm.sourceMap.wasmBinaryOffsets, module.CodeSection[fnum].BodyOffsetInCodeSection)
+
+		for _, info := range offsPerFunc {
+			cm.sourceMap.executableOffsets = append(cm.sourceMap.executableOffsets, uintptr(r.totalSize)+uintptr(info.ExecutableOffset))
+			cm.sourceMap.wasmBinaryOffsets = append(cm.sourceMap.wasmBinaryOffsets, uint64(info.SourceOffset))
+		}
+	}
+
+	fref := frontend.FunctionIndexToFuncRef(fidx)
+	r.refToBinaryOffset[fref] = r.totalSize
+
+	// At this point, relocation offsets are relative to the start of the function body,
+	// so we adjust it to the start of the executable.
+	for _, rel := range relsPerFunc {
+		rel.Offset += int64(r.totalSize)
+		r.rels = append(r.rels, rel)
+	}
+
+	r.totalSize += len(body)
+	r.bodies = append(r.bodies, body)
+	if wazevoapi.PrintMachineCodeHexPerFunction {
+		fmt.Printf("[[[machine code for %s]]]\n%s\n\n", wazevoapi.GetCurrentFunctionName(ctx), hex.EncodeToString(body))
+	}
+
+	if r.callTrampolineIslandSize > 0 {
+		// If the total size exceeds the trampoline interval, we need to add a trampoline island.
+		if r.totalSize/r.trampolineInterval > len(r.callTrampolineIslandOffsets) {
+			r.callTrampolineIslandOffsets = append(r.callTrampolineIslandOffsets, r.totalSize)
+			r.totalSize += r.callTrampolineIslandSize
+		}
+	}
 }
 
 func (e *engine) compileLocalWasmFunction(
@@ -468,9 +509,7 @@ func (e *engine) compileLocalWasmFunction(
 	}
 
 	// TODO: optimize as zero copy.
-	copied := make([]byte, len(original))
-	copy(copied, original)
-	return copied, rels, nil
+	return cloneSlice(original), rels, nil
 }
 
 func (e *engine) compileHostModule(ctx context.Context, module *wasm.Module, listeners []experimental.FunctionListener) (*compiledModule, error) {
@@ -542,9 +581,7 @@ func (e *engine) compileHostModule(ctx context.Context, module *wasm.Module, lis
 		}
 
 		// TODO: optimize as zero copy.
-		copied := make([]byte, len(body))
-		copy(copied, body)
-		bodies[i] = copied
+		bodies[i] = cloneSlice(body)
 		totalSize += len(body)
 	}
 
@@ -908,11 +945,9 @@ func (cm *compiledModule) getSourceOffset(pc uintptr) uint64 {
 	return cm.sourceMap.wasmBinaryOffsets[index]
 }
 
-func copySlice[S ~[]E, E any](slice S) S {
-	if slice == nil {
+func cloneSlice[S ~[]E, E any](s S) S {
+	if s == nil {
 		return nil
 	}
-	clone := make(S, len(slice))
-	copy(clone, slice)
-	return clone
+	return append(S{}, s...)
 }

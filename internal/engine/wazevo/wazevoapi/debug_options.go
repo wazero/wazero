@@ -112,7 +112,7 @@ func NewDeterministicCompilationVerifierContext(ctx context.Context, localFuncti
 }
 
 // DeterministicCompilationVerifierRandomizeIndexes randomizes the indexes for the deterministic compilation verifier.
-// To get the randomized index, use DeterministicCompilationVerifierGetRandomizedLocalFunctionIndex.
+// Returns a slice that maps an index to the randomized index.
 func DeterministicCompilationVerifierRandomizeIndexes(ctx context.Context) []int {
 	state := ctx.Value(verifierStateContextKey{}).(*verifierState)
 	if !state.initialCompilationDone {
