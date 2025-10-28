@@ -123,8 +123,7 @@ func (c *Compiler) nPeekDup(n int) ssa.Values {
 	l := c.state()
 	tail := len(l.values)
 
-	args := c.allocateVarLengthValues(n)
-	args = args.Append(c.ssaBuilder.VarLengthPool(), l.values[tail-n:tail]...)
+	args := c.allocateVarLengthValues(n, l.values[tail-n:tail]...)
 	return args
 }
 
@@ -1171,7 +1170,7 @@ func (c *Compiler) lowerCurrentOpcode() {
 				ssa.TypeI64,
 			).Insert(builder).Return()
 
-		args := c.allocateVarLengthValues(1, c.execCtxPtrValue, pages)
+		args := c.allocateVarLengthValues(2, c.execCtxPtrValue, pages)
 		callGrowRet := builder.
 			AllocateInstruction().
 			AsCallIndirect(memoryGrowPtr, &c.memoryGrowSig, args).
@@ -1341,8 +1340,7 @@ func (c *Compiler) lowerCurrentOpcode() {
 			blockType:                    bt,
 		})
 
-		args := c.allocateVarLengthValues(originalLen)
-		args = args.Append(builder.VarLengthPool(), state.values[originalLen:]...)
+		args := c.allocateVarLengthValues(len(bt.Params), state.values[originalLen:]...)
 
 		// Insert the jump to the header of loop.
 		br := builder.AllocateInstruction()
@@ -1381,8 +1379,7 @@ func (c *Compiler) lowerCurrentOpcode() {
 		// multiple definitions (one in Then and another in Else blocks).
 		c.addBlockParamsFromWasmTypes(bt.Results, followingBlk)
 
-		args := c.allocateVarLengthValues(len(bt.Params))
-		args = args.Append(builder.VarLengthPool(), state.values[len(state.values)-len(bt.Params):]...)
+		args := c.allocateVarLengthValues(len(bt.Params), state.values[len(state.values)-len(bt.Params):]...)
 
 		// Insert the conditional jump to the Else block.
 		brz := builder.AllocateInstruction()
@@ -3125,7 +3122,7 @@ func (c *Compiler) lowerCurrentOpcode() {
 					ssa.TypeI64,
 				).Insert(builder).Return()
 
-			args := c.allocateVarLengthValues(3, c.execCtxPtrValue, timeout, exp, addr)
+			args := c.allocateVarLengthValues(4, c.execCtxPtrValue, timeout, exp, addr)
 			memoryWaitRet := builder.AllocateInstruction().
 				AsCallIndirect(memoryWaitPtr, sig, args).
 				Insert(builder).Return()
@@ -3146,7 +3143,7 @@ func (c *Compiler) lowerCurrentOpcode() {
 					wazevoapi.ExecutionContextOffsetMemoryNotifyTrampolineAddress.U32(),
 					ssa.TypeI64,
 				).Insert(builder).Return()
-			args := c.allocateVarLengthValues(2, c.execCtxPtrValue, count, addr)
+			args := c.allocateVarLengthValues(3, c.execCtxPtrValue, count, addr)
 			memoryNotifyRet := builder.AllocateInstruction().
 				AsCallIndirect(memoryNotifyPtr, &c.memoryNotifySig, args).
 				Insert(builder).Return()
