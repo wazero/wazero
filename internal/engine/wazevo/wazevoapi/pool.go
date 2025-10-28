@@ -155,6 +155,9 @@ func (p *VarLengthPool[T]) Allocate(knownMin int) VarLength[T] {
 		return VarLength[T]{arr: arr}
 	}
 	slc := p.slicePool.Allocate()
+	if cap(*slc) < knownMin {
+		*slc = make([]T, 0, knownMin)
+	}
 	return VarLength[T]{slc: slc}
 }
 
