@@ -186,7 +186,9 @@ func (exec *executables) compileEntryPreambles(m *wasm.Module, machine backend.M
 		be.Init()
 		buf := machine.CompileEntryPreamble(&sig)
 		preambles = append(preambles, buf...)
-		sizes[i] = len(buf)
+		align := 15 & -len(preambles) // Align 16-bytes boundary.
+		preambles = append(preambles, make([]byte, align)...)
+		sizes[i] = len(buf) + align
 	}
 
 	exec.entryPreambles = mmapExecutable(preambles)
@@ -722,88 +724,70 @@ func (e *engine) compileSharedFunctions() {
 	var sizes [8]int
 	var trampolines []byte
 
+	addTrampoline := func(i int, buf []byte) {
+		trampolines = append(trampolines, buf...)
+		align := 15 & -len(trampolines) // Align 16-bytes boundary.
+		trampolines = append(trampolines, make([]byte, align)...)
+		sizes[i] = len(buf) + align
+	}
+
 	e.be.Init()
-	{
-		src := e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeGrowMemory, &ssa.Signature{
+	addTrampoline(0,
+		e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeGrowMemory, &ssa.Signature{
 			Params:  []ssa.Type{ssa.TypeI64 /* exec context */, ssa.TypeI32},
 			Results: []ssa.Type{ssa.TypeI32},
-		}, false)
-		trampolines = append(trampolines, src...)
-		sizes[0] = len(src)
-	}
+		}, false))
 
 	e.be.Init()
-	{
-		src := e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeTableGrow, &ssa.Signature{
+	addTrampoline(1,
+		e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeTableGrow, &ssa.Signature{
 			Params:  []ssa.Type{ssa.TypeI64 /* exec context */, ssa.TypeI32 /* table index */, ssa.TypeI32 /* num */, ssa.TypeI64 /* ref */},
 			Results: []ssa.Type{ssa.TypeI32},
-		}, false)
-		trampolines = append(trampolines, src...)
-		sizes[1] = len(src)
-	}
+		}, false))
 
 	e.be.Init()
-	{
-		src := e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeCheckModuleExitCode, &ssa.Signature{
+	addTrampoline(2,
+		e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeCheckModuleExitCode, &ssa.Signature{
 			Params:  []ssa.Type{ssa.TypeI32 /* exec context */},
 			Results: []ssa.Type{ssa.TypeI32},
-		}, false)
-		trampolines = append(trampolines, src...)
-		sizes[2] = len(src)
-	}
+		}, false))
 
 	e.be.Init()
-	{
-		src := e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeRefFunc, &ssa.Signature{
+	addTrampoline(3,
+		e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeRefFunc, &ssa.Signature{
 			Params:  []ssa.Type{ssa.TypeI64 /* exec context */, ssa.TypeI32 /* function index */},
 			Results: []ssa.Type{ssa.TypeI64}, // returns the function reference.
-		}, false)
-		trampolines = append(trampolines, src...)
-		sizes[3] = len(src)
-	}
+		}, false))
 
 	e.be.Init()
-	{
-		src := e.machine.CompileStackGrowCallSequence()
-		trampolines = append(trampolines, src...)
-		sizes[4] = len(src)
-	}
+	addTrampoline(4, e.machine.CompileStackGrowCallSequence())
 
 	e.be.Init()
-	{
-		src := e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeMemoryWait32, &ssa.Signature{
+	addTrampoline(5,
+		e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeMemoryWait32, &ssa.Signature{
 			// exec context, timeout, expected, addr
 			Params: []ssa.Type{ssa.TypeI64, ssa.TypeI64, ssa.TypeI32, ssa.TypeI64},
 			// Returns the status.
 			Results: []ssa.Type{ssa.TypeI32},
-		}, false)
-		trampolines = append(trampolines, src...)
-		sizes[5] = len(src)
-	}
+		}, false))
 
 	e.be.Init()
-	{
-		src := e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeMemoryWait64, &ssa.Signature{
+	addTrampoline(6,
+		e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeMemoryWait64, &ssa.Signature{
 			// exec context, timeout, expected, addr
 			Params: []ssa.Type{ssa.TypeI64, ssa.TypeI64, ssa.TypeI64, ssa.TypeI64},
 			// Returns the status.
 			Results: []ssa.Type{ssa.TypeI32},
-		}, false)
-		trampolines = append(trampolines, src...)
-		sizes[6] = len(src)
-	}
+		}, false))
 
 	e.be.Init()
-	{
-		src := e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeMemoryNotify, &ssa.Signature{
+	addTrampoline(7,
+		e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeMemoryNotify, &ssa.Signature{
 			// exec context, count, addr
 			Params: []ssa.Type{ssa.TypeI64, ssa.TypeI32, ssa.TypeI64},
 			// Returns the number notified.
 			Results: []ssa.Type{ssa.TypeI32},
-		}, false)
-		trampolines = append(trampolines, src...)
-		sizes[7] = len(src)
-	}
+		}, false))
 
 	fns := &sharedFunctions{
 		executable:          mmapExecutable(trampolines),
@@ -913,7 +897,9 @@ func (e *engine) getListenerTrampolineForType(functionType *wasm.FunctionType) (
 		buf := e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeCallListenerBefore, beforeSig, false)
 		executable = append(executable, buf...)
 
-		offset := len(buf)
+		align := 15 & -len(executable) // Align 16-bytes boundary.
+		executable = append(executable, make([]byte, align)...)
+		offset := len(executable)
 
 		e.be.Init()
 		buf = e.machine.CompileGoFunctionTrampoline(wazevoapi.ExitCodeCallListenerAfter, afterSig, false)
