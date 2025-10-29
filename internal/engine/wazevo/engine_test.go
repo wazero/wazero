@@ -80,6 +80,51 @@ func TestEngine_CompileModule(t *testing.T) {
 	}
 }
 
+func TestEngine_CompileModule_alignment(t *testing.T) {
+	ctx := context.Background()
+	e := NewEngine(ctx, 0, nil).(*engine)
+
+	okModule := &wasm.Module{
+		TypeSection:     []wasm.FunctionType{{}},
+		FunctionSection: []wasm.Index{0, 0, 0, 0},
+		CodeSection: []wasm.Code{
+			{Body: []byte{wasm.OpcodeEnd}},
+			{Body: []byte{wasm.OpcodeEnd}},
+			{Body: []byte{wasm.OpcodeEnd}},
+			{Body: []byte{wasm.OpcodeEnd}},
+		},
+		ID: wasm.ModuleID{},
+	}
+
+	err := e.CompileModule(ctx, okModule, nil, false)
+	require.NoError(t, err)
+
+	cm, ok := e.getCompiledModuleFromMemory(okModule)
+	require.True(t, ok)
+
+	for _, offset := range cm.functionOffsets {
+		require.True(t, offset&15 == 0)
+	}
+
+	for _, ptr := range cm.entryPreamblesPtrs {
+		require.True(t, uintptr(unsafe.Pointer(ptr))&15 == 0)
+	}
+
+	shared := cm.sharedFunctions
+	require.True(t, uintptr(unsafe.Pointer(shared.memoryGrowAddress))&15 == 0)
+	require.True(t, uintptr(unsafe.Pointer(shared.checkModuleExitCodeAddress))&15 == 0)
+	require.True(t, uintptr(unsafe.Pointer(shared.stackGrowAddress))&15 == 0)
+	require.True(t, uintptr(unsafe.Pointer(shared.tableGrowAddress))&15 == 0)
+	require.True(t, uintptr(unsafe.Pointer(shared.refFuncAddress))&15 == 0)
+	require.True(t, uintptr(unsafe.Pointer(shared.memoryWait32Address))&15 == 0)
+	require.True(t, uintptr(unsafe.Pointer(shared.memoryWait64Address))&15 == 0)
+	require.True(t, uintptr(unsafe.Pointer(shared.memoryNotifyAddress))&15 == 0)
+	for _, trampoline := range shared.listenerTrampolines {
+		require.True(t, uintptr(unsafe.Pointer(trampoline.before))&15 == 0)
+		require.True(t, uintptr(unsafe.Pointer(trampoline.after))&15 == 0)
+	}
+}
+
 func TestEngine_sortedCompiledModules(t *testing.T) {
 	requireEqualExisting := func(t *testing.T, e *engine, expected []uintptr) {
 		actual := make([]uintptr, 0)
