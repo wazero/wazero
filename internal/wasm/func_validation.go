@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -480,11 +481,9 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			// function type might result in invalid value types if the block is the outermost label
 			// which equals the function's type.
 			if lnLabel.op != OpcodeLoop { // Loop operation doesn't require results since the continuation is the beginning of the loop.
-				defaultLabelType = make([]ValueType, len(lnLabel.blockType.Results))
-				copy(defaultLabelType, lnLabel.blockType.Results)
+				defaultLabelType = slices.Clone(lnLabel.blockType.Results)
 			} else {
-				defaultLabelType = make([]ValueType, len(lnLabel.blockType.Params))
-				copy(defaultLabelType, lnLabel.blockType.Params)
+				defaultLabelType = slices.Clone(lnLabel.blockType.Params)
 			}
 
 			if enabledFeatures.IsEnabled(api.CoreFeatureReferenceTypes) {
