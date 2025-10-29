@@ -25,11 +25,15 @@ import (
 )
 
 type (
+	compiledModuleWithCount struct {
+		*compiledModule
+		refCount int
+	}
 	// engine implements wasm.Engine.
 	engine struct {
 		wazeroVersion   string
 		fileCache       filecache.Cache
-		compiledModules map[wasm.ModuleID]*compiledModule
+		compiledModules map[wasm.ModuleID]*compiledModuleWithCount
 		// sortedCompiledModules is a list of compiled modules sorted by the initial address of the executable.
 		sortedCompiledModules []*compiledModule
 		mux                   sync.RWMutex
@@ -115,7 +119,7 @@ func NewEngine(ctx context.Context, _ api.CoreFeatures, fc filecache.Cache) wasm
 	machine := newMachine()
 	be := backend.NewCompiler(ctx, machine, ssa.NewBuilder())
 	e := &engine{
-		compiledModules: make(map[wasm.ModuleID]*compiledModule),
+		compiledModules: make(map[wasm.ModuleID]*compiledModuleWithCount),
 		setFinalizer:    runtime.SetFinalizer,
 		machine:         machine,
 		be:              be,
@@ -640,12 +644,17 @@ func (e *engine) DeleteCompiledModule(m *wasm.Module) {
 	e.mux.Lock()
 	defer e.mux.Unlock()
 	cm, ok := e.compiledModules[m.ID]
-	if ok {
-		if len(cm.executable) > 0 {
-			e.deleteCompiledModuleFromSortedList(cm)
-		}
-		delete(e.compiledModules, m.ID)
+	if !ok {
+		return
 	}
+	cm.refCount--
+	if cm.refCount > 0 {
+		return
+	}
+	if len(cm.executable) > 0 {
+		e.deleteCompiledModuleFromSortedList(cm.compiledModule)
+	}
+	delete(e.compiledModules, m.ID)
 }
 
 func (e *engine) addCompiledModuleToSortedList(cm *compiledModule) {
@@ -702,7 +711,7 @@ func (e *engine) NewModuleEngine(m *wasm.Module, mi *wasm.ModuleInstance) (wasm.
 	// Note: imported functions are resolved in moduleEngine.ResolveImportedFunction.
 	me.importedFunctions = make([]importedFunction, m.ImportFunctionCount)
 
-	compiled, ok := e.getCompiledModuleFromMemory(m)
+	compiled, ok := e.getCompiledModuleFromMemory(m, false)
 	if !ok {
 		return nil, errors.New("source module must be compiled before instantiation")
 	}

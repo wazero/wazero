@@ -241,3 +241,44 @@ func Test_checkAddrInBytes(t *testing.T) {
 	require.False(t, checkAddrInBytes(begin-1, bytes))
 	require.False(t, checkAddrInBytes(end+1, bytes))
 }
+
+func TestEngine_WasmModulesShareCompiledModule(t *testing.T) {
+	ctx := context.Background()
+	e := NewEngine(ctx, 0, nil).(*engine)
+
+	m := &wasm.Module{
+		TypeSection:     []wasm.FunctionType{{}},
+		FunctionSection: []wasm.Index{0},
+		CodeSection: []wasm.Code{
+			{Body: []byte{wasm.OpcodeEnd}},
+		},
+		ID: wasm.ModuleID{},
+	}
+
+	err := e.CompileModule(ctx, m, nil, false)
+	require.NoError(t, err)
+
+	cm1, ok := e.compiledModules[m.ID]
+	require.True(t, ok)
+	require.Equal(t, 1, cm1.refCount)
+
+	err = e.CompileModule(ctx, m, nil, false)
+	require.NoError(t, err)
+	cm2, ok := e.compiledModules[m.ID]
+	require.True(t, ok)
+	require.Equal(t, 2, cm2.refCount)
+	require.Equal(t, cm1, cm2)
+
+	// Closing one of the compiled modules should decrease the ref count
+	// but not remove the compiled module from the engine.
+	e.DeleteCompiledModule(m)
+	cm3, ok := e.compiledModules[m.ID]
+	require.True(t, ok)
+	require.Equal(t, 1, cm3.refCount)
+	require.Equal(t, cm1, cm3)
+
+	// Closing the last compiled module should remove it from the engine.
+	e.DeleteCompiledModule(m)
+	_, ok = e.compiledModules[m.ID]
+	require.False(t, ok)
+}
