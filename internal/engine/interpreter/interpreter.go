@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/bits"
+	"slices"
 	"sync"
 	"unsafe"
 
@@ -243,15 +244,9 @@ type snapshot struct {
 
 // Snapshot implements the same method as documented on experimental.Snapshotter.
 func (ce *callEngine) Snapshot() experimental.Snapshot {
-	stack := make([]uint64, len(ce.stack))
-	copy(stack, ce.stack)
-
-	frames := make([]*callFrame, len(ce.frames))
-	copy(frames, ce.frames)
-
 	return &snapshot{
-		stack:  stack,
-		frames: frames,
+		stack:  slices.Clone(ce.stack),
+		frames: slices.Clone(ce.frames),
 		ce:     ce,
 	}
 }
@@ -428,12 +423,10 @@ func (e *engine) NewModuleEngine(module *wasm.Module, instance *wasm.ModuleInsta
 // lowerIR lowers the interpreterir operations to engine friendly struct.
 func (e *engine) lowerIR(ir *compilationResult, ret *compiledFunction) error {
 	// Copy the body from the result.
-	ret.body = make([]unionOperation, len(ir.Operations))
-	copy(ret.body, ir.Operations)
+	ret.body = slices.Clone(ir.Operations)
 	// Also copy the offsets if necessary.
 	if offsets := ir.IROperationSourceOffsetsInWasmBinary; len(offsets) > 0 {
-		ret.offsetsInWasmBinary = make([]uint64, len(offsets))
-		copy(ret.offsetsInWasmBinary, offsets)
+		ret.offsetsInWasmBinary = slices.Clone(offsets)
 	}
 
 	labelAddressResolutions := [labelKindNum][]uint64{}
@@ -450,9 +443,7 @@ func (e *engine) lowerIR(ir *compilationResult, ret *compiledFunction) error {
 			frameToAddresses := labelAddressResolutions[label.Kind()]
 			// Expand the slice if necessary.
 			if diff := fid - len(frameToAddresses) + 1; diff > 0 {
-				for j := 0; j < diff; j++ {
-					frameToAddresses = append(frameToAddresses, 0)
-				}
+				frameToAddresses = append(frameToAddresses, make([]uint64, diff)...)
 			}
 			frameToAddresses[fid] = address
 			labelAddressResolutions[kind] = frameToAddresses
@@ -4621,9 +4612,7 @@ func (ce *callEngine) callGoFuncWithStack(ctx context.Context, m *wasm.ModuleIns
 	// In the interpreter engine, ce.stack may only have capacity to store
 	// parameters. Grow when there are more results than parameters.
 	if growLen := resultLen - paramLen; growLen > 0 {
-		for i := 0; i < growLen; i++ {
-			ce.stack = append(ce.stack, 0)
-		}
+		ce.stack = append(ce.stack, make([]uint64, growLen)...)
 		stackLen += growLen
 	}
 
