@@ -234,7 +234,7 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 
 	needSourceInfo := module.DWARFLines != nil
 	if needSourceInfo {
-		estimatedOffsets := localFns * 20
+		estimatedOffsets := localFns * 150
 		cm.sourceMap.executableOffsets = make([]uintptr, 0, estimatedOffsets)
 		cm.sourceMap.wasmBinaryOffsets = make([]uint64, 0, estimatedOffsets)
 	}

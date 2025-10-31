@@ -267,12 +267,12 @@ func (bb *basicBlock) Tail() *Instruction {
 func resetBasicBlock(bb *basicBlock) {
 	bb.params = ValuesNil
 	bb.rootInstr, bb.currentInstr = nil, nil
-	bb.preds = bb.preds[:0]
-	bb.success = bb.success[:0]
+	bb.preds = wazevoapi.ResetSlice(bb.preds, 2)
+	bb.success = wazevoapi.ResetSlice(bb.success, 2)
 	bb.invalid, bb.sealed = false, false
 	bb.singlePred = nil
-	bb.unknownValues = bb.unknownValues[:0]
-	bb.lastDefinitions = wazevoapi.ResetMap(bb.lastDefinitions)
+	bb.unknownValues = wazevoapi.ResetSlice(bb.unknownValues, 0)
+	bb.lastDefinitions = wazevoapi.ResetMap(bb.lastDefinitions, 8)
 	bb.reversePostOrder = -1
 	bb.visited = 0
 	bb.loopNestingForestChildren = basicBlockVarLengthNil
