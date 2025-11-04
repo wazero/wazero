@@ -21,13 +21,13 @@ func CompilerSupports(features api.CoreFeatures) bool {
 	case "linux", "darwin", "freebsd", "netbsd", "dragonfly", "windows":
 		if runtime.GOARCH == "arm64" {
 			if features.IsEnabled(experimental.CoreFeaturesThreads) {
-				return CpuFeatures.Has(CpuFeatureArm64Atomic)
+				return CpuFeatures().Has(CpuFeatureArm64Atomic)
 			}
 			return true
 		}
 		fallthrough
 	case "solaris", "illumos":
-		return runtime.GOARCH == "amd64" && CpuFeatures.Has(CpuFeatureAmd64SSE4_1)
+		return runtime.GOARCH == "amd64" && CpuFeatures().Has(CpuFeatureAmd64SSE4_1)
 	default:
 		return false
 	}
