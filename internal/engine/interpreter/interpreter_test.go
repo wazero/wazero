@@ -424,7 +424,7 @@ func TestInterpreter_Compile(t *testing.T) {
 
 		compiled, ok := e.compiledFunctions[okModule.ID]
 		require.True(t, ok)
-		require.Equal(t, len(okModule.FunctionSection), len(compiled))
+		require.Equal(t, len(okModule.FunctionSection), len(compiled.funcs))
 
 		_, ok = e.compiledFunctions[okModule.ID]
 		require.True(t, ok)
@@ -441,7 +441,7 @@ func TestEngine_CachedCompiledFunctionPerModule(t *testing.T) {
 
 	e.addCompiledFunctions(m, exp)
 
-	actual, ok := e.getCompiledFunctions(m)
+	actual, ok := e.getCompiledFunctions(m, false)
 	require.True(t, ok)
 	require.Equal(t, len(exp), len(actual))
 	for i := range actual {
@@ -449,6 +449,47 @@ func TestEngine_CachedCompiledFunctionPerModule(t *testing.T) {
 	}
 
 	e.deleteCompiledFunctions(m)
-	_, ok = e.getCompiledFunctions(m)
+	_, ok = e.getCompiledFunctions(m, false)
+	require.False(t, ok)
+}
+
+func TestEngine_WasmModulesShareCompiledFunctions(t *testing.T) {
+	ctx := context.Background()
+	e := NewEngine(ctx, 0, nil).(*engine)
+
+	m := &wasm.Module{
+		TypeSection:     []wasm.FunctionType{{}},
+		FunctionSection: []wasm.Index{0},
+		CodeSection: []wasm.Code{
+			{Body: []byte{wasm.OpcodeEnd}},
+		},
+		ID: wasm.ModuleID{},
+	}
+
+	err := e.CompileModule(ctx, m, nil, false)
+	require.NoError(t, err)
+
+	cf1, ok := e.compiledFunctions[m.ID]
+	require.True(t, ok)
+	require.Equal(t, 1, cf1.refCount)
+
+	err = e.CompileModule(ctx, m, nil, false)
+	require.NoError(t, err)
+	cf2, ok := e.compiledFunctions[m.ID]
+	require.True(t, ok)
+	require.Equal(t, 2, cf2.refCount)
+	require.Equal(t, cf1, cf2)
+
+	// Closing one of the compiled modules should decrease the ref count
+	// but not remove the compiled module from the engine.
+	e.DeleteCompiledModule(m)
+	cf3, ok := e.compiledFunctions[m.ID]
+	require.True(t, ok)
+	require.Equal(t, 1, cf3.refCount)
+	require.Equal(t, cf1, cf3)
+
+	// Closing the last compiled module should remove it from the engine.
+	e.DeleteCompiledModule(m)
+	_, ok = e.compiledFunctions[m.ID]
 	require.False(t, ok)
 }

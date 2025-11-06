@@ -28,28 +28,37 @@ import (
 // The default value should suffice for most use cases. Those wishing to change this can via `go build -ldflags`.
 var callStackCeiling = 2000
 
+type compiledFunctionWithCount struct {
+	funcs    []compiledFunction
+	refCount int
+}
+
 // engine is an interpreter implementation of wasm.Engine
 type engine struct {
 	enabledFeatures   api.CoreFeatures
-	compiledFunctions map[wasm.ModuleID][]compiledFunction // guarded by mutex.
-	mux               sync.RWMutex
+	compiledFunctions map[wasm.ModuleID]*compiledFunctionWithCount // guarded by mutex.
+	mux               sync.Mutex
 }
 
 func NewEngine(_ context.Context, enabledFeatures api.CoreFeatures, _ filecache.Cache) wasm.Engine {
 	return &engine{
 		enabledFeatures:   enabledFeatures,
-		compiledFunctions: map[wasm.ModuleID][]compiledFunction{},
+		compiledFunctions: map[wasm.ModuleID]*compiledFunctionWithCount{},
 	}
 }
 
 // Close implements the same method as documented on wasm.Engine.
 func (e *engine) Close() (err error) {
+	e.mux.Lock()
+	defer e.mux.Unlock()
 	clear(e.compiledFunctions)
 	return
 }
 
 // CompiledModuleCount implements the same method as documented on wasm.Engine.
 func (e *engine) CompiledModuleCount() uint32 {
+	e.mux.Lock()
+	defer e.mux.Unlock()
 	return uint32(len(e.compiledFunctions))
 }
 
@@ -61,19 +70,33 @@ func (e *engine) DeleteCompiledModule(m *wasm.Module) {
 func (e *engine) deleteCompiledFunctions(module *wasm.Module) {
 	e.mux.Lock()
 	defer e.mux.Unlock()
+	cf, ok := e.compiledFunctions[module.ID]
+	if !ok {
+		return
+	}
+	cf.refCount--
+	if cf.refCount > 0 {
+		return
+	}
 	delete(e.compiledFunctions, module.ID)
 }
 
 func (e *engine) addCompiledFunctions(module *wasm.Module, fs []compiledFunction) {
 	e.mux.Lock()
 	defer e.mux.Unlock()
-	e.compiledFunctions[module.ID] = fs
+	e.compiledFunctions[module.ID] = &compiledFunctionWithCount{funcs: fs, refCount: 1}
 }
 
-func (e *engine) getCompiledFunctions(module *wasm.Module) (fs []compiledFunction, ok bool) {
-	e.mux.RLock()
-	defer e.mux.RUnlock()
-	fs, ok = e.compiledFunctions[module.ID]
+func (e *engine) getCompiledFunctions(module *wasm.Module, increaseRefCount bool) (fs []compiledFunction, ok bool) {
+	e.mux.Lock()
+	defer e.mux.Unlock()
+	cf, ok := e.compiledFunctions[module.ID]
+	if ok {
+		fs = cf.funcs
+		if increaseRefCount {
+			cf.refCount++
+		}
+	}
 	return
 }
 
@@ -352,7 +375,7 @@ const callFrameStackSize = 0
 
 // CompileModule implements the same method as documented on wasm.Engine.
 func (e *engine) CompileModule(_ context.Context, module *wasm.Module, listeners []experimental.FunctionListener, ensureTermination bool) error {
-	if _, ok := e.getCompiledFunctions(module); ok { // cache hit!
+	if _, ok := e.getCompiledFunctions(module, true); ok { // cache hit!
 		return nil
 	}
 
@@ -401,7 +424,7 @@ func (e *engine) NewModuleEngine(module *wasm.Module, instance *wasm.ModuleInsta
 		functions:    make([]function, len(module.FunctionSection)+int(module.ImportFunctionCount)),
 	}
 
-	codes, ok := e.getCompiledFunctions(module)
+	codes, ok := e.getCompiledFunctions(module, false)
 	if !ok {
 		return nil, errors.New("source module must be compiled before instantiation")
 	}
