@@ -37,7 +37,7 @@ type compiledFunctionWithCount struct {
 type engine struct {
 	enabledFeatures   api.CoreFeatures
 	compiledFunctions map[wasm.ModuleID]*compiledFunctionWithCount // guarded by mutex.
-	mux               sync.RWMutex
+	mux               sync.Mutex
 }
 
 func NewEngine(_ context.Context, enabledFeatures api.CoreFeatures, _ filecache.Cache) wasm.Engine {
@@ -49,12 +49,16 @@ func NewEngine(_ context.Context, enabledFeatures api.CoreFeatures, _ filecache.
 
 // Close implements the same method as documented on wasm.Engine.
 func (e *engine) Close() (err error) {
+	e.mux.Lock()
+	defer e.mux.Unlock()
 	clear(e.compiledFunctions)
 	return
 }
 
 // CompiledModuleCount implements the same method as documented on wasm.Engine.
 func (e *engine) CompiledModuleCount() uint32 {
+	e.mux.Lock()
+	defer e.mux.Unlock()
 	return uint32(len(e.compiledFunctions))
 }
 
