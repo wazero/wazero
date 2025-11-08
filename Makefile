@@ -318,10 +318,10 @@ define go-build
 	@echo build "ok"
 endef
 
-dist/wazero_$(VERSION)_%.zip: build/wazero_%/wazero.exe.signed
+dist/wazero_$(VERSION)_%.zip: build/wazero_%/wazero.exe
 	@echo zip "zipping $@"
 	@mkdir -p $(@D)
-	@zip -qj $@ $(<:.signed=)
+	@zip -qj $@ $(<F)
 	@echo zip "ok"
 
 # Darwin doesn't have sha256sum. See https://github.com/actions/virtual-environments/issues/90
