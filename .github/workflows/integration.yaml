@@ -91,7 +91,7 @@ jobs:
           - version: macos-14
             name: macOS
             arch: arm64
-          - version: windows-2022
+          - version: windows-2025
             name: Windows
             arch: amd64
 
@@ -192,7 +192,7 @@ jobs:
         - version: macos-14
           name: macOS
           arch: arm64
-        - version: windows-2022
+        - version: windows-2025
           name: Windows
           arch: amd64
         go-version:
