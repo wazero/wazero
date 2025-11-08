@@ -285,22 +285,15 @@ libsodium:
 #### CLI release related ####
 
 VERSION ?= dev
-# Default to a dummy version 0.0.1.1, which is always lower than a real release.
-# Legal version values should look like 'x.x.x.x' where x is an integer from 0 to 65534.
-# https://learn.microsoft.com/en-us/windows/win32/msi/productversion?redirectedfrom=MSDN
-# https://stackoverflow.com/questions/9312221/msi-version-numbers
-MSI_VERSION ?= 0.0.1.1
 non_windows_platforms := darwin_amd64 darwin_arm64 linux_amd64 linux_arm64
 non_windows_archives  := $(non_windows_platforms:%=dist/wazero_$(VERSION)_%.tar.gz)
 windows_platforms     := windows_amd64 # TODO: add arm64 windows once we start testing on it.
-windows_archives      := $(windows_platforms:%=dist/wazero_$(VERSION)_%.zip) $(windows_platforms:%=dist/wazero_$(VERSION)_%.msi)
+windows_archives      := $(windows_platforms:%=dist/wazero_$(VERSION)_%.zip)
 checksum_txt          := dist/wazero_$(VERSION)_checksums.txt
 
 # define macros for multi-platform builds. these parse the filename being built
 go-arch = $(if $(findstring amd64,$1),amd64,arm64)
 go-os   = $(if $(findstring .exe,$1),windows,$(if $(findstring linux,$1),linux,darwin))
-# msi-arch is a macro so we can detect it based on the file naming convention
-msi-arch     = $(if $(findstring amd64,$1),x64,arm64)
 
 build/wazero_%/wazero:
 	$(call go-build,$@,$<)
@@ -324,42 +317,6 @@ define go-build
 		-o $1 $2 ./cmd/wazero
 	@echo build "ok"
 endef
-
-# this makes a marker file ending in .signed to avoid repeatedly calling codesign
-%.signed: %
-	$(call codesign,$<)
-	@touch $@
-
-# This requires osslsigncode package (apt or brew) or latest windows release from mtrojnar/osslsigncode
-#
-# Default is self-signed while production should be a Digicert signing key
-#
-# Ex.
-# ```bash
-# keytool -genkey -alias wazero -storetype PKCS12 -keyalg RSA -keysize 2048 -storepass wazero-bunch \
-# -keystore wazero.p12 -dname "O=wazero,CN=wazero.io" -validity 3650
-# ```
-WINDOWS_CODESIGN_P12      ?= packaging/msi/wazero.p12
-WINDOWS_CODESIGN_PASSWORD ?= wazero-bunch
-define codesign
-	@printf "$(ansi_format_dark)" codesign "signing $1"
-	@osslsigncode sign -h sha256 -pkcs12 ${WINDOWS_CODESIGN_P12} -pass "${WINDOWS_CODESIGN_PASSWORD}" \
-	-n "wazero is the zero dependency WebAssembly runtime for Go developers" -i https://wazero.io -t http://timestamp.digicert.com \
-	$(if $(findstring msi,$(1)),-add-msi-dse) -in $1 -out $1-signed
-	@mv $1-signed $1
-	@printf "$(ansi_format_bright)" codesign "ok"
-endef
-
-# This task is only supported on Windows, where we use candle.exe (compile wxs to wixobj) and light.exe (link to msi)
-dist/wazero_$(VERSION)_%.msi: build/wazero_%/wazero.exe.signed
-ifeq ($(OS),Windows_NT)
-	@echo msi "building $@"
-	@mkdir -p $(@D)
-	@candle -nologo -arch $(call msi-arch,$@) -dVersion=$(MSI_VERSION) -dBin=$(<:.signed=) -o build/wazero.wixobj packaging/msi/wazero.wxs
-	@light -nologo -o $@ build/wazero.wixobj -spdb
-	$(call codesign,$@)
-	@echo msi "ok"
-endif
 
 dist/wazero_$(VERSION)_%.zip: build/wazero_%/wazero.exe.signed
 	@echo zip "zipping $@"

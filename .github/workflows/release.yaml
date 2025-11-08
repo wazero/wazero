@@ -25,8 +25,7 @@ concurrency:
 jobs:
   pre_release:
     name: Pre-release build
-    # This only runs on Windows so that we can simplify the installation of necessary toolchain to build artifacts.
-    runs-on: windows-2025
+    runs-on: ubuntu-24.04
     # This allows us to test in the following job regardless of the event (tag or not).
     outputs:
       VERSION: ${{ steps.output-version.outputs.VERSION }}
@@ -45,33 +44,9 @@ jobs:
             ~/go/bin
           key: pre-release-check-${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum', 'Makefile') }}
 
-      # windows-2025 is missing osslsigncode (no issue, yet)
-      - name: "Install osslsigncode, infozip; setup wix"
-        run: |
-          # Find "C:\Program Files (x86)\WiX Toolset <version>\"
-          WIXDIR=`ls '/c/Program Files (x86)'|grep WiX`
-          WIXBIN="C:\\Program Files (x86)\\$WIXDIR\\bin"
-          echo WIXBIN=$WIXBIN
-          echo $WIXBIN >> $GITHUB_PATH
-          choco install osslsigncode -y
-          choco install zip -y
-
-      - name: Download Windows code signing certificate
-        env:
-          WINDOWS_CODESIGN_P12_BASE64: ${{ secrets.WINDOWS_CODESIGN_P12_BASE64 }}
-        run: | # On the fork PRs, our org secret is not visible.
-          if [ $WINDOWS_CODESIGN_P12_BASE64 ]; then
-            echo $WINDOWS_CODESIGN_P12_BASE64 | base64 --decode > windows-certificate.p12
-            echo "WINDOWS_CODESIGN_P12=windows-certificate.p12" >> $GITHUB_ENV
-          fi
-        shell: bash
-
       - name: Make artifacts (test)
         if: github.event_name != 'push' || !contains(github.ref, 'refs/tags/')
-        run: | # On the fork PRs, our org secret is not visible. We unset the required env so that `make dist` uses default self-signed cert.
-          if [ $WINDOWS_CODESIGN_P12 ]; then
-            export WINDOWS_CODESIGN_PASSWORD=${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
-          fi
+        run: |
           VERSION=${{ github.sha }}
           make dist VERSION=$VERSION
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
@@ -80,12 +55,9 @@ jobs:
       - name: Make artifacts
         # Triggers only on tag creation.
         if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
-        env:
-          WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
-        run: | # Note: MSI_VERSION requires . as a separator and admits only numbers, so replace "-[a-z]*" in the tag with ".".
+        run:
           VERSION=${GITHUB_REF#refs/tags/v}
-          MSI_VERSION=${VERSION//-[a-z]*./.}
-          make dist VERSION=$VERSION MSI_VERSION=$MSI_VERSION
+          make dist VERSION=$VERSION
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
         shell: bash
 
