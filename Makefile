@@ -321,12 +321,12 @@ endef
 dist/wazero_$(VERSION)_%.zip: build/wazero_%/wazero.exe
 	@echo zip "zipping $@"
 	@mkdir -p $(@D)
-	@zip -qj $@ $(<F)
+	@zip -qj $@ $<
 	@echo zip "ok"
 
 # Darwin doesn't have sha256sum. See https://github.com/actions/virtual-environments/issues/90
 sha256sum := $(if $(findstring darwin,$(shell go env GOOS)),shasum -a 256,sha256sum)
-$(checksum_txt):
-	@cd $(@D); touch $(@F); $(sha256sum) * >> $(@F)
+$(checksum_txt): $(non_windows_archives) $(windows_archives)
+	@cd $(@D); touch $(@F); $(sha256sum) * > $(@F)
 
-dist: $(non_windows_archives) $(if $(findstring Windows_NT,$(OS)),$(windows_archives),) $(checksum_txt)
+dist: $(non_windows_archives) $(windows_archives) $(checksum_txt)

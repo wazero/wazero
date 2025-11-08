@@ -124,8 +124,8 @@ jobs:
       - name: Test Windows Installer
         if: runner.os == 'Windows'
         run: |
-          set MSI_FILE="dist\wazero_${{ needs.pre_release.outputs.VERSION }}_windows_amd64.msi"
-          call packaging\msi\verify_msi.cmd
+          unzip dist/wazero_${{ needs.pre_release.outputs.VERSION }}_windows_amd64.zip
+          ./wazero version | grep ${{ needs.pre_release.outputs.VERSION }}
         shell: cmd
 
   # Triggers only on the tag creation.
