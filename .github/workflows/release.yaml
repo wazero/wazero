@@ -126,7 +126,7 @@ jobs:
         run: |
           unzip dist/wazero_${{ needs.pre_release.outputs.VERSION }}_windows_amd64.zip
           ./wazero version | grep ${{ needs.pre_release.outputs.VERSION }}
-        shell: cmd
+        shell: bash
 
   # Triggers only on the tag creation.
   release:
