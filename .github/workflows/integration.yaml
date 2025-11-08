@@ -31,7 +31,7 @@ concurrency:
 jobs:
   build_zig_test_binary:
     name: Build Zig test binary
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     env:
       ZIG_INSTALL: ~/zig-install
       ZIG_SOURCE: ~/zig-source
@@ -85,13 +85,13 @@ jobs:
         # version is too verbose to be present in the name, so we use the name instead.
         # Note that it'd be better to use runner.os in the name, but the runner context is not available in the name field.
         os:
-          - version: ubuntu-22.04
+          - version: ubuntu-24.04
             name: Ubuntu
             arch: amd64
           - version: macos-14
             name: macOS
             arch: arm64
-          - version: windows-2022
+          - version: windows-2025
             name: Windows
             arch: amd64
 
@@ -125,7 +125,7 @@ jobs:
     strategy:
       fail-fast: false # don't fail fast as sometimes failures are arch/OS specific
       matrix:
-        os: [ubuntu-22.04, macos-14, windows-2022]
+        os: [ubuntu-24.04, macos-14, windows-2022]
 
     steps:
       - uses: actions/cache@v4
@@ -186,13 +186,13 @@ jobs:
         # version is too verbose to be present in the name, so we use the name instead.
         # Note that it'd be better to use runner.os in the name, but the runner context is not available in the name field.
         os:
-        - version: ubuntu-22.04
+        - version: ubuntu-24.04
           name: Ubuntu
           arch: amd64
         - version: macos-14
           name: macOS
           arch: arm64
-        - version: windows-2022
+        - version: windows-2025
           name: Windows
           arch: amd64
         go-version:
@@ -243,7 +243,7 @@ jobs:
         # version is too verbose to be present in the name, so we use the name instead.
         # Note that it'd be better to use runner.os in the name, but the runner context is not available in the name field.
         os:
-          - version: ubuntu-22.04
+          - version: ubuntu-24.04
             name: Ubuntu
             arch: amd64
           - version: macos-14
