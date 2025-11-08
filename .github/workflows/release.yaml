@@ -26,7 +26,7 @@ jobs:
   pre_release:
     name: Pre-release build
     # This only runs on Windows so that we can simplify the installation of necessary toolchain to build artifacts.
-    runs-on: windows-2022
+    runs-on: windows-2025
     # This allows us to test in the following job regardless of the event (tag or not).
     outputs:
       VERSION: ${{ steps.output-version.outputs.VERSION }}
@@ -45,7 +45,7 @@ jobs:
             ~/go/bin
           key: pre-release-check-${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum', 'Makefile') }}
 
-      # windows-2022 is missing osslsigncode (no issue, yet)
+      # windows-2025 is missing osslsigncode (no issue, yet)
       - name: "Install osslsigncode, infozip; setup wix"
         run: |
           # Find "C:\Program Files (x86)\WiX Toolset <version>\"
@@ -118,7 +118,7 @@ jobs:
     strategy:
       fail-fast: false # don't fail fast as sometimes failures are arch/OS specific
       matrix:
-        os: [ubuntu-22.04, macos-14, windows-2022]
+        os: [ubuntu-24.04, macos-14, windows-2025]
 
     steps:
       - uses: actions/checkout@v4
@@ -161,7 +161,7 @@ jobs:
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     needs: pre_release_test
     name: Release
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:  # Ensure release_notes.sh can see prior commits
