@@ -55,7 +55,7 @@ jobs:
       - name: Make artifacts
         # Triggers only on tag creation.
         if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
-        run:
+        run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           make dist VERSION=$VERSION
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
