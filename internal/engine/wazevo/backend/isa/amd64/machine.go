@@ -1410,7 +1410,7 @@ func (m *machine) lowerVconst(dst regalloc.VReg, lo, hi uint64) {
 }
 
 func (m *machine) lowerCtz(instr *ssa.Instruction) {
-	if m.cpuFeatures.HasExtra(platform.CpuExtraFeatureAmd64ABM) {
+	if m.cpuFeatures.Has(platform.CpuFeatureAmd64BMI1) {
 		m.lowerUnaryRmR(instr, unaryRmROpcodeTzcnt)
 	} else {
 		// On processors that do not support TZCNT, the BSF instruction is
@@ -1464,7 +1464,7 @@ func (m *machine) lowerCtz(instr *ssa.Instruction) {
 }
 
 func (m *machine) lowerClz(instr *ssa.Instruction) {
-	if m.cpuFeatures.HasExtra(platform.CpuExtraFeatureAmd64ABM) {
+	if m.cpuFeatures.Has(platform.CpuFeatureAmd64ABM) {
 		m.lowerUnaryRmR(instr, unaryRmROpcodeLzcnt)
 	} else {
 		// On processors that do not support LZCNT, we combine BSR (calculating
