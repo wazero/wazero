@@ -18,7 +18,7 @@ func CompilerSupported() bool {
 
 func CompilerSupports(features api.CoreFeatures) bool {
 	switch runtime.GOOS {
-	case "linux", "darwin", "freebsd", "netbsd", "dragonfly", "windows":
+	case "linux", "darwin", "freebsd", "netbsd", "windows":
 		if runtime.GOARCH == "arm64" {
 			if features.IsEnabled(experimental.CoreFeaturesThreads) {
 				return CpuFeatures().Has(CpuFeatureArm64Atomic)
@@ -26,7 +26,7 @@ func CompilerSupports(features api.CoreFeatures) bool {
 			return true
 		}
 		fallthrough
-	case "solaris", "illumos":
+	case "dragonfly", "solaris", "illumos":
 		return runtime.GOARCH == "amd64" && CpuFeatures().Has(CpuFeatureAmd64SSE4_1)
 	default:
 		return false
