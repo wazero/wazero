@@ -4,11 +4,13 @@ package platform
 
 import (
 	"math/bits"
+	"syscall"
 	"time"
 	"unsafe"
 )
 
 var (
+	kernel32                   = syscall.NewLazyDLL("kernel32.dll")
 	_QueryPerformanceCounter   = kernel32.NewProc("QueryPerformanceCounter")
 	_QueryPerformanceFrequency = kernel32.NewProc("QueryPerformanceFrequency")
 )
