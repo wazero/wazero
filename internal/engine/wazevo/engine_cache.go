@@ -257,7 +257,7 @@ func deserializeCompiledModule(wazeroVersion string, reader io.ReadCloser) (cm *
 			return nil, false, fmt.Errorf("compilationcache: checksum mismatch (expected %d, got %d)", expected, checksum)
 		}
 
-		if err = platform.MprotectRX(executable); err != nil {
+		if err = platform.MprotectCodeSegment(executable); err != nil {
 			return nil, false, err
 		}
 		cm.executable = executable
