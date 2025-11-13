@@ -134,6 +134,7 @@ func TestPoll_Windows(t *testing.T) {
 
 	t.Run("poll should return immediately when duration is zero (no data)", func(t *testing.T) {
 		r, w, err := os.Pipe()
+		require.NoError(t, err)
 		defer r.Close()
 		defer w.Close()
 
