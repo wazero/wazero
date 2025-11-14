@@ -150,7 +150,7 @@ func (e *engine) CompileModule(ctx context.Context, module *wasm.Module, listene
 	if err != nil {
 		return err
 	}
-	if err = e.addCompiledModule(module, cm); err != nil {
+	if cm, err = e.addCompiledModule(module, cm); err != nil {
 		return err
 	}
 
