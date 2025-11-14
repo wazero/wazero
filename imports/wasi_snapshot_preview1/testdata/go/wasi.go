@@ -143,7 +143,7 @@ func mainSock() error {
 }
 
 // Adapted from nonblock.go
-// https://github.com/golang/go/blob/0fcc70ecd56e3b5c214ddaee4065ea1139ae16b5/src/runtime/internal/wasitest/testdata/nonblock.go
+// https://github.com/golang/go/blob/go1.24.0/src/runtime/internal/wasitest/testdata/nonblock.go
 func mainNonblock(mode string, files []string) error {
 	ready := make(chan struct{})
 
