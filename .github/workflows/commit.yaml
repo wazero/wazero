@@ -71,7 +71,7 @@ jobs:
           arch: arm64
         go-version:
           - "1.25"  # Current Go version
-          - "1.23"  # Floor Go version of wazero (current - 2)
+          - "1.24"  # Floor Go version of wazero (current - 1)
 
     steps:
 
@@ -112,7 +112,7 @@ jobs:
       matrix:  # Use versions consistent with wazero's Go support policy.
         go-version:
           - "1.25"  # Current Go version
-          - "1.23"  # Floor Go version of wazero (current - 2)
+          - "1.24"  # Floor Go version of wazero (current - 1)
         platform:
           - os: ubuntu-24.04
             arch: amd64
@@ -168,11 +168,11 @@ jobs:
       matrix:
         os:
           - name: freebsd
-            version: "14.1"
+            version: "14.3"
           - name: openbsd
-            version: "7.5"
+            version: "7.8"
           - name: netbsd
-            version: "10.0"
+            version: "10.1"
 
     steps:
       - uses: actions/checkout@v4
@@ -190,7 +190,7 @@ jobs:
           GOOS: ${{ matrix.os.name }}
 
       - name: Run built test binaries
-        uses: cross-platform-actions/action@v0.25.0
+        uses: cross-platform-actions/action@v0.30.0
         env:
           WAZEROCLI: ./wazerocli
         with:
@@ -210,10 +210,10 @@ jobs:
       matrix:
         os:
           - name: dragonfly
-            version: "6.4.0"
+            version: "6.4.2"
             action: 'vmactions/dragonflybsd-vm@v1'
           - name: illumos
-            version: "r151052"
+            version: "r151054"
             action: 'vmactions/omnios-vm@v1'
           - name: solaris
             version: "11.4"
