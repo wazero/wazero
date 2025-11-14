@@ -1,10 +1,12 @@
 package wazevo_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -54,9 +56,15 @@ var (
 			if err != nil {
 				return nil, nil, nil, nil, err
 			}
+			out, err := exec.Command("go", "env", "GOROOT").Output()
+			if err != nil {
+				return nil, nil, nil, nil, err
+			}
+			goroot := string(bytes.TrimRight(out, "\n"))
+
 			fsuffixstripped := strings.ReplaceAll(fname, ".test", "")
 			inferredpath := strings.ReplaceAll(fsuffixstripped, "_", "/")
-			testdir := filepath.Join(runtime.GOROOT(), "src", inferredpath)
+			testdir := filepath.Join(goroot, "src", inferredpath)
 			err = os.Chdir(testdir)
 
 			sysroot := filepath.VolumeName(testdir) + string(os.PathSeparator)
@@ -89,7 +97,7 @@ var (
 				)
 			case "windows":
 				c = c.
-					WithEnv("GOROOT", normalizeOsPath(runtime.GOROOT()))
+					WithEnv("GOROOT", normalizeOsPath(goroot))
 				skip = append(skip, "TestRenameCaseDifference/dir", "TestDirFSPathsValid", "TestDirFS",
 					"TestDevNullFile", "TestOpenError", "TestSymlinkWithTrailingSlash", "TestCopyFS",
 					"TestRoot", "TestOpenInRoot", "ExampleAfterFunc_connection", "TestOpenFileDevNull",
