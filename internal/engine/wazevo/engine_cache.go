@@ -41,10 +41,10 @@ func fileCacheKey(m *wasm.Module) (ret filecache.Key) {
 	return
 }
 
-func (e *engine) addCompiledModule(module *wasm.Module, cm *compiledModule) (err error) {
-	e.addCompiledModuleToMemory(module, cm)
+func (e *engine) addCompiledModule(module *wasm.Module, cm *compiledModule) (c *compiledModule, err error) {
+	c = e.addCompiledModuleToMemory(module, cm)
 	if !module.IsHostModule && e.fileCache != nil {
-		err = e.addCompiledModuleToCache(module, cm)
+		err = e.addCompiledModuleToCache(module, c)
 	}
 	return
 }
@@ -84,13 +84,18 @@ func (e *engine) getCompiledModule(module *wasm.Module, listeners []experimental
 	return
 }
 
-func (e *engine) addCompiledModuleToMemory(m *wasm.Module, cm *compiledModule) {
+func (e *engine) addCompiledModuleToMemory(m *wasm.Module, cm *compiledModule) *compiledModule {
 	e.mux.Lock()
 	defer e.mux.Unlock()
+	if c, ok := e.compiledModules[m.ID]; ok {
+		c.refCount++
+		return c.compiledModule
+	}
 	e.compiledModules[m.ID] = &compiledModuleWithCount{compiledModule: cm, refCount: 1}
 	if len(cm.executable) > 0 {
 		e.addCompiledModuleToSortedList(cm)
 	}
+	return cm
 }
 
 func (e *engine) getCompiledModuleFromMemory(module *wasm.Module, increaseRefCount bool) (cm *compiledModule, ok bool) {

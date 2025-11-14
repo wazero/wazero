@@ -84,6 +84,10 @@ func (e *engine) deleteCompiledFunctions(module *wasm.Module) {
 func (e *engine) addCompiledFunctions(module *wasm.Module, fs []compiledFunction) {
 	e.mux.Lock()
 	defer e.mux.Unlock()
+	if c, ok := e.compiledFunctions[module.ID]; ok {
+		c.refCount++
+		return
+	}
 	e.compiledFunctions[module.ID] = &compiledFunctionWithCount{funcs: fs, refCount: 1}
 }
 
