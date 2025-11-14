@@ -1,4 +1,4 @@
-//go:build solaris && !tinygo
+//go:build solaris
 
 package platform
 

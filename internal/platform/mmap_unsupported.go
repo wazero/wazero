@@ -1,4 +1,4 @@
-//go:build !(linux || darwin || freebsd || netbsd || dragonfly || solaris || windows) || tinygo
+//go:build !(linux || darwin || freebsd || netbsd || dragonfly || solaris || windows)
 
 package platform
 

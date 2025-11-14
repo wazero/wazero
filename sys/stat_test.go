@@ -116,8 +116,14 @@ func Test_NewStat_t(t *testing.T) {
 	for _, tt := range tests {
 		tc := tt
 		t.Run(tc.name, func(t *testing.T) {
+			switch runtime.GOOS {
+			case "linux", "darwin", "freebsd", "netbsd", "openbsd", "dragonfly", "solaris", "illumos":
+				break
+			default:
+				tc.expectDevIno = false
+			}
 			st := sys.NewStat_t(tc.info)
-			if tc.expectDevIno && (runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "freebsd") {
+			if tc.expectDevIno {
 				require.NotEqual(t, uint64(0), st.Dev)
 				require.NotEqual(t, uint64(0), st.Ino)
 			} else {

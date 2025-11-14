@@ -1,4 +1,4 @@
-//go:build (freebsd || netbsd || dragonfly) && !tinygo
+//go:build freebsd || netbsd || dragonfly
 
 package platform
 
