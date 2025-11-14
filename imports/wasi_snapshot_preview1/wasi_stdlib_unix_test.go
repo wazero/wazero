@@ -79,7 +79,7 @@ func Test_NonblockGo(t *testing.T) {
 	// If I/O was blocking, all goroutines would be blocked waiting for one read call
 	// to return, and the output order wouldn't match.
 	//
-	// Adapted from https://github.com/golang/go/blob/0fcc70ecd56e3b5c214ddaee4065ea1139ae16b5/src/runtime/internal/wasitest/nonblock_test.go
+	// Adapted from https://github.com/golang/go/blob/go1.24.0/src/runtime/internal/wasitest/nonblock_test.go
 
 	if wasmGo == nil {
 		t.Skip("skipping because wasi.go was not compiled (go missing or compilation error)")
