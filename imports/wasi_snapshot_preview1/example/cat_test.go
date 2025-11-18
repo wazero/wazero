@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/tetratelabs/wazero/internal/testing/maintester"
@@ -76,13 +75,11 @@ func Test_cli(t *testing.T) {
 
 					// We can't invoke go run in our docker based cross-architecture tests. We do want to use
 					// otherwise so running unit tests normally does not require special build steps.
-					var cmdExe string
-					var cmdArgs []string
+					cmdExe := "go"
+					cmdArgs := []string{"run", "../../../cmd/wazero"}
 					if cmdPath := os.Getenv("WAZEROCLI"); cmdPath != "" {
 						cmdExe = cmdPath
-					} else {
-						cmdExe = filepath.Join(runtime.GOROOT(), "bin", "go")
-						cmdArgs = []string{"run", "../../../cmd/wazero"}
+						cmdArgs = nil
 					}
 
 					cmdArgs = append(cmdArgs, "run",

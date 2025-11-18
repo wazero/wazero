@@ -83,12 +83,6 @@ wazero follows the same version policy as Go's [Release Policy][5]: two
 versions. wazero will ensure these versions work and bugs are valid if there's
 an issue with a current Go version.
 
-Additionally, wazero intentionally delays usage of language or standard library
-features one additional version. For example, when Go 1.29 is released, wazero
-can use language features or standard libraries added in 1.27. This is a
-convenience for embedders who have a slower version policy than Go. However,
-only supported Go versions may be used to raise support issues.
-
 ### Platform
 
 wazero has two runtime modes: Interpreter and Compiler. The only supported operating
