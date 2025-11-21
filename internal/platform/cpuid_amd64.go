@@ -1,15 +1,9 @@
-//go:build gc
-
 package platform
 
-import (
-	"sync"
-
-	"golang.org/x/sys/cpu"
-)
+import "golang.org/x/sys/cpu"
 
 // CpuFeatures exposes the capabilities for this CPU, queried via the Has method.
-var CpuFeatures = sync.OnceValue(loadCpuFeatureFlags)
+var CpuFeatures = loadCpuFeatureFlags()
 
 func loadCpuFeatureFlags() (flags CpuFeatureFlags) {
 	if cpu.X86.HasSSE41 {

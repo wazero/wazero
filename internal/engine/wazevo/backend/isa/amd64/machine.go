@@ -17,7 +17,7 @@ import (
 // NewBackend returns a new backend for arm64.
 func NewBackend() backend.Machine {
 	m := &machine{
-		cpuFeatures:                         platform.CpuFeatures(),
+		cpuFeatures:                         platform.CpuFeatures,
 		regAlloc:                            regalloc.NewAllocator[*instruction, *labelPosition, *regAllocFn](regInfo),
 		spillSlots:                          map[regalloc.VRegID]int64{},
 		amodePool:                           wazevoapi.NewPool[amode](nil),

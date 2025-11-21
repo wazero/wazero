@@ -1,16 +1,13 @@
-//go:build gc
-
 package platform
 
 import (
 	"runtime"
-	"sync"
 
 	"golang.org/x/sys/cpu"
 )
 
 // CpuFeatures exposes the capabilities for this CPU, queried via the Has method.
-var CpuFeatures = sync.OnceValue(loadCpuFeatureFlags)
+var CpuFeatures = loadCpuFeatureFlags()
 
 func loadCpuFeatureFlags() (flags CpuFeatureFlags) {
 	switch runtime.GOOS {

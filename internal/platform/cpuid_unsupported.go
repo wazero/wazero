@@ -1,5 +1,5 @@
-//go:build !(amd64 || arm64) || !gc
+//go:build !(amd64 || arm64)
 
 package platform
 
-var CpuFeatures = func() CpuFeatureFlags { return 0 }
+const CpuFeatures CpuFeatureFlags = 0
