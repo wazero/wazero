@@ -313,7 +313,7 @@ func Test_machine_lowerClz(t *testing.T) {
 	}{
 		{
 			name:     "no extra flags (64)",
-			cpuFlags: &mockCpuFlags{},
+			cpuFlags: 0,
 			typ:      ssa.TypeI64,
 			exp: `
 	testq %rax, %rax
@@ -329,7 +329,7 @@ L2:
 		},
 		{
 			name:     "ABM (64)",
-			cpuFlags: &mockCpuFlags{extraFlags: platform.CpuExtraFeatureAmd64ABM},
+			cpuFlags: platform.CpuFeatureAmd64ABM,
 			typ:      ssa.TypeI64,
 			exp: `
 	lzcntq %rax, %rcx
@@ -337,7 +337,7 @@ L2:
 		},
 		{
 			name:     "no extra flags (32)",
-			cpuFlags: &mockCpuFlags{},
+			cpuFlags: 0,
 			typ:      ssa.TypeI32,
 			exp: `
 	testl %eax, %eax
@@ -353,7 +353,7 @@ L2:
 		},
 		{
 			name:     "ABM (32)",
-			cpuFlags: &mockCpuFlags{extraFlags: platform.CpuExtraFeatureAmd64ABM},
+			cpuFlags: platform.CpuFeatureAmd64ABM,
 			typ:      ssa.TypeI32,
 			exp: `
 	lzcntl %eax, %ecx
@@ -389,7 +389,7 @@ func TestMachine_lowerCtz(t *testing.T) {
 	}{
 		{
 			name:     "no extra flags (64)",
-			cpuFlags: &mockCpuFlags{},
+			cpuFlags: 0,
 			typ:      ssa.TypeI64,
 			exp: `
 	testq %rax, %rax
@@ -404,7 +404,7 @@ L2:
 		},
 		{
 			name:     "ABM (64)",
-			cpuFlags: &mockCpuFlags{extraFlags: platform.CpuExtraFeatureAmd64ABM},
+			cpuFlags: platform.CpuFeatureAmd64BMI1,
 			typ:      ssa.TypeI64,
 			exp: `
 	tzcntq %rax, %rcx
@@ -412,7 +412,7 @@ L2:
 		},
 		{
 			name:     "no extra flags (32)",
-			cpuFlags: &mockCpuFlags{},
+			cpuFlags: 0,
 			typ:      ssa.TypeI32,
 			exp: `
 	testl %eax, %eax
@@ -427,7 +427,7 @@ L2:
 		},
 		{
 			name:     "ABM (32)",
-			cpuFlags: &mockCpuFlags{extraFlags: platform.CpuExtraFeatureAmd64ABM},
+			cpuFlags: platform.CpuFeatureAmd64BMI1,
 			typ:      ssa.TypeI32,
 			exp: `
 	tzcntl %eax, %ecx
@@ -452,22 +452,3 @@ L2:
 		})
 	}
 }
-
-// mockCpuFlags implements platform.CpuFeatureFlags.
-type mockCpuFlags struct {
-	flags      platform.CpuFeature
-	extraFlags platform.CpuFeature
-}
-
-// Has implements the method of the same name in platform.CpuFeatureFlags.
-func (f *mockCpuFlags) Has(flag platform.CpuFeature) bool {
-	return (f.flags & flag) != 0
-}
-
-// HasExtra implements the method of the same name in platform.CpuFeatureFlags.
-func (f *mockCpuFlags) HasExtra(flag platform.CpuFeature) bool {
-	return (f.extraFlags & flag) != 0
-}
-
-// Raw implements the method of the same name in platform.CpuFeatureFlags.
-func (f *mockCpuFlags) Raw() uint64 { return 0 }
