@@ -99,6 +99,10 @@ func DecodeUint32(r io.ByteReader) (ret uint32, bytesRead uint64, err error) {
 	return decodeUint32(func(_ int) (byte, error) { return r.ReadByte() })
 }
 
+func DecodeUint64(r io.ByteReader) (ret uint64, bytesRead uint64, err error) {
+	return decodeUint64(func(_ int) (byte, error) { return r.ReadByte() })
+}
+
 func LoadUint32(buf []byte) (ret uint32, bytesRead uint64, err error) {
 	return decodeUint32(func(i int) (byte, error) {
 		if i >= len(buf) {
@@ -128,6 +132,25 @@ func decodeUint32(next nextByte) (ret uint32, bytesRead uint64, err error) {
 		s += 7
 	}
 	return 0, 0, errOverflow32
+}
+
+func decodeUint64(next nextByte) (ret uint64, bytesRead uint64, err error) {
+	var s uint64
+	for i := 0; i < maxVarintLen64; i++ {
+		b, err := next(i)
+		if err != nil {
+			return 0, 0, err
+		}
+		if b < 0x80 {
+			if i == maxVarintLen64-1 && b > 1 {
+				return 0, 0, errOverflow64
+			}
+			return ret | uint64(b)<<s, uint64(i) + 1, nil
+		}
+		ret |= uint64(b&0x7f) << s
+		s += 7
+	}
+	return 0, 0, errOverflow64
 }
 
 func LoadUint64(buf []byte) (ret uint64, bytesRead uint64, err error) {

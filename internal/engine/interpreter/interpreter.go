@@ -937,9 +937,26 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			ce.pushValue(uint64(memoryInst.Pages()))
 			frame.pc++
 		case operationKindMemoryGrow:
-			n := ce.popValue()
-			if res, ok := memoryInst.Grow(uint32(n)); !ok {
-				ce.pushValue(uint64(0xffffffff)) // = -1 in signed 32-bit integer.
+			raw := ce.popValue()
+			fail := uint64(0xffffffff) // = -1 in signed 32-bit integer.
+			if memoryInst.Is64 {
+				fail = math.MaxUint64
+			}
+
+			var delta64 int64
+			if memoryInst.Is64 {
+				delta64 = int64(raw)
+			} else {
+				delta64 = int64(int32(uint32(raw)))
+			}
+			if delta64 < 0 || delta64 > int64(math.MaxUint32) {
+				ce.pushValue(fail)
+				frame.pc++
+				continue
+			}
+
+			if res, ok := memoryInst.Grow(uint32(delta64)); !ok {
+				ce.pushValue(fail)
 			} else {
 				ce.pushValue(uint64(res))
 			}

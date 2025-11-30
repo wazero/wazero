@@ -17,6 +17,9 @@ func CompilerSupported() bool {
 }
 
 func CompilerSupports(features api.CoreFeatures) bool {
+	if features.IsEnabled(api.CoreFeatureMemory64) {
+		return false
+	}
 	switch runtime.GOOS {
 	case "linux", "darwin", "freebsd", "netbsd", "dragonfly", "windows":
 		if runtime.GOARCH == "arm64" {

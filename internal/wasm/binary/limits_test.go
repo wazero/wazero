@@ -11,14 +11,15 @@ import (
 )
 
 func TestLimitsType(t *testing.T) {
-	zero := uint32(0)
-	largest := uint32(math.MaxUint32)
+	zero := uint64(0)
+	largest := uint64(math.MaxUint32)
 
 	tests := []struct {
 		name     string
-		min      uint32
-		max      *uint32
+		min      uint64
+		max      *uint64
 		shared   bool
+		memory64 bool
 		expected []byte
 	}{
 		{
@@ -76,22 +77,34 @@ func TestLimitsType(t *testing.T) {
 			shared:   true,
 			expected: []byte{0x3, 0xff, 0xff, 0xff, 0xff, 0xf, 0xff, 0xff, 0xff, 0xff, 0xf},
 		},
+		{
+			name:     "memory64 min 0",
+			memory64: true,
+			expected: []byte{0x4, 0},
+		},
+		{
+			name:     "memory64 min 0, max 0",
+			max:      &zero,
+			memory64: true,
+			expected: []byte{0x5, 0, 0},
+		},
 	}
 
 	for _, tt := range tests {
 		tc := tt
 
-		b := binaryencoding.EncodeLimitsType(tc.min, tc.max, tc.shared)
+		b := binaryencoding.EncodeLimitsType(tc.min, tc.max, tc.shared, tc.memory64)
 		t.Run(fmt.Sprintf("encode - %s", tc.name), func(t *testing.T) {
 			require.Equal(t, tc.expected, b)
 		})
 
 		t.Run(fmt.Sprintf("decode - %s", tc.name), func(t *testing.T) {
-			min, max, shared, err := decodeLimitsType(bytes.NewReader(b))
+			min, max, shared, is64, err := decodeLimitsType(bytes.NewReader(b))
 			require.NoError(t, err)
-			require.Equal(t, min, tc.min)
-			require.Equal(t, max, tc.max)
-			require.Equal(t, shared, tc.shared)
+			require.Equal(t, tc.min, min)
+			require.Equal(t, tc.max, max)
+			require.Equal(t, tc.shared, shared)
+			require.Equal(t, tc.memory64, is64)
 		})
 	}
 }

@@ -3,6 +3,7 @@ package binary
 import (
 	"bytes"
 	"fmt"
+	"math"
 
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/internal/wasm"
@@ -24,9 +25,28 @@ func decodeTable(r *bytes.Reader, enabledFeatures api.CoreFeatures, ret *wasm.Ta
 	}
 
 	var shared bool
-	ret.Min, ret.Max, shared, err = decodeLimitsType(r)
+	var min uint64
+	var max *uint64
+	var is64 bool
+	min, max, shared, is64, err = decodeLimitsType(r)
 	if err != nil {
 		return fmt.Errorf("read limits: %v", err)
+	}
+	if is64 {
+		if err = enabledFeatures.RequireEnabled(api.CoreFeatureMemory64); err != nil {
+			return fmt.Errorf("table64 invalid: %w", err)
+		}
+	}
+	if min > math.MaxUint32 {
+		return fmt.Errorf("table min %d exceeds 32-bit limit", min)
+	}
+	ret.Min = uint32(min)
+	if max != nil {
+		if *max > math.MaxUint32 {
+			return fmt.Errorf("table max %d exceeds 32-bit limit", *max)
+		}
+		mv := uint32(*max)
+		ret.Max = &mv
 	}
 	if ret.Min > wasm.MaximumFunctionIndex {
 		return fmt.Errorf("table min must be at most %d", wasm.MaximumFunctionIndex)
@@ -39,5 +59,6 @@ func decodeTable(r *bytes.Reader, enabledFeatures api.CoreFeatures, ret *wasm.Ta
 	if shared {
 		return fmt.Errorf("tables cannot be marked as shared")
 	}
+	ret.Is64 = is64
 	return
 }

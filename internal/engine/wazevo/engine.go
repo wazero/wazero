@@ -218,6 +218,14 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 		return e.compileHostModule(ctx, module, listeners)
 	}
 
+	_, _, memory, _, err := module.AllDeclarations()
+	if err != nil {
+		return nil, err
+	}
+	if memory != nil && memory.Is64 {
+		return nil, fmt.Errorf("memory64 is not supported by the compiler engine")
+	}
+
 	withListener := len(listeners) > 0
 	cm := &compiledModule{
 		offsets: wazevoapi.NewModuleContextOffsetData(module, withListener), parent: e, module: module,

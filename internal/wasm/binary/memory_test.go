@@ -127,6 +127,7 @@ func TestMemoryType(t *testing.T) {
 		name             string
 		input            *wasm.Memory
 		memoryLimitPages uint32
+		features         api.CoreFeatures
 		expected         []byte
 	}{
 		{
@@ -170,6 +171,12 @@ func TestMemoryType(t *testing.T) {
 			input:    &wasm.Memory{Max: 1, IsMaxEncoded: true, IsShared: true},
 			expected: []byte{0x3, 0, 1},
 		},
+		{
+			name:     "memory64 min 0",
+			input:    &wasm.Memory{Max: max, IsMaxEncoded: true, Is64: true},
+			features: api.CoreFeaturesV2.SetEnabled(api.CoreFeatureMemory64, true),
+			expected: []byte{0x5, 0, 0x80, 0x80, 0x4},
+		},
 	}
 
 	for _, tt := range tests {
@@ -182,20 +189,24 @@ func TestMemoryType(t *testing.T) {
 
 		t.Run(fmt.Sprintf("decode %s", tc.name), func(t *testing.T) {
 			tmax := max
-			expectedDecoded := tc.input
+			expectedDecoded := *tc.input
+			expectedPtr := &expectedDecoded
 			if tc.memoryLimitPages != 0 {
 				// If a memory limit exists, then the expected module Max reflects that limit.
 				tmax = tc.memoryLimitPages
-				expectedDecoded.Max = tmax
+				expectedPtr.Max = tmax
 			}
 
-			features := api.CoreFeaturesV2
+			features := tc.features
+			if features == 0 {
+				features = api.CoreFeaturesV2
+			}
 			if tc.input.IsShared {
 				features = features.SetEnabled(experimental.CoreFeaturesThreads, true)
 			}
 			binary, err := decodeMemory(bytes.NewReader(b), features, newMemorySizer(tmax, false), tmax)
 			require.NoError(t, err)
-			require.Equal(t, binary, expectedDecoded)
+			require.Equal(t, expectedPtr, binary)
 		})
 	}
 }
@@ -209,6 +220,11 @@ func TestDecodeMemoryType_Errors(t *testing.T) {
 		threadsEnabled bool
 		expectedErr    string
 	}{
+		{
+			name:        "memory64 disabled",
+			input:       []byte{0x4, 0},
+			expectedErr: "memory64: feature \"memory64\" is disabled",
+		},
 		{
 			name:        "max < min",
 			input:       []byte{0x1, 0x80, 0x80, 0x4, 0},

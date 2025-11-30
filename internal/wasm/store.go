@@ -482,6 +482,15 @@ func (m *ModuleInstance) resolveImports(ctx context.Context, module *Module) (er
 				expected := i.DescMem
 				importedMemory := importedModule.MemoryInstance
 
+				if expected.Is64 != importedMemory.Is64 {
+					size := 32
+					if expected.Is64 {
+						size = 64
+					}
+					err = errorInvalidImport(i, fmt.Errorf("memory64 mismatch: expected %d-bit memory", size))
+					return
+				}
+
 				if expected.Min > memoryBytesNumToPages(uint64(len(importedMemory.Buffer))) {
 					err = errorMinSizeMismatch(i, expected.Min, importedMemory.Min)
 					return

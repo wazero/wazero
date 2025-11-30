@@ -144,6 +144,16 @@ const (
 	// See https://github.com/WebAssembly/spec/blob/wg-2.0.draft1/proposals/simd/SIMD.md
 	CoreFeatureSIMD
 
+	// CoreFeatureMemory64 enables 64-bit memories ("memory64").
+	//
+	// Notable effects:
+	//   - Modules can declare and use memories that take `i64` indices.
+	//   - Instructions such as loads, stores, memory.size and memory.grow read
+	//     or write 64-bit values on the operand stack.
+	//
+	// See https://github.com/WebAssembly/memory64
+	CoreFeatureMemory64
+
 	// Update experimental/features.go when adding elements here.
 )
 
@@ -209,6 +219,8 @@ func featureName(f CoreFeatures) string {
 	case CoreFeatureSIMD:
 		// match https://github.com/WebAssembly/spec/blob/wg-2.0.draft1/proposals/simd/SIMD.md
 		return "simd"
+	case CoreFeatureMemory64:
+		return "memory64"
 	}
 	return ""
 }

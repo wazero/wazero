@@ -449,7 +449,13 @@ func (m *Module) funcDesc(sectionID SectionID, sectionIndex Index) string {
 	return fmt.Sprintf("%s[%d] export[%s]", sectionIDName, sectionIndex, strings.Join(exportNames, ","))
 }
 
-func (m *Module) validateMemory(memory *Memory, globals []GlobalType, _ api.CoreFeatures) error {
+func (m *Module) validateMemory(memory *Memory, globals []GlobalType, enabledFeatures api.CoreFeatures) error {
+	if memory != nil && memory.Is64 {
+		if err := enabledFeatures.RequireEnabled(api.CoreFeatureMemory64); err != nil {
+			return fmt.Errorf("memory64 invalid: %w", err)
+		}
+	}
+
 	var activeElementCount int
 	for i := range m.DataSection {
 		d := &m.DataSection[i]
@@ -467,7 +473,7 @@ func (m *Module) validateMemory(memory *Memory, globals []GlobalType, _ api.Core
 	for i := range m.DataSection {
 		d := &m.DataSection[i]
 		if !d.IsPassive() {
-			if err := validateConstExpression(importedGlobals, 0, &d.OffsetExpression, ValueTypeI32); err != nil {
+			if err := validateConstExpression(importedGlobals, 0, &d.OffsetExpression, memoryValueType(memory)); err != nil {
 				return fmt.Errorf("calculate offset: %w", err)
 			}
 		}
@@ -768,6 +774,15 @@ type Memory struct {
 	IsMaxEncoded bool
 	// IsShared true if the memory is shared for access from multiple agents.
 	IsShared bool
+	// Is64 is true when the memory uses 64-bit addresses ("memory64").
+	Is64 bool
+}
+
+func memoryValueType(memory *Memory) ValueType {
+	if memory != nil && memory.Is64 {
+		return ValueTypeI64
+	}
+	return ValueTypeI32
 }
 
 // Validate ensures values assigned to Min, Cap and Max are within valid thresholds.

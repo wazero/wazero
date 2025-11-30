@@ -61,6 +61,7 @@ func TestCoreFeatures_String(t *testing.T) {
 		{name: "sign-extension-ops", feature: CoreFeatureSignExtensionOps, expected: "sign-extension-ops"},
 		{name: "multi-value", feature: CoreFeatureMultiValue, expected: "multi-value"},
 		{name: "simd", feature: CoreFeatureSIMD, expected: "simd"},
+		{name: "memory64", feature: CoreFeatureMemory64, expected: "memory64"},
 		{name: "features", feature: CoreFeatureMutableGlobal | CoreFeatureMultiValue, expected: "multi-value|mutable-global"},
 		{name: "undefined", feature: 1 << 63, expected: ""},
 		{

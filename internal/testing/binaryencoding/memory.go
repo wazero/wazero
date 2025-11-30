@@ -8,9 +8,10 @@ import (
 //
 // See https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#binary-memory
 func EncodeMemory(i *wasm.Memory) []byte {
-	maxPtr := &i.Max
-	if !i.IsMaxEncoded {
-		maxPtr = nil
+	var maxPtr *uint64
+	if i.IsMaxEncoded {
+		maxVal := uint64(i.Max)
+		maxPtr = &maxVal
 	}
-	return EncodeLimitsType(i.Min, maxPtr, i.IsShared)
+	return EncodeLimitsType(uint64(i.Min), maxPtr, i.IsShared, i.Is64)
 }

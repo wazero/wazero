@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -725,6 +726,34 @@ func TestRuntime_Close_ClosesCompiledModules(t *testing.T) {
 			require.Equal(t, !tc.withCompilationCache, engine.closed)
 		})
 	}
+}
+
+func TestRuntime_Wasm64(t *testing.T) {
+	wasm, err := os.ReadFile("wasm64_blob")
+	require.NoError(t, err)
+
+	features := api.CoreFeaturesV2.SetEnabled(api.CoreFeatureMemory64, true)
+	cfg := NewRuntimeConfigInterpreter().WithCoreFeatures(features)
+	r := NewRuntimeWithConfig(testCtx, cfg)
+	defer r.Close(testCtx)
+
+	mod, err := r.Instantiate(testCtx, wasm)
+	require.NoError(t, err)
+
+	add := mod.ExportedFunction("add64")
+	results, err := add.Call(testCtx, api.EncodeI64(1), api.EncodeI64(2))
+	require.NoError(t, err)
+	require.Equal(t, int64(3), int64(results[0]))
+
+	ptrSize := mod.ExportedFunction("pointer_size_bits")
+	results, err = ptrSize.Call(testCtx)
+	require.NoError(t, err)
+	require.Equal(t, uint32(64), api.DecodeU32(results[0]))
+
+	highMarker := mod.ExportedFunction("high_address_marker")
+	results, err = highMarker.Call(testCtx)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), int64(results[0]))
 }
 
 // TestRuntime_Closed ensures invocation of closed Runtime's methods is safe.

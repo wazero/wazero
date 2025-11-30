@@ -114,6 +114,9 @@ var (
 	signature_I32I32_None = &signature{
 		in: []unsignedType{unsignedTypeI32, unsignedTypeI32},
 	}
+	signature_I64I32_None = &signature{
+		in: []unsignedType{unsignedTypeI64, unsignedTypeI32},
+	}
 
 	signature_I32I32_I32 = &signature{
 		in:  []unsignedType{unsignedTypeI32, unsignedTypeI32},
@@ -122,11 +125,23 @@ var (
 	signature_I32I64_None = &signature{
 		in: []unsignedType{unsignedTypeI32, unsignedTypeI64},
 	}
+	signature_I64I64_None = &signature{
+		in: []unsignedType{unsignedTypeI64, unsignedTypeI64},
+	}
 	signature_I32F32_None = &signature{
 		in: []unsignedType{unsignedTypeI32, unsignedTypeF32},
 	}
+	signature_I64F32_None = &signature{
+		in: []unsignedType{unsignedTypeI64, unsignedTypeF32},
+	}
 	signature_I32F64_None = &signature{
 		in: []unsignedType{unsignedTypeI32, unsignedTypeF64},
+	}
+	signature_I64F64_None = &signature{
+		in: []unsignedType{unsignedTypeI64, unsignedTypeF64},
+	}
+	signature_I64V128_None = &signature{
+		in: []unsignedType{unsignedTypeI64, unsignedTypeV128},
 	}
 	signature_I64I32_I32 = &signature{
 		in:  []unsignedType{unsignedTypeI64, unsignedTypeI32},
@@ -162,6 +177,28 @@ var (
 	signature_I32I64I32_None = &signature{
 		in: []unsignedType{unsignedTypeI32, unsignedTypeI64, unsignedTypeI32},
 	}
+	signature_I64I64I64_None = &signature{
+		in: []unsignedType{unsignedTypeI64, unsignedTypeI64, unsignedTypeI64},
+	}
+	signature_I64I32I64_None = &signature{
+		in: []unsignedType{unsignedTypeI64, unsignedTypeI32, unsignedTypeI64},
+	}
+	signature_I64I32I64_I32 = &signature{
+		in:  []unsignedType{unsignedTypeI64, unsignedTypeI32, unsignedTypeI64},
+		out: []unsignedType{unsignedTypeI32},
+	}
+	signature_I64I64I64_I32 = &signature{
+		in:  []unsignedType{unsignedTypeI64, unsignedTypeI64, unsignedTypeI64},
+		out: []unsignedType{unsignedTypeI32},
+	}
+	signature_I64I32I32_I32 = &signature{
+		in:  []unsignedType{unsignedTypeI64, unsignedTypeI32, unsignedTypeI32},
+		out: []unsignedType{unsignedTypeI32},
+	}
+	signature_I64I64I64_I64 = &signature{
+		in:  []unsignedType{unsignedTypeI64, unsignedTypeI64, unsignedTypeI64},
+		out: []unsignedType{unsignedTypeI64},
+	}
 	signature_UnknownUnknownI32_Unknown = &signature{
 		in:  []unsignedType{unsignedTypeUnknown, unsignedTypeUnknown, unsignedTypeI32},
 		out: []unsignedType{unsignedTypeUnknown},
@@ -183,6 +220,10 @@ var (
 	}
 	signature_I32V128_V128 = &signature{
 		in:  []unsignedType{unsignedTypeI32, unsignedTypeV128},
+		out: []unsignedType{unsignedTypeV128},
+	}
+	signature_I64V128_V128 = &signature{
+		in:  []unsignedType{unsignedTypeI64, unsignedTypeV128},
 		out: []unsignedType{unsignedTypeV128},
 	}
 	signature_V128I32_V128 = &signature{
@@ -327,40 +368,40 @@ func (c *compiler) wasmOpcodeSignature(op wasm.Opcode, index uint32) (*signature
 		}
 		return wasmValueTypeToUnsignedInSignature(c.globals[index].ValType), nil
 	case wasm.OpcodeI32Load:
-		return signature_I32_I32, nil
+		return c.memorySignature(signature_I32_I32, signature_I64_I32), nil
 	case wasm.OpcodeI64Load:
-		return signature_I32_I64, nil
+		return c.memorySignature(signature_I32_I64, signature_I64_I64), nil
 	case wasm.OpcodeF32Load:
-		return signature_I32_F32, nil
+		return c.memorySignature(signature_I32_F32, signature_I64_F32), nil
 	case wasm.OpcodeF64Load:
-		return signature_I32_F64, nil
+		return c.memorySignature(signature_I32_F64, signature_I64_F64), nil
 	case wasm.OpcodeI32Load8S, wasm.OpcodeI32Load8U, wasm.OpcodeI32Load16S, wasm.OpcodeI32Load16U:
-		return signature_I32_I32, nil
+		return c.memorySignature(signature_I32_I32, signature_I64_I32), nil
 	case wasm.OpcodeI64Load8S, wasm.OpcodeI64Load8U, wasm.OpcodeI64Load16S, wasm.OpcodeI64Load16U,
 		wasm.OpcodeI64Load32S, wasm.OpcodeI64Load32U:
-		return signature_I32_I64, nil
+		return c.memorySignature(signature_I32_I64, signature_I64_I64), nil
 	case wasm.OpcodeI32Store:
-		return signature_I32I32_None, nil
+		return c.memorySignature(signature_I32I32_None, signature_I64I32_None), nil
 	case wasm.OpcodeI64Store:
-		return signature_I32I64_None, nil
+		return c.memorySignature(signature_I32I64_None, signature_I64I64_None), nil
 	case wasm.OpcodeF32Store:
-		return signature_I32F32_None, nil
+		return c.memorySignature(signature_I32F32_None, signature_I64F32_None), nil
 	case wasm.OpcodeF64Store:
-		return signature_I32F64_None, nil
+		return c.memorySignature(signature_I32F64_None, signature_I64F64_None), nil
 	case wasm.OpcodeI32Store8:
-		return signature_I32I32_None, nil
+		return c.memorySignature(signature_I32I32_None, signature_I64I32_None), nil
 	case wasm.OpcodeI32Store16:
-		return signature_I32I32_None, nil
+		return c.memorySignature(signature_I32I32_None, signature_I64I32_None), nil
 	case wasm.OpcodeI64Store8:
-		return signature_I32I64_None, nil
+		return c.memorySignature(signature_I32I64_None, signature_I64I64_None), nil
 	case wasm.OpcodeI64Store16:
-		return signature_I32I64_None, nil
+		return c.memorySignature(signature_I32I64_None, signature_I64I64_None), nil
 	case wasm.OpcodeI64Store32:
-		return signature_I32I64_None, nil
+		return c.memorySignature(signature_I32I64_None, signature_I64I64_None), nil
 	case wasm.OpcodeMemorySize:
-		return signature_None_I32, nil
+		return c.memorySignature(signature_None_I32, signature_None_I64), nil
 	case wasm.OpcodeMemoryGrow:
-		return signature_I32_I32, nil
+		return c.memorySignature(signature_I32_I32, signature_I64_I64), nil
 	case wasm.OpcodeI32Const:
 		return signature_None_I32, nil
 	case wasm.OpcodeI64Const:
@@ -482,8 +523,11 @@ func (c *compiler) wasmOpcodeSignature(op wasm.Opcode, index uint32) (*signature
 			return signature_F32_I64, nil
 		case wasm.OpcodeMiscI64TruncSatF64S, wasm.OpcodeMiscI64TruncSatF64U:
 			return signature_F64_I64, nil
-		case wasm.OpcodeMiscMemoryInit, wasm.OpcodeMiscMemoryCopy, wasm.OpcodeMiscMemoryFill,
-			wasm.OpcodeMiscTableInit, wasm.OpcodeMiscTableCopy:
+		case wasm.OpcodeMiscMemoryCopy:
+			return c.memorySignature(signature_I32I32I32_None, signature_I64I64I64_None), nil
+		case wasm.OpcodeMiscMemoryInit, wasm.OpcodeMiscMemoryFill:
+			return c.memorySignature(signature_I32I32I32_None, signature_I64I32I64_None), nil
+		case wasm.OpcodeMiscTableInit, wasm.OpcodeMiscTableCopy:
 			return signature_I32I32I32_None, nil
 		case wasm.OpcodeMiscDataDrop, wasm.OpcodeMiscElemDrop:
 			return signature_None_None, nil
@@ -505,16 +549,16 @@ func (c *compiler) wasmOpcodeSignature(op wasm.Opcode, index uint32) (*signature
 			wasm.OpcodeVecV128Load32x2u, wasm.OpcodeVecV128Load8Splat, wasm.OpcodeVecV128Load16Splat,
 			wasm.OpcodeVecV128Load32Splat, wasm.OpcodeVecV128Load64Splat, wasm.OpcodeVecV128Load32zero,
 			wasm.OpcodeVecV128Load64zero:
-			return signature_I32_V128, nil
+			return c.memorySignature(signature_I32_V128, signature_I64_V128), nil
 		case wasm.OpcodeVecV128Load8Lane, wasm.OpcodeVecV128Load16Lane,
 			wasm.OpcodeVecV128Load32Lane, wasm.OpcodeVecV128Load64Lane:
-			return signature_I32V128_V128, nil
+			return c.memorySignature(signature_I32V128_V128, signature_I64V128_V128), nil
 		case wasm.OpcodeVecV128Store,
 			wasm.OpcodeVecV128Store8Lane,
 			wasm.OpcodeVecV128Store16Lane,
 			wasm.OpcodeVecV128Store32Lane,
 			wasm.OpcodeVecV128Store64Lane:
-			return signature_I32V128_None, nil
+			return c.memorySignature(signature_I32V128_None, signature_I64V128_None), nil
 		case wasm.OpcodeVecI8x16ExtractLaneS,
 			wasm.OpcodeVecI8x16ExtractLaneU,
 			wasm.OpcodeVecI16x8ExtractLaneS,
@@ -609,34 +653,34 @@ func (c *compiler) wasmOpcodeSignature(op wasm.Opcode, index uint32) (*signature
 	case wasm.OpcodeAtomicPrefix:
 		switch atomicOp := c.body[c.pc+1]; atomicOp {
 		case wasm.OpcodeAtomicMemoryNotify:
-			return signature_I32I32_I32, nil
+			return c.memorySignature(signature_I32I32_I32, signature_I64I32_I32), nil
 		case wasm.OpcodeAtomicMemoryWait32:
-			return signature_I32I32I64_I32, nil
+			return c.memorySignature(signature_I32I32I64_I32, signature_I64I32I64_I32), nil
 		case wasm.OpcodeAtomicMemoryWait64:
-			return signature_I32I64I64_I32, nil
+			return c.memorySignature(signature_I32I64I64_I32, signature_I64I64I64_I32), nil
 		case wasm.OpcodeAtomicFence:
 			return signature_None_None, nil
 		case wasm.OpcodeAtomicI32Load, wasm.OpcodeAtomicI32Load8U, wasm.OpcodeAtomicI32Load16U:
-			return signature_I32_I32, nil
+			return c.memorySignature(signature_I32_I32, signature_I64_I32), nil
 		case wasm.OpcodeAtomicI64Load, wasm.OpcodeAtomicI64Load8U, wasm.OpcodeAtomicI64Load16U, wasm.OpcodeAtomicI64Load32U:
-			return signature_I32_I64, nil
+			return c.memorySignature(signature_I32_I64, signature_I64_I64), nil
 		case wasm.OpcodeAtomicI32Store, wasm.OpcodeAtomicI32Store8, wasm.OpcodeAtomicI32Store16:
-			return signature_I32I32_None, nil
+			return c.memorySignature(signature_I32I32_None, signature_I64I32_None), nil
 		case wasm.OpcodeAtomicI64Store, wasm.OpcodeAtomicI64Store8, wasm.OpcodeAtomicI64Store16, wasm.OpcodeAtomicI64Store32:
-			return signature_I32I64_None, nil
+			return c.memorySignature(signature_I32I64_None, signature_I64I64_None), nil
 		case wasm.OpcodeAtomicI32RmwAdd, wasm.OpcodeAtomicI32RmwSub, wasm.OpcodeAtomicI32RmwAnd, wasm.OpcodeAtomicI32RmwOr, wasm.OpcodeAtomicI32RmwXor, wasm.OpcodeAtomicI32RmwXchg,
 			wasm.OpcodeAtomicI32Rmw8AddU, wasm.OpcodeAtomicI32Rmw8SubU, wasm.OpcodeAtomicI32Rmw8AndU, wasm.OpcodeAtomicI32Rmw8OrU, wasm.OpcodeAtomicI32Rmw8XorU, wasm.OpcodeAtomicI32Rmw8XchgU,
 			wasm.OpcodeAtomicI32Rmw16AddU, wasm.OpcodeAtomicI32Rmw16SubU, wasm.OpcodeAtomicI32Rmw16AndU, wasm.OpcodeAtomicI32Rmw16OrU, wasm.OpcodeAtomicI32Rmw16XorU, wasm.OpcodeAtomicI32Rmw16XchgU:
-			return signature_I32I32_I32, nil
+			return c.memorySignature(signature_I32I32_I32, signature_I64I32_I32), nil
 		case wasm.OpcodeAtomicI64RmwAdd, wasm.OpcodeAtomicI64RmwSub, wasm.OpcodeAtomicI64RmwAnd, wasm.OpcodeAtomicI64RmwOr, wasm.OpcodeAtomicI64RmwXor, wasm.OpcodeAtomicI64RmwXchg,
 			wasm.OpcodeAtomicI64Rmw8AddU, wasm.OpcodeAtomicI64Rmw8SubU, wasm.OpcodeAtomicI64Rmw8AndU, wasm.OpcodeAtomicI64Rmw8OrU, wasm.OpcodeAtomicI64Rmw8XorU, wasm.OpcodeAtomicI64Rmw8XchgU,
 			wasm.OpcodeAtomicI64Rmw16AddU, wasm.OpcodeAtomicI64Rmw16SubU, wasm.OpcodeAtomicI64Rmw16AndU, wasm.OpcodeAtomicI64Rmw16OrU, wasm.OpcodeAtomicI64Rmw16XorU, wasm.OpcodeAtomicI64Rmw16XchgU,
 			wasm.OpcodeAtomicI64Rmw32AddU, wasm.OpcodeAtomicI64Rmw32SubU, wasm.OpcodeAtomicI64Rmw32AndU, wasm.OpcodeAtomicI64Rmw32OrU, wasm.OpcodeAtomicI64Rmw32XorU, wasm.OpcodeAtomicI64Rmw32XchgU:
-			return signature_I32I64_I64, nil
+			return c.memorySignature(signature_I32I64_I64, signature_I64I64_I64), nil
 		case wasm.OpcodeAtomicI32RmwCmpxchg, wasm.OpcodeAtomicI32Rmw8CmpxchgU, wasm.OpcodeAtomicI32Rmw16CmpxchgU:
-			return signature_I32I32I32_I32, nil
+			return c.memorySignature(signature_I32I32I32_I32, signature_I64I32I32_I32), nil
 		case wasm.OpcodeAtomicI64RmwCmpxchg, wasm.OpcodeAtomicI64Rmw8CmpxchgU, wasm.OpcodeAtomicI64Rmw16CmpxchgU, wasm.OpcodeAtomicI64Rmw32CmpxchgU:
-			return signature_I32I64I64_I64, nil
+			return c.memorySignature(signature_I32I64I64_I64, signature_I64I64I64_I64), nil
 		default:
 			return nil, fmt.Errorf("unsupported atomic instruction in interpreterir: %s", wasm.AtomicInstructionName(atomicOp))
 		}

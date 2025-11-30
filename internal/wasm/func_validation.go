@@ -72,6 +72,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 	code := &m.CodeSection[idx]
 	body := code.Body
 	localTypes := code.LocalTypes
+	addrType := memoryValueType(memory)
 
 	sts.reset(functionType)
 	valueTypeStack := &sts.vs
@@ -115,7 +116,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align > 32/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -123,7 +124,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align > 32/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeF32)
@@ -134,7 +135,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeF32Store:
@@ -144,14 +145,14 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeF32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeI64Load:
 				if 1<<align > 64/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -159,7 +160,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align > 64/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeF64)
@@ -170,7 +171,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeF64Store:
@@ -180,14 +181,14 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeF64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeI32Load8S:
 				if 1<<align > 1 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -195,7 +196,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align > 1 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -203,7 +204,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align > 1 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -214,7 +215,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeI64Store8:
@@ -224,14 +225,14 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeI32Load16S, OpcodeI32Load16U:
 				if 1<<align > 16/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -239,7 +240,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align > 16/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -250,7 +251,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeI64Store16:
@@ -260,14 +261,14 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeI64Load32S, OpcodeI64Load32U:
 				if 1<<align > 32/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -278,7 +279,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			}
@@ -296,12 +297,12 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			}
 			switch Opcode(op) {
 			case OpcodeMemoryGrow:
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
-				valueTypeStack.push(ValueTypeI32)
+				valueTypeStack.push(addrType)
 			case OpcodeMemorySize:
-				valueTypeStack.push(ValueTypeI32)
+				valueTypeStack.push(addrType)
 			}
 			pc += num - 1
 		} else if OpcodeI32Const <= op && op <= OpcodeF64Const {
@@ -970,7 +971,14 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					if memory == nil {
 						return fmt.Errorf("memory must exist for %s", MiscInstructionName(miscOpcode))
 					}
-					params = []ValueType{ValueTypeI32, ValueTypeI32, ValueTypeI32}
+					switch miscOpcode {
+					case OpcodeMiscMemoryInit:
+						params = []ValueType{addrType, ValueTypeI32, addrType}
+					case OpcodeMiscMemoryCopy:
+						params = []ValueType{addrType, addrType, addrType}
+					case OpcodeMiscMemoryFill:
+						params = []ValueType{addrType, ValueTypeI32, addrType}
+					}
 
 					if miscOpcode == OpcodeMiscMemoryInit {
 						if m.DataCountSection == nil {
@@ -1190,7 +1198,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align > maxAlign {
 					return fmt.Errorf("invalid memory alignment %d for %s", align, VectorInstructionName(vecOpcode))
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return fmt.Errorf("cannot pop the operand for %s: %v", VectorInstructionName(vecOpcode), err)
 				}
 				valueTypeStack.push(ValueTypeV128)
@@ -1210,7 +1218,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeV128); err != nil {
 					return fmt.Errorf("cannot pop the operand for %s: %v", OpcodeVecV128StoreName, err)
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return fmt.Errorf("cannot pop the operand for %s: %v", OpcodeVecV128StoreName, err)
 				}
 			case OpcodeVecV128Load8Lane, OpcodeVecV128Load16Lane, OpcodeVecV128Load32Lane, OpcodeVecV128Load64Lane:
@@ -1237,7 +1245,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeV128); err != nil {
 					return fmt.Errorf("cannot pop the operand for %s: %v", vectorInstructionName[vecOpcode], err)
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return fmt.Errorf("cannot pop the operand for %s: %v", vectorInstructionName[vecOpcode], err)
 				}
 				valueTypeStack.push(ValueTypeV128)
@@ -1265,7 +1273,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeV128); err != nil {
 					return fmt.Errorf("cannot pop the operand for %s: %v", vectorInstructionName[vecOpcode], err)
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return fmt.Errorf("cannot pop the operand for %s: %v", vectorInstructionName[vecOpcode], err)
 				}
 			case OpcodeVecI8x16ExtractLaneS,
@@ -1486,7 +1494,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1500,7 +1508,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1514,7 +1522,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1522,7 +1530,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align > 32/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1530,7 +1538,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align > 64/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -1538,7 +1546,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align != 1 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1546,7 +1554,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align != 16/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1554,7 +1562,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align != 1 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -1562,7 +1570,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align > 16/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -1570,7 +1578,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if 1<<align > 32/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -1581,7 +1589,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeAtomicI64Store:
@@ -1591,27 +1599,27 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeAtomicI32Store8:
 				if 1<<align > 1 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeAtomicI32Store16:
 				if 1<<align > 16/8 {
 					return fmt.Errorf("invalid memory alignment")
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeAtomicI64Store8:
@@ -1621,7 +1629,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 			case OpcodeAtomicI64Store16:
@@ -1651,7 +1659,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1662,7 +1670,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1673,7 +1681,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1684,7 +1692,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -1695,7 +1703,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -1706,7 +1714,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -1717,7 +1725,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -1731,7 +1739,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1745,7 +1753,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1759,7 +1767,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1773,7 +1781,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -1787,7 +1795,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -1801,7 +1809,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)
@@ -1815,7 +1823,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI64); err != nil {
 					return err
 				}
-				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(addrType); err != nil {
 					return err
 				}
 				valueTypeStack.push(ValueTypeI64)

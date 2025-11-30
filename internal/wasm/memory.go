@@ -48,6 +48,7 @@ type MemoryInstance struct {
 	Buffer        []byte
 	Min, Cap, Max uint32
 	Shared        bool
+	Is64          bool
 	// definition is known at compile time.
 	definition api.MemoryDefinition
 
@@ -98,6 +99,7 @@ func NewMemoryInstance(memSec *Memory, allocator experimental.MemoryAllocator, m
 		Cap:               memoryBytesNumToPages(uint64(cap(buffer))),
 		Max:               memSec.Max,
 		Shared:            memSec.IsShared,
+		Is64:              memSec.Is64,
 		expBuffer:         expBuffer,
 		ownerModuleEngine: moduleEngine,
 	}

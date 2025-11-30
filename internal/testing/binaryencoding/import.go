@@ -19,13 +19,19 @@ func EncodeImport(i *wasm.Import) []byte {
 		data = append(data, leb128.EncodeUint32(i.DescFunc)...)
 	case wasm.ExternTypeTable:
 		data = append(data, wasm.RefTypeFuncref)
-		data = append(data, EncodeLimitsType(i.DescTable.Min, i.DescTable.Max, false)...)
-	case wasm.ExternTypeMemory:
-		maxPtr := &i.DescMem.Max
-		if !i.DescMem.IsMaxEncoded {
-			maxPtr = nil
+		var maxPtr *uint64
+		if i.DescTable.Max != nil {
+			mv := uint64(*i.DescTable.Max)
+			maxPtr = &mv
 		}
-		data = append(data, EncodeLimitsType(i.DescMem.Min, maxPtr, i.DescMem.IsShared)...)
+		data = append(data, EncodeLimitsType(uint64(i.DescTable.Min), maxPtr, false, false)...)
+	case wasm.ExternTypeMemory:
+		var maxPtr *uint64
+		if i.DescMem.IsMaxEncoded {
+			mv := uint64(i.DescMem.Max)
+			maxPtr = &mv
+		}
+		data = append(data, EncodeLimitsType(uint64(i.DescMem.Min), maxPtr, i.DescMem.IsShared, i.DescMem.Is64)...)
 	case wasm.ExternTypeGlobal:
 		g := i.DescGlobal
 		var mutable byte

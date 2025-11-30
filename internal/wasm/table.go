@@ -14,6 +14,7 @@ type Table struct {
 	Min  uint32
 	Max  *uint32
 	Type RefType
+	Is64 bool
 }
 
 // RefType is either RefTypeFuncref or RefTypeExternref as of WebAssembly core 2.0.

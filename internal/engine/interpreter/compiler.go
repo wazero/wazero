@@ -265,6 +265,8 @@ type compilationResult struct {
 	Types []wasm.FunctionType
 	// Memory indicates the type of memory of the module.
 	Memory memoryType
+	// MemoryIs64 is true when the memory uses 64-bit indices.
+	MemoryIs64 bool
 	// HasTable is true if the module from which this function is compiled has table declaration.
 	HasTable bool
 	// HasDataInstances is true if the module has data instances which might be used by memory.init or data.drop instructions.
@@ -285,6 +287,7 @@ func newCompiler(enabledFeatures api.CoreFeatures, callFrameStackSizeInUint64 in
 		len(module.DataSection) > 0, len(module.ElementSection) > 0
 
 	var mt memoryType
+	var memoryIs64 bool
 	switch {
 	case mem == nil:
 		mt = memoryTypeNone
@@ -292,6 +295,9 @@ func newCompiler(enabledFeatures api.CoreFeatures, callFrameStackSizeInUint64 in
 		mt = memoryTypeShared
 	default:
 		mt = memoryTypeStandard
+	}
+	if mem != nil && mem.Is64 {
+		memoryIs64 = true
 	}
 
 	types := module.TypeSection
@@ -306,6 +312,7 @@ func newCompiler(enabledFeatures api.CoreFeatures, callFrameStackSizeInUint64 in
 			Functions:           functions,
 			Types:               types,
 			Memory:              mt,
+			MemoryIs64:          memoryIs64,
 			HasTable:            hasTable,
 			HasDataInstances:    hasDataInstances,
 			HasElementInstances: hasElementInstances,
@@ -3672,4 +3679,15 @@ func (c *compiler) readMemoryArg(tag string) (memoryArg, error) {
 	}
 	c.pc += num
 	return memoryArg{Offset: offset, Alignment: alignment}, nil
+}
+
+func (c *compiler) memoryUses64() bool {
+	return c.result.MemoryIs64
+}
+
+func (c *compiler) memorySignature(sig32, sig64 *signature) *signature {
+	if c.memoryUses64() {
+		return sig64
+	}
+	return sig32
 }
