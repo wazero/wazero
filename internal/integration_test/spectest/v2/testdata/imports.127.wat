@@ -1,1 +1,1 @@
-(func) (import "" "" (func))
+(func) (import "" "" (memory 0))

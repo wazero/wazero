@@ -1,4 +1,4 @@
-;; v128.load operater with normal argument (e.g. (i8x16, i16x8 i32x4))
+;; v128.load operator with normal argument (e.g. (i8x16, i16x8 i32x4))
 
 (module
   (memory 1)
@@ -13,7 +13,7 @@
 (assert_return (invoke "v128.load") (v128.const i32x4 0x03020100 0x07060504 0x0b0a0908 0x0f0e0d0c))
 
 
-;; v128.load operater as the argument of other SIMD instructions
+;; v128.load operator as the argument of other SIMD instructions
 
 (module (memory 1)
   (data (i32.const 0) "\00\01\02\03\04\05\06\07\08\09\0a\0b\0c\0d\0e\0f\00\01\02\03")

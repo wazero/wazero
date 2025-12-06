@@ -86,6 +86,15 @@
                                            (v128.const i16x8 65535 65535 65535 65535 65535 65535 65535 65535))
                                            (v128.const i32x4 2 2 2 2))
 
+(assert_return (invoke "i32x4.dot_i16x8_s" (v128.const i16x8 -32768 65535 -32768 65535 -32768 65535 -32768 65535)
+                                           (v128.const i16x8 -32767 0 -32767 0 -32767 0 -32767 0))
+                                           (v128.const i32x4 1073709056 1073709056 1073709056 1073709056))
+
+(assert_return (invoke "i32x4.dot_i16x8_s" (v128.const i16x8  111  222  333  444  555  666  777  888)
+                                           (v128.const i16x8 1111 2222 3333 4444 5555 6666 7777 8888))
+                                           (v128.const i32x4 616605 3083025 7522581 13935273))
+
+
 ;; type check
 (assert_invalid (module (func (result v128) (i32x4.dot_i16x8_s (i32.const 0) (f32.const 0.0)))) "type mismatch")
 
@@ -107,4 +116,3 @@
   )
   "type mismatch"
 )
-

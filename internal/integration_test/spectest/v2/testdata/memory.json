@@ -78,4 +78,13 @@
   {"type": "assert_return", "line": 227, "action": {"type": "invoke", "field": "i64_load32_u", "args": [{"type": "i64", "value": "3771275841602506223"}]}, "expected": [{"type": "i64", "value": "2562379247"}]}, 
   {"type": "assert_malformed", "line": 231, "filename": "memory.31.wat", "text": "duplicate memory", "module_type": "text"}, 
   {"type": "assert_malformed", "line": 235, "filename": "memory.32.wat", "text": "duplicate memory", "module_type": "text"}, 
-  {"type": "assert_malformed", "line": 239, "filename": "memory.33.wat", "text": "duplicate memory", "module_type": "text"}]}
+  {"type": "assert_malformed", "line": 239, "filename": "memory.33.wat", "text": "duplicate memory", "module_type": "text"}, 
+  {"type": "module", "line": 246, "filename": "memory.34.wasm"}, 
+  {"type": "assert_return", "line": 260, "action": {"type": "invoke", "field": "load", "args": [{"type": "i32", "value": "0"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 261, "action": {"type": "invoke", "field": "load", "args": [{"type": "i32", "value": "10000"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 262, "action": {"type": "invoke", "field": "load", "args": [{"type": "i32", "value": "20000"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 263, "action": {"type": "invoke", "field": "load", "args": [{"type": "i32", "value": "30000"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 264, "action": {"type": "invoke", "field": "load", "args": [{"type": "i32", "value": "40000"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 265, "action": {"type": "invoke", "field": "load", "args": [{"type": "i32", "value": "50000"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 266, "action": {"type": "invoke", "field": "load", "args": [{"type": "i32", "value": "60000"}]}, "expected": [{"type": "i32", "value": "0"}]}, 
+  {"type": "assert_return", "line": 267, "action": {"type": "invoke", "field": "load", "args": [{"type": "i32", "value": "65535"}]}, "expected": [{"type": "i32", "value": "0"}]}]}

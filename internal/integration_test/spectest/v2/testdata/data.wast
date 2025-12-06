@@ -16,6 +16,8 @@
   (data (memory $m) (i32.const 1) "a" "" "bcd")
   (data (memory $m) (offset (i32.const 0)))
   (data (memory $m) (offset (i32.const 0)) "" "a" "bc" "")
+  (data)
+  (data "a" "" "bcd")
   (data $d1 (i32.const 0))
   (data $d2 (i32.const 1) "a" "" "bcd")
   (data $d3 (offset (i32.const 0)))
@@ -28,6 +30,8 @@
   (data $d10 (memory $m) (i32.const 1) "a" "" "bcd")
   (data $d11 (memory $m) (offset (i32.const 0)))
   (data $d12 (memory $m) (offset (i32.const 0)) "" "a" "bc" "")
+  (data $d13)
+  (data $d14 "a" "" "bcd")
 )
 
 ;; Basic use

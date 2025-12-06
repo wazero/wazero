@@ -1,6 +1,10 @@
 {"source_filename": "./comments.wast",
  "commands": [
   {"type": "module", "line": 10, "filename": "comments.0.wasm"}, 
-  {"type": "module", "line": 56, "filename": "comments.1.wasm"}, 
-  {"type": "module", "line": 66, "filename": "comments.2.wasm"}, 
-  {"type": "module", "line": 75, "filename": "comments.3.wasm"}]}
+  {"type": "module", "line": 57, "filename": "comments.1.wasm"}, 
+  {"type": "module", "line": 67, "filename": "comments.2.wasm"}, 
+  {"type": "module", "line": 76, "filename": "comments.3.wasm"}, 
+  {"type": "module", "line": 0, "filename": "comments.4.wasm"}, 
+  {"type": "assert_return", "line": 104, "action": {"type": "invoke", "field": "f1", "args": []}, "expected": [{"type": "i32", "value": "2"}]}, 
+  {"type": "assert_return", "line": 105, "action": {"type": "invoke", "field": "f2", "args": []}, "expected": [{"type": "i32", "value": "2"}]}, 
+  {"type": "assert_return", "line": 106, "action": {"type": "invoke", "field": "f3", "args": []}, "expected": [{"type": "i32", "value": "2"}]}]}
