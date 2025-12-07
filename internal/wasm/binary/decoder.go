@@ -169,22 +169,29 @@ func DecodeModule(
 }
 
 func checkSectionOrder(current, previous wasm.SectionID) (byte, bool) {
+	// https://webassembly.github.io/spec/core/binary/modules.html#binary-module
+
+	// Custom sections can show up anywhere.
 	if current == wasm.SectionIDCustom {
-		// Custom sections can show up in any order.
 		return previous, true
 	}
+
+	// DataCount was introduced in Wasm 2.0,
+	// and it's the maximum we support so far.
+	// It must come after Element and before Code.
 	if current > wasm.SectionIDDataCount {
-		// DataCount is the maximum we support, so far.
 		return current, false
 	}
 	if current == wasm.SectionIDDataCount {
-		// DataCount must come after Element.
 		return current, previous <= wasm.SectionIDElement
 	}
 	if previous == wasm.SectionIDDataCount {
-		// DataCount must come before Code.
 		return current, current >= wasm.SectionIDCode
 	}
+
+	// Tag will be introduced in Wasm 3.0.
+	// It must come after Memory and before Global.
+
 	// Otherwise, strictly increasing order.
 	return current, current > previous
 }

@@ -27,6 +27,7 @@ func EncodeModule(m *wasm.Module) (bytes []byte) {
 	if m.SectionElementCount(wasm.SectionIDMemory) > 0 {
 		bytes = append(bytes, encodeMemorySection(m.MemorySection)...)
 	}
+	// wasm.SectionIDTag (used for Exceptions) would be here.
 	if m.SectionElementCount(wasm.SectionIDGlobal) > 0 {
 		bytes = append(bytes, encodeGlobalSection(m.GlobalSection)...)
 	}
