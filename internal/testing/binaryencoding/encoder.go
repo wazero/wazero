@@ -27,6 +27,7 @@ func EncodeModule(m *wasm.Module) (bytes []byte) {
 	if m.SectionElementCount(wasm.SectionIDMemory) > 0 {
 		bytes = append(bytes, encodeMemorySection(m.MemorySection)...)
 	}
+	// wasm.SectionIDTag (used for Exceptions) would be here.
 	if m.SectionElementCount(wasm.SectionIDGlobal) > 0 {
 		bytes = append(bytes, encodeGlobalSection(m.GlobalSection)...)
 	}
@@ -39,14 +40,14 @@ func EncodeModule(m *wasm.Module) (bytes []byte) {
 	if m.SectionElementCount(wasm.SectionIDElement) > 0 {
 		bytes = append(bytes, encodeElementSection(m.ElementSection)...)
 	}
+	if dc := m.DataCountSection; dc != nil {
+		bytes = append(bytes, encodeSection(wasm.SectionIDDataCount, leb128.EncodeUint32(*dc))...)
+	}
 	if m.SectionElementCount(wasm.SectionIDCode) > 0 {
 		bytes = append(bytes, encodeCodeSection(m.CodeSection)...)
 	}
 	if m.SectionElementCount(wasm.SectionIDData) > 0 {
 		bytes = append(bytes, encodeDataSection(m.DataSection)...)
-	}
-	if dc := m.DataCountSection; dc != nil {
-		bytes = append(bytes, encodeSection(wasm.SectionIDDataCount, leb128.EncodeUint32(*dc))...)
 	}
 	if m.SectionElementCount(wasm.SectionIDCustom) > 0 {
 		// >> The name section should appear only once in a module, and only after the data section.

@@ -1,1 +1,0 @@
-(memory 0) (import "" "" (memory 1 2))

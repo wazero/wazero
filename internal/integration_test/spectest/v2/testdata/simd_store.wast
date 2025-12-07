@@ -1,4 +1,4 @@
-;; v128.store operater with normal argument (e.g. (i8x16, i16x8, i32x4, f32x4))
+;; v128.store operator with normal argument (e.g. (i8x16, i16x8, i32x4, f32x4))
 
 (module
   (memory 1)

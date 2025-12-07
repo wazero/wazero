@@ -384,7 +384,7 @@
       "\0a\67\6c\6f\62\61\6c\5f\69\33\32" ;; "global_i32"
       "\03"                          ;; GlobalImport
       "\7f"                          ;; i32
-      "\02"                          ;; malformed mutability
+      "\04"                          ;; malformed mutability
   )
   "malformed mutability"
 )
@@ -411,7 +411,7 @@
     "\06\86\80\80\80\00"  ;; global section
       "\01"               ;; length 1
       "\7f"               ;; i32
-      "\02"               ;; malformed mutability
+      "\04"               ;; malformed mutability
       "\41\00"            ;; i32.const 0
       "\0b"               ;; end
   )
