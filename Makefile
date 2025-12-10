@@ -125,12 +125,16 @@ spectest_tail_call_dir := $(spectest_base_dir)/tail-call
 spectest_tail_call_testdata_dir := $(spectest_tail_call_dir)/testdata
 spec_version_tail_call := 88e97b0f742f4c3ee01fea683da130f344dd7b02
 
+spectest_extended_const_dir := $(spectest_base_dir)/extended-const
+spectest_extended_const_testdata_dir := $(spectest_extended_const_dir)/testdata
+
 .PHONY: build.spectest
 build.spectest:
 	@$(MAKE) build.spectest.v1
 	@$(MAKE) build.spectest.v2
 	@$(MAKE) build.spectest.threads
 	@$(MAKE) build.spectest.tail_call
+	@$(MAKE) build.spectest.extended_const
 
 .PHONY: build.spectest.v1
 build.spectest.v1: # Note: wabt by default uses >1.0 features, so wast2json flags might drift as they include more. See WebAssembly/wabt#1878
@@ -181,6 +185,12 @@ build.spectest.threads:
 		&& curl -sSL 'https://api.github.com/repos/WebAssembly/threads/contents/test/core/threads?ref=$(spec_version_threads)' | jq -r '.[]| .download_url' | grep -E "/atomic.wast" | xargs -Iurl curl -sJL url -O
 	@cd $(spectest_threads_testdata_dir) && for f in `find . -name '*.wast'`; do \
 		wast2json --enable-threads --debug-names $$f; \
+	done
+
+.PHONY: build.spectest.extended_const
+build.spectest.extended_const:
+	@cd $(spectest_extended_const_testdata_dir) && for f in `find . -name '*.wast'`; do \
+		wast2json --enable-extended-const --debug-names $$f; \
 	done
 
 .PHONY: build.spectest.tail_call
