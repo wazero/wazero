@@ -7,23 +7,18 @@ have heavy impact usually due to CGO. By avoiding CGO, wazero avoids
 prerequisites such as shared libraries or libc, and lets users keep features
 like cross compilation.
 
-Avoiding go.mod dependencies reduces interference on Go version support, and
-size of a statically compiled binary. However, doing so brings some
+Avoiding most `go.mod` dependencies reduces interference on Go version support,
+and size of a statically compiled binary. However, doing so brings some
 responsibility into the project.
 
-Go's native platform support is good: We don't need platform-specific code to
+Go's native platform support is good: we don't need platform-specific code to
 get monotonic time, nor do we need much work to implement certain features
 needed by our compiler such as `mmap`. That said, Go does not support all
-common operating systems to the same degree. For example, Go 1.18 includes
-`Mprotect` on Linux and Darwin, but not FreeBSD.
+common operating systems to the same degree.
 
-The general tradeoff the project takes from a zero dependency policy is more
+The general tradeoff the project takes from a strict dependency policy is more
 explicit support of platforms (in the compiler runtime), as well a larger and
 more technically difficult codebase.
-
-At some point, we may allow extensions to supply their own platform-specific
-hooks. Until then, one end user impact/tradeoff is some glitches trying
-untested platforms (with the Compiler runtime).
 
 ### Why do we use CGO to implement system calls on darwin?
 
@@ -45,25 +40,20 @@ This plays to our advantage for system calls that aren't yet exposed in the Go
 standard library, notably `futimens` for nanosecond-precision timestamp
 manipulation.
 
-### Why not x/sys
+### Why x/sys
 
-Going beyond Go's SDK limitations can be accomplished with their [x/sys library](https://pkg.go.dev/golang.org/x/sys/unix).
-For example, this includes `zsyscall_freebsd_amd64.go` missing from the Go SDK.
+The [x/sys library](https://pkg.go.dev/golang.org/x/sys/unix) is currently
+our only `go.mod` dependency.
 
-However, like all dependencies, x/sys is a source of conflict. For example,
-x/sys had to be in order to upgrade to Go 1.18.
+That module is maintained by the Go authors, and covers OSes that the syscall
+package neglects.
 
-If we depended on x/sys, we could get more precise functionality needed for
-features such as clocks or more platform support for the compiler runtime.
+After [heavy consideration](https://github.com/wazero/wazero/issues/2434) we
+decided to it as a dependency.
 
-That said, formally supporting an operating system may still require testing as
-even use of x/sys can require platform-specifics. For example, [mmap-go](https://github.com/edsrzf/mmap-go)
-uses x/sys, but also mentions limitations, some not surmountable with x/sys
-alone.
-
-Regardless, we may at some point introduce a separate go.mod for users to use
-x/sys as a platform plugin without forcing all users to maintain that
-dependency.
+Using was shown to improve the experience of using wazero on older,
+or less common, OSes without increasing the maintenance work, or creating
+deployment issues for users of wazero.
 
 ## Project structure
 
