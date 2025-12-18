@@ -76,8 +76,8 @@ Please give us a [star][10] if you end up using wazero!
 
 ### Go
 
-wazero has no dependencies except Go, so the only source of conflict in your
-project's use of wazero is the Go version.
+wazero has no dependencies except Go and [`x/sys`][12], so the only source of
+conflict in your project's use of wazero is the Go version.
 
 wazero follows the same version policy as Go's [Release Policy][5]: two
 versions. wazero will ensure these versions work and bugs are valid if there's
@@ -132,3 +132,4 @@ wazero is a registered trademark of Tetrate.io, Inc. in the United States and/or
 [9]: https://wazero.io/community/users/
 [10]: https://github.com/wazero/wazero/stargazers
 [11]: https://github.com/wazero/wazero/issues/2393
+[12]: https://pkg.go.dev/golang.org/x/sys

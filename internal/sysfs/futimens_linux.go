@@ -4,10 +4,12 @@ import (
 	"syscall"
 	"unsafe"
 
+	"golang.org/x/sys/unix"
+
 	experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
 )
 
-const _UTIME_OMIT = (1 << 30) - 2
+const _UTIME_OMIT = unix.UTIME_OMIT
 
 func utimens(path string, atim, mtim int64) experimentalsys.Errno {
 	times := timesToTimespecs(atim, mtim)
