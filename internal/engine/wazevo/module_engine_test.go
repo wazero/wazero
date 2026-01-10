@@ -278,6 +278,88 @@ func TestModuleEngine_ResolveImportedFunction_recursive(t *testing.T) {
 	}
 }
 
+func TestModuleEngine_ResolveImportedFunction_multilevel(t *testing.T) {
+	var importingOp, midOp, originalOp byte = 0xaa, 0xbb, 0xcc
+	original := &moduleEngine{
+		opaquePtr: &originalOp,
+		parent: &compiledModule{
+			executables:     &executables{executable: make([]byte, 50)},
+			functionOffsets: []int{10},
+		},
+		module: &wasm.ModuleInstance{
+			TypeIDs: []wasm.FunctionTypeID{111},
+			Source:  &wasm.Module{FunctionSection: []wasm.Index{0}},
+		},
+	}
+	mid := &moduleEngine{
+		opaquePtr: &midOp,
+		parent: &compiledModule{
+			executables:     &executables{executable: make([]byte, 50)},
+			functionOffsets: []int{20},
+		},
+		importedFunctions: []importedFunction{{me: original, indexInModule: 0}},
+		module: &wasm.ModuleInstance{
+			TypeIDs: []wasm.FunctionTypeID{222},
+			Source:  &wasm.Module{FunctionSection: []wasm.Index{0}},
+		},
+	}
+
+	importing := &moduleEngine{
+		opaquePtr: &importingOp,
+		parent: &compiledModule{
+			executables:     &executables{executable: make([]byte, 1000)},
+			functionOffsets: []int{500},
+		},
+		importedFunctions: []importedFunction{
+			{me: mid, indexInModule: 0},
+			{me: mid, indexInModule: 1},
+		},
+		module: &wasm.ModuleInstance{
+			TypeIDs: []wasm.FunctionTypeID{999, 333, 222},
+			Source:  &wasm.Module{FunctionSection: []wasm.Index{1}},
+		},
+	}
+
+	const begin = 5000
+	m := &moduleEngine{
+		opaque:            make([]byte, 10000),
+		importedFunctions: make([]importedFunction, 4),
+		parent: &compiledModule{offsets: wazevoapi.ModuleContextOffsetData{
+			ImportedFunctionsBegin: begin,
+		}},
+		module: importing.module,
+	}
+
+	m.ResolveImportedFunction(0, 0, 0, importing)
+	m.ResolveImportedFunction(1, 1, 1, importing)
+	m.ResolveImportedFunction(2, 2, 2, importing)
+
+	for i, tc := range []struct {
+		index               int
+		op                  *byte
+		executable          *byte
+		expTypeID           wasm.FunctionTypeID
+		expImportedFunction importedFunction
+	}{
+		{index: 0, op: &originalOp, executable: &original.parent.executable[10], expTypeID: 999, expImportedFunction: importedFunction{me: original, indexInModule: 0}},
+		{index: 1, op: &midOp, executable: &mid.parent.executable[20], expTypeID: 333, expImportedFunction: importedFunction{me: mid, indexInModule: 1}},
+		{index: 2, op: &importingOp, executable: &importing.parent.executable[500], expTypeID: 222, expImportedFunction: importedFunction{me: importing, indexInModule: 2}},
+	} {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			buf := m.opaque[begin+wazevoapi.FunctionInstanceSize*tc.index:]
+			actualExecutable := binary.LittleEndian.Uint64(buf)
+			actualOpaquePtr := binary.LittleEndian.Uint64(buf[8:])
+			actualTypeID := binary.LittleEndian.Uint64(buf[16:])
+			expExecutable := uint64(uintptr(unsafe.Pointer(tc.executable)))
+			expOpaquePtr := uint64(uintptr(unsafe.Pointer(tc.op)))
+			require.Equal(t, expExecutable, actualExecutable)
+			require.Equal(t, expOpaquePtr, actualOpaquePtr)
+			require.Equal(t, uint64(tc.expTypeID), actualTypeID)
+			require.Equal(t, tc.expImportedFunction, m.importedFunctions[tc.index])
+		})
+	}
+}
+
 func TestModuleEngine_ResolveImportedMemory_reexported(t *testing.T) {
 	m := &moduleEngine{
 		parent: &compiledModule{offsets: wazevoapi.ModuleContextOffsetData{
