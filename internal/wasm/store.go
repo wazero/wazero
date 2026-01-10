@@ -419,6 +419,12 @@ func (m *ModuleInstance) resolveImports(ctx context.Context, module *Module) (er
 		var importedModule *ModuleInstance
 		if resolveImport != nil {
 			if v := resolveImport(moduleName); v != nil {
+				type wrappedModule interface {
+					WrappedModule() api.Module
+				}
+				if wm, ok := v.(wrappedModule); ok {
+					v = wm.WrappedModule()
+				}
 				importedModule = v.(*ModuleInstance)
 			}
 		}
