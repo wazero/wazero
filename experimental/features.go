@@ -14,5 +14,5 @@ import "github.com/tetratelabs/wazero/api"
 //     without mmap, consider editing the binary to reduce the max size setting of memory.
 const CoreFeaturesThreads = api.CoreFeatureSIMD << 1
 
-// CoreFeaturesThreads enables tail call instructions ("tail-call").
+// CoreFeaturesTailCall enables tail call instructions ("tail-call").
 const CoreFeaturesTailCall = api.CoreFeatureSIMD << 2
