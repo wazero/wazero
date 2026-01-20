@@ -155,7 +155,6 @@ func (m *Module) validateTable(enabledFeatures api.CoreFeatures, tables []Table,
 					return 0, nil
 				},
 			)
-
 			if err != nil {
 				return err
 			}
@@ -195,7 +194,6 @@ func (m *Module) validateTable(enabledFeatures api.CoreFeatures, tables []Table,
 					}
 
 					vt, err := m.resolveConstExprGlobalType(SectionIDElement, idx, globalIndex)
-
 					if err != nil {
 						return 0, 0, 0, err
 					}

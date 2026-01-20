@@ -287,7 +287,8 @@ func TestModule_validateTable(t *testing.T) {
 						OffsetExpr: makeConstExpr(OpcodeGlobalGet, []byte{0x1}),
 						Init: []ConstantExpression{
 							makeConstExpr(OpcodeRefFunc, const0),
-							makeConstExpr(OpcodeRefFunc, leb128.EncodeInt32(2))},
+							makeConstExpr(OpcodeRefFunc, leb128.EncodeInt32(2)),
+						},
 						Type: RefTypeFuncref,
 					},
 				},

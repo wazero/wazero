@@ -95,8 +95,7 @@ func test_signal_stack() {
 		GlobalSection: []wasm.Global{{
 			Type: wasm.GlobalType{ValType: wasm.ValueTypeI32, Mutable: true},
 			Init: wasm.ConstantExpression{
-				Opcode: wasm.OpcodeI32Const,
-				Data:   leb128.EncodeInt32(math.MaxInt32),
+				Data: append(append([]byte{wasm.OpcodeI32Const}, leb128.EncodeInt32(math.MaxInt32)...), wasm.OpcodeEnd),
 			},
 		}},
 		ExportSection: []wasm.Export{{Type: wasm.ExternTypeFunc, Name: "long_loop", Index: 0}},
