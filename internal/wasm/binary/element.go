@@ -21,15 +21,15 @@ func ensureElementKindFuncRef(r *bytes.Reader) error {
 	return nil
 }
 
-func decodeElementInitValueVector(r *bytes.Reader) ([]wasm.Index, error) {
+func decodeElementInitValueVector(r *bytes.Reader) ([]wasm.ConstantExpression, error) {
 	vs, _, err := leb128.DecodeUint32(r)
 	if err != nil {
 		return nil, fmt.Errorf("get size of vector: %w", err)
 	}
 
-	vec := make([]wasm.Index, vs)
+	vec := make([]wasm.ConstantExpression, vs)
 	for i := range vec {
-		u32, _, err := leb128.DecodeUint32(r)
+		u32, n, err := leb128.DecodeUint32(r)
 		if err != nil {
 			return nil, fmt.Errorf("read function index: %w", err)
 		}
@@ -37,47 +37,28 @@ func decodeElementInitValueVector(r *bytes.Reader) ([]wasm.Index, error) {
 		if u32 >= wasm.MaximumFunctionIndex {
 			return nil, fmt.Errorf("too large function index in Element init: %d", u32)
 		}
-		vec[i] = u32
+		data := make([]byte, 0, n+2)
+		data = append(data, wasm.OpcodeRefFunc)
+		data = append(data, leb128.EncodeUint32(u32)...)
+		data = append(data, wasm.OpcodeEnd)
+		vec[i] = wasm.ConstantExpression{Data: data}
 	}
 	return vec, nil
 }
 
-func decodeElementConstExprVector(r *bytes.Reader, elemType wasm.RefType, enabledFeatures api.CoreFeatures) ([]wasm.Index, error) {
+func decodeElementConstExprVector(r *bytes.Reader, elemType wasm.RefType, enabledFeatures api.CoreFeatures) ([]wasm.ConstantExpression, error) {
 	vs, _, err := leb128.DecodeUint32(r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get the size of constexpr vector: %w", err)
 	}
-	vec := make([]wasm.Index, vs)
+	vec := make([]wasm.ConstantExpression, vs)
 	for i := range vec {
-		var expr wasm.ConstantExpression
-		err := decodeConstantExpression(r, enabledFeatures, &expr)
+		err := decodeConstantExpression(r, enabledFeatures, &vec[i])
 		if err != nil {
 			return nil, err
 		}
-		switch expr.Opcode {
-		case wasm.OpcodeRefFunc:
-			if elemType != wasm.RefTypeFuncref {
-				return nil, fmt.Errorf("element type mismatch: want %s, but constexpr has funcref", wasm.RefTypeName(elemType))
-			}
-			v, _, _ := leb128.LoadUint32(expr.Data)
-			if v >= wasm.MaximumFunctionIndex {
-				return nil, fmt.Errorf("too large function index in Element init: %d", v)
-			}
-			vec[i] = v
-		case wasm.OpcodeRefNull:
-			if elemType != expr.Data[0] {
-				return nil, fmt.Errorf("element type mismatch: want %s, but constexpr has %s",
-					wasm.RefTypeName(elemType), wasm.RefTypeName(expr.Data[0]))
-			}
-			vec[i] = wasm.ElementInitNullReference
-		case wasm.OpcodeGlobalGet:
-			i32, _, _ := leb128.LoadInt32(expr.Data)
-			// Resolving the reference type from globals is done at instantiation phase. See the comment on
-			// wasm.elementInitImportedGlobalReferenceType.
-			vec[i] = wasm.WrapGlobalIndexAsElementInit(wasm.Index(i32))
-		default:
-			return nil, fmt.Errorf("const expr must be either ref.null or ref.func but was %s", wasm.InstructionName(expr.Opcode))
-		}
+		// Expression will be validated later since we don't yet have globals to resolve the types yet.
+
 	}
 	return vec, nil
 }

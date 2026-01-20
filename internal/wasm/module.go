@@ -6,15 +6,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/experimental"
-	"github.com/tetratelabs/wazero/internal/ieee754"
-	"github.com/tetratelabs/wazero/internal/leb128"
 	"github.com/tetratelabs/wazero/internal/wasmdebug"
 )
 
@@ -409,23 +406,37 @@ func (m *Module) declaredFunctionIndexes() (ret map[Index]struct{}, err error) {
 
 	for i := range m.GlobalSection {
 		g := &m.GlobalSection[i]
-		if g.Init.Opcode == OpcodeRefFunc {
-			var index uint32
-			index, _, err = leb128.LoadUint32(g.Init.Data)
-			if err != nil {
-				err = fmt.Errorf("%s[%d] failed to initialize: %w", SectionIDName(SectionIDGlobal), i, err)
-				return
-			}
-			ret[index] = struct{}{}
+
+		_, _, initErr := g.Init.Evaluate(
+			func(globalIndex Index) (ValueType, uint64, uint64, error) {
+				vt, err := m.resolveConstExprGlobalType(SectionIDGlobal, Index(i), globalIndex)
+				return vt, 0, 0, err
+			},
+			func(funcIndex Index) (Reference, error) {
+				ret[funcIndex] = struct{}{}
+				return 0, nil
+			},
+		)
+
+		if initErr != nil {
+			err = fmt.Errorf("%s[%d] failed to initialize: %w", SectionIDName(SectionIDGlobal), i, initErr)
+			return
 		}
 	}
 
 	for i := range m.ElementSection {
 		elem := &m.ElementSection[i]
-		for _, index := range elem.Init {
-			if index != ElementInitNullReference {
-				ret[index] = struct{}{}
-			}
+		for _, initExpr := range elem.Init {
+			_, _, _ = initExpr.Evaluate(
+				func(globalIndex Index) (ValueType, uint64, uint64, error) {
+					vt, err := m.resolveConstExprGlobalType(SectionIDElement, Index(i), globalIndex)
+					return vt, 0, 0, err
+				},
+				func(funcIndex Index) (Reference, error) {
+					ret[funcIndex] = struct{}{}
+					return 0, nil
+				},
+			)
 		}
 	}
 	return
@@ -531,72 +542,25 @@ func (m *Module) validateExports(enabledFeatures api.CoreFeatures, functions []I
 }
 
 func validateConstExpression(globals []GlobalType, numFuncs uint32, expr *ConstantExpression, expectedType ValueType) (err error) {
-	var actualType ValueType
-	switch expr.Opcode {
-	case OpcodeI32Const:
-		// Treat constants as signed as their interpretation is not yet known per /RATIONALE.md
-		_, _, err = leb128.LoadInt32(expr.Data)
-		if err != nil {
-			return fmt.Errorf("read i32: %w", err)
-		}
-		actualType = ValueTypeI32
-	case OpcodeI64Const:
-		// Treat constants as signed as their interpretation is not yet known per /RATIONALE.md
-		_, _, err = leb128.LoadInt64(expr.Data)
-		if err != nil {
-			return fmt.Errorf("read i64: %w", err)
-		}
-		actualType = ValueTypeI64
-	case OpcodeF32Const:
-		_, err = ieee754.DecodeFloat32(expr.Data)
-		if err != nil {
-			return fmt.Errorf("read f32: %w", err)
-		}
-		actualType = ValueTypeF32
-	case OpcodeF64Const:
-		_, err = ieee754.DecodeFloat64(expr.Data)
-		if err != nil {
-			return fmt.Errorf("read f64: %w", err)
-		}
-		actualType = ValueTypeF64
-	case OpcodeGlobalGet:
-		id, _, err := leb128.LoadUint32(expr.Data)
-		if err != nil {
-			return fmt.Errorf("read index of global: %w", err)
-		}
-		if uint32(len(globals)) <= id {
-			return fmt.Errorf("global index out of range")
-		}
-		actualType = globals[id].ValType
-	case OpcodeRefNull:
-		if len(expr.Data) == 0 {
-			return fmt.Errorf("read reference type for ref.null: %w", io.ErrShortBuffer)
-		}
-		reftype := expr.Data[0]
-		if reftype != RefTypeFuncref && reftype != RefTypeExternref {
-			return fmt.Errorf("invalid type for ref.null: 0x%x", reftype)
-		}
-		actualType = reftype
-	case OpcodeRefFunc:
-		index, _, err := leb128.LoadUint32(expr.Data)
-		if err != nil {
-			return fmt.Errorf("read i32: %w", err)
-		} else if index >= numFuncs {
-			return fmt.Errorf("ref.func index out of range [%d] with length %d", index, numFuncs-1)
-		}
-		actualType = ValueTypeFuncref
-	case OpcodeVecV128Const:
-		if len(expr.Data) != 16 {
-			return fmt.Errorf("%s needs 16 bytes but was %d bytes", OpcodeVecV128ConstName, len(expr.Data))
-		}
-		actualType = ValueTypeV128
-	default:
-		return fmt.Errorf("invalid opcode for const expression: 0x%x", expr.Opcode)
+	_, typ, err := expr.Evaluate(
+		func(globalIndex Index) (ValueType, uint64, uint64, error) {
+			if uint32(len(globals)) <= globalIndex {
+				return 0, 0, 0, fmt.Errorf("global index out of range")
+			}
+			return globals[globalIndex].ValType, 0, 0, nil
+		},
+		func(funcIndex Index) (Reference, error) {
+			if funcIndex >= numFuncs {
+				return 0, fmt.Errorf("ref.func index out of range [%d] with length %d", funcIndex, numFuncs-1)
+			}
+			return 0, nil
+		},
+	)
+	if err != nil {
+		return err
 	}
-
-	if actualType != expectedType {
-		return fmt.Errorf("const expression type mismatch expected %s but got %s",
-			ValueTypeName(expectedType), ValueTypeName(actualType))
+	if typ != expectedType {
+		return fmt.Errorf("const expression type mismatch expected %s but got %s", ValueTypeName(expectedType), ValueTypeName(typ))
 	}
 	return nil
 }
@@ -625,6 +589,50 @@ func (m *ModuleInstance) buildGlobals(module *Module, funcRefResolver func(funcI
 		g.Type = gs.Type
 		g.initialize(importedGlobals, &gs.Init, funcRefResolver)
 	}
+}
+
+func (m *Module) resolveConstExprGlobalType(sectionID SectionID, sectionIdx Index, idx Index) (ValueType, error) {
+	if idx < m.ImportGlobalCount {
+		// Imports are not exclusively globals. This is the current global index in the loop.
+		cur := uint32(0)
+		for i := range m.ImportSection {
+			imp := &m.ImportSection[i]
+			if imp.Type != ExternTypeGlobal {
+				continue
+			}
+			if idx == cur {
+				return imp.DescGlobal.ValType, nil
+			}
+			cur++
+		}
+
+		// should not happen as idx < ImportGlobalCount
+		return 0, fmt.Errorf("index %d not found in imported globals", idx)
+	}
+
+	// NOTE: in the <= 2.0 spec, global.get in a constant expression can only refer to imported globals.
+	// In version 3.0, this restriction is removed, and all globals prior to the current one are allowed.
+	// Not sure if we need to conditionally check this based on enabled features, but for now, we align with 2.0 spec.
+	// To align with 3.0, remove this if block.
+	// To conditionally check based on enabled features, we need to pass enabledFeatures to this function, and replace
+	// `if true` with `if !enabledFeatures.IsEnabled(api.CoreFeatureReferenceGlobalsInConstExpr)`.
+	if true {
+		return 0, fmt.Errorf("%s[%d] (global.get %d): out of range of imported globals", SectionIDName(sectionID), sectionIdx, idx)
+	}
+
+	idx -= uint32(m.ImportGlobalCount)
+
+	// Check that the given global has been initialized.
+	if sectionIdx == Index(SectionIDGlobal) && idx >= sectionIdx {
+		return 0, fmt.Errorf("%s[%d] global %d out of range of initialized globals", SectionIDName(sectionID), sectionIdx, idx)
+	}
+
+	// Bounds check:
+	if idx >= uint32(len(m.GlobalSection)) {
+		return 0, fmt.Errorf("%s[%d] (global.get %d): out of range of initialized globals", SectionIDName(sectionID), sectionIdx, idx)
+	}
+
+	return m.GlobalSection[idx].Type.ValType, nil
 }
 
 func paramNames(localNames IndirectNameMap, funcIdx uint32, paramLen int) []string {
@@ -801,11 +809,6 @@ type GlobalType struct {
 type Global struct {
 	Type GlobalType
 	Init ConstantExpression
-}
-
-type ConstantExpression struct {
-	Opcode Opcode
-	Data   []byte
 }
 
 // Export is the binary representation of an export indicated by Type

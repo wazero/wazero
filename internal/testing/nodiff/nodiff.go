@@ -248,8 +248,12 @@ func ensureDummyImports(r wazero.Runtime, origin *wasm.Module, requireNoError fu
 					opcode = wasm.OpcodeRefNull
 					data = []byte{wasm.RefTypeFuncref}
 				}
+				initData := make([]byte, 2+len(data))
+				copy(initData[1:], data)
+				initData[0] = opcode
+				initData[len(initData)-1] = wasm.OpcodeEnd
 				m.GlobalSection = append(m.GlobalSection, wasm.Global{
-					Type: imp.DescGlobal, Init: wasm.ConstantExpression{Opcode: opcode, Data: data},
+					Type: imp.DescGlobal, Init: wasm.ConstantExpression{Data: initData},
 				})
 			case wasm.ExternTypeMemory:
 				m.MemorySection = imp.DescMem

@@ -22,8 +22,7 @@ func TestDecodeConstantExpression(t *testing.T) {
 				wasm.OpcodeEnd,
 			},
 			exp: wasm.ConstantExpression{
-				Opcode: wasm.OpcodeRefFunc,
-				Data:   []byte{0x80, 0},
+				Data: []byte{wasm.OpcodeRefFunc, 0x80, 0, wasm.OpcodeEnd},
 			},
 		},
 		{
@@ -33,8 +32,7 @@ func TestDecodeConstantExpression(t *testing.T) {
 				wasm.OpcodeEnd,
 			},
 			exp: wasm.ConstantExpression{
-				Opcode: wasm.OpcodeRefFunc,
-				Data:   []byte{0x80, 0x80, 0x80, 0x4f},
+				Data: []byte{wasm.OpcodeRefFunc, 0x80, 0x80, 0x80, 0x4f, wasm.OpcodeEnd},
 			},
 		},
 		{
@@ -44,9 +42,10 @@ func TestDecodeConstantExpression(t *testing.T) {
 				wasm.OpcodeEnd,
 			},
 			exp: wasm.ConstantExpression{
-				Opcode: wasm.OpcodeRefNull,
 				Data: []byte{
+					wasm.OpcodeRefNull,
 					wasm.RefTypeFuncref,
+					wasm.OpcodeEnd,
 				},
 			},
 		},
@@ -57,9 +56,10 @@ func TestDecodeConstantExpression(t *testing.T) {
 				wasm.OpcodeEnd,
 			},
 			exp: wasm.ConstantExpression{
-				Opcode: wasm.OpcodeRefNull,
 				Data: []byte{
+					wasm.OpcodeRefNull,
 					wasm.RefTypeExternref,
+					wasm.OpcodeEnd,
 				},
 			},
 		},
@@ -72,10 +72,12 @@ func TestDecodeConstantExpression(t *testing.T) {
 				wasm.OpcodeEnd,
 			},
 			exp: wasm.ConstantExpression{
-				Opcode: wasm.OpcodeVecV128Const,
 				Data: []byte{
+					wasm.OpcodeVecPrefix,
+					wasm.OpcodeVecV128Const,
 					1, 1, 1, 1, 1, 1, 1, 1,
 					1, 1, 1, 1, 1, 1, 1, 1,
+					wasm.OpcodeEnd,
 				},
 			},
 		},
@@ -104,7 +106,7 @@ func TestDecodeConstantExpression_errors(t *testing.T) {
 				wasm.OpcodeRefFunc,
 				0,
 			},
-			expectedErr: "look for end opcode: EOF",
+			expectedErr: "read const expression opcode: EOF",
 			features:    api.CoreFeatureBulkMemoryOperations,
 		},
 		{

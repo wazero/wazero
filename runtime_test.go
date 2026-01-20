@@ -256,7 +256,9 @@ func TestModule_Global(t *testing.T) {
 				GlobalSection: []wasm.Global{
 					{
 						Type: wasm.GlobalType{ValType: wasm.ValueTypeI64, Mutable: true},
-						Init: wasm.ConstantExpression{Opcode: wasm.OpcodeI64Const, Data: leb128.EncodeInt64(globalVal)},
+						Init: wasm.ConstantExpression{
+							Data: append(append([]byte{wasm.OpcodeI64Const}, leb128.EncodeInt64(globalVal)...), wasm.OpcodeEnd),
+						},
 					},
 				},
 			},
@@ -267,7 +269,9 @@ func TestModule_Global(t *testing.T) {
 				GlobalSection: []wasm.Global{
 					{
 						Type: wasm.GlobalType{ValType: wasm.ValueTypeI64},
-						Init: wasm.ConstantExpression{Opcode: wasm.OpcodeI64Const, Data: leb128.EncodeInt64(globalVal)},
+						Init: wasm.ConstantExpression{
+							Data: append(append([]byte{wasm.OpcodeI64Const}, leb128.EncodeInt64(globalVal)...), wasm.OpcodeEnd),
+						},
 					},
 				},
 				Exports: map[string]*wasm.Export{
@@ -282,7 +286,9 @@ func TestModule_Global(t *testing.T) {
 				GlobalSection: []wasm.Global{
 					{
 						Type: wasm.GlobalType{ValType: wasm.ValueTypeI64, Mutable: true},
-						Init: wasm.ConstantExpression{Opcode: wasm.OpcodeI64Const, Data: leb128.EncodeInt64(globalVal)},
+						Init: wasm.ConstantExpression{
+							Data: append(append([]byte{wasm.OpcodeI64Const}, leb128.EncodeInt64(globalVal)...), wasm.OpcodeEnd),
+						},
 					},
 				},
 				Exports: map[string]*wasm.Export{

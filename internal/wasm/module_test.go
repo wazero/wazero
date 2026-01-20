@@ -10,6 +10,7 @@ import (
 	"github.com/tetratelabs/wazero/experimental"
 	"github.com/tetratelabs/wazero/internal/leb128"
 	"github.com/tetratelabs/wazero/internal/testing/require"
+	"github.com/tetratelabs/wazero/internal/u32"
 	"github.com/tetratelabs/wazero/internal/u64"
 )
 
@@ -212,27 +213,23 @@ func TestModule_allDeclarations(t *testing.T) {
 
 func TestValidateConstExpression(t *testing.T) {
 	t.Run("invalid opcode", func(t *testing.T) {
-		expr := ConstantExpression{Opcode: OpcodeNop}
+		expr := makeConstExpr(OpcodeNop, nil)
 		err := validateConstExpression(nil, 0, &expr, valueTypeUnknown)
 		require.Error(t, err)
 	})
 	for _, vt := range []ValueType{ValueTypeI32, ValueTypeI64, ValueTypeF32, ValueTypeF64} {
 		t.Run(ValueTypeName(vt), func(t *testing.T) {
 			t.Run("valid", func(t *testing.T) {
-				expr := ConstantExpression{}
+				var expr ConstantExpression
 				switch vt {
 				case ValueTypeI32:
-					expr.Data = []byte{1}
-					expr.Opcode = OpcodeI32Const
+					expr = makeConstExpr(OpcodeI32Const, []byte{1})
 				case ValueTypeI64:
-					expr.Data = []byte{2}
-					expr.Opcode = OpcodeI64Const
+					expr = makeConstExpr(OpcodeI64Const, []byte{2})
 				case ValueTypeF32:
-					expr.Data = u64.LeBytes(api.EncodeF32(math.MaxFloat32))
-					expr.Opcode = OpcodeF32Const
+					expr = makeConstExpr(OpcodeF32Const, u32.LeBytes(uint32(api.EncodeF32(math.MaxFloat32))))
 				case ValueTypeF64:
-					expr.Data = u64.LeBytes(api.EncodeF64(math.MaxFloat64))
-					expr.Opcode = OpcodeF64Const
+					expr = makeConstExpr(OpcodeF64Const, u64.LeBytes(api.EncodeF64(math.MaxFloat64)))
 				}
 
 				err := validateConstExpression(nil, 0, &expr, vt)
@@ -240,16 +237,16 @@ func TestValidateConstExpression(t *testing.T) {
 			})
 			t.Run("invalid", func(t *testing.T) {
 				// Empty data must be failure.
-				expr := ConstantExpression{Data: make([]byte, 0)}
+				var expr ConstantExpression
 				switch vt {
 				case ValueTypeI32:
-					expr.Opcode = OpcodeI32Const
+					expr = makeConstExpr(OpcodeI32Const, nil)
 				case ValueTypeI64:
-					expr.Opcode = OpcodeI64Const
+					expr = makeConstExpr(OpcodeI64Const, nil)
 				case ValueTypeF32:
-					expr.Opcode = OpcodeF32Const
+					expr = makeConstExpr(OpcodeF32Const, nil)
 				case ValueTypeF64:
-					expr.Opcode = OpcodeF64Const
+					expr = makeConstExpr(OpcodeF64Const, nil)
 				}
 				err := validateConstExpression(nil, 0, &expr, vt)
 				require.Error(t, err)
@@ -258,23 +255,26 @@ func TestValidateConstExpression(t *testing.T) {
 	}
 	t.Run("ref types", func(t *testing.T) {
 		t.Run("ref.func", func(t *testing.T) {
-			expr := &ConstantExpression{Data: []byte{5}, Opcode: OpcodeRefFunc}
-			err := validateConstExpression(nil, 10, expr, ValueTypeFuncref)
+			expr := makeConstExpr(OpcodeRefFunc, []byte{5})
+			err := validateConstExpression(nil, 10, &expr, ValueTypeFuncref)
 			require.NoError(t, err)
-			err = validateConstExpression(nil, 2, expr, ValueTypeFuncref)
+			err = validateConstExpression(nil, 2, &expr, ValueTypeFuncref)
 			require.EqualError(t, err, "ref.func index out of range [5] with length 1")
 		})
 		t.Run("ref.null", func(t *testing.T) {
+			expr := makeConstExpr(OpcodeRefNull, []byte{ValueTypeFuncref})
 			err := validateConstExpression(nil, 0,
-				&ConstantExpression{Data: []byte{ValueTypeFuncref}, Opcode: OpcodeRefNull},
+				&expr,
 				ValueTypeFuncref)
 			require.NoError(t, err)
+			expr = makeConstExpr(OpcodeRefNull, []byte{ValueTypeExternref})
 			err = validateConstExpression(nil, 0,
-				&ConstantExpression{Data: []byte{ValueTypeExternref}, Opcode: OpcodeRefNull},
+				&expr,
 				ValueTypeExternref)
 			require.NoError(t, err)
+			expr = makeConstExpr(OpcodeRefNull, []byte{0xff})
 			err = validateConstExpression(nil, 0,
-				&ConstantExpression{Data: []byte{0xff}, Opcode: OpcodeRefNull},
+				&expr,
 				ValueTypeExternref)
 			require.EqualError(t, err, "invalid type for ref.null: 0xff")
 		})
@@ -282,15 +282,15 @@ func TestValidateConstExpression(t *testing.T) {
 	t.Run("global expr", func(t *testing.T) {
 		t.Run("failed to read global index", func(t *testing.T) {
 			// Empty data for global index is invalid.
-			expr := &ConstantExpression{Data: make([]byte, 0), Opcode: OpcodeGlobalGet}
-			err := validateConstExpression(nil, 0, expr, valueTypeUnknown)
+			expr := makeConstExpr(OpcodeGlobalGet, make([]byte, 0))
+			err := validateConstExpression(nil, 0, &expr, valueTypeUnknown)
 			require.Error(t, err)
 		})
 		t.Run("global index out of range", func(t *testing.T) {
 			// Data holds the index in leb128 and this time the value exceeds len(globals) (=0).
-			expr := &ConstantExpression{Data: []byte{1}, Opcode: OpcodeGlobalGet}
+			expr := makeConstExpr(OpcodeGlobalGet, []byte{1})
 			var globals []GlobalType
-			err := validateConstExpression(globals, 0, expr, valueTypeUnknown)
+			err := validateConstExpression(globals, 0, &expr, valueTypeUnknown)
 			require.Error(t, err)
 		})
 
@@ -300,10 +300,10 @@ func TestValidateConstExpression(t *testing.T) {
 			} {
 				t.Run(ValueTypeName(vt), func(t *testing.T) {
 					// The index specified in Data equals zero.
-					expr := &ConstantExpression{Data: []byte{0}, Opcode: OpcodeGlobalGet}
+					expr := makeConstExpr(OpcodeGlobalGet, []byte{0})
 					globals := []GlobalType{{ValType: valueTypeUnknown}}
 
-					err := validateConstExpression(globals, 0, expr, vt)
+					err := validateConstExpression(globals, 0, &expr, vt)
 					require.Error(t, err)
 				})
 			}
@@ -314,10 +314,10 @@ func TestValidateConstExpression(t *testing.T) {
 			} {
 				t.Run(ValueTypeName(vt), func(t *testing.T) {
 					// The index specified in Data equals zero.
-					expr := &ConstantExpression{Data: []byte{0}, Opcode: OpcodeGlobalGet}
+					expr := makeConstExpr(OpcodeGlobalGet, []byte{0})
 					globals := []GlobalType{{ValType: vt}}
 
-					err := validateConstExpression(globals, 0, expr, vt)
+					err := validateConstExpression(globals, 0, &expr, vt)
 					require.NoError(t, err)
 				})
 			}
@@ -405,7 +405,7 @@ func TestModule_validateGlobals(t *testing.T) {
 			{
 				Type: GlobalType{ValType: ValueTypeI32},
 				// Trying to reference globals[1] which is not imported.
-				Init: ConstantExpression{Opcode: OpcodeGlobalGet, Data: []byte{1}},
+				Init: makeConstExpr(OpcodeGlobalGet, []byte{1}),
 			},
 		}}
 		err := m.validateGlobals(nil, 0, 9)
@@ -416,7 +416,7 @@ func TestModule_validateGlobals(t *testing.T) {
 		m := Module{GlobalSection: []Global{
 			{
 				Type: GlobalType{ValType: valueTypeUnknown},
-				Init: ConstantExpression{Opcode: OpcodeUnreachable},
+				Init: makeConstExpr(OpcodeUnreachable, nil),
 			},
 		}}
 		err := m.validateGlobals(nil, 0, 9)
@@ -427,7 +427,7 @@ func TestModule_validateGlobals(t *testing.T) {
 		m := Module{GlobalSection: []Global{
 			{
 				Type: GlobalType{ValType: ValueTypeI32},
-				Init: ConstantExpression{Opcode: OpcodeI32Const, Data: const0},
+				Init: makeConstExpr(OpcodeI32Const, const0),
 			},
 		}}
 		err := m.validateGlobals(nil, 0, 9)
@@ -440,7 +440,7 @@ func TestModule_validateGlobals(t *testing.T) {
 				{
 					Type: GlobalType{ValType: ValueTypeI32},
 					// Trying to reference globals[1] which is imported.
-					Init: ConstantExpression{Opcode: OpcodeGlobalGet, Data: []byte{0}},
+					Init: makeConstExpr(OpcodeGlobalGet, []byte{0}),
 				},
 			},
 			ImportSection: []Import{{Type: ExternTypeGlobal}},
@@ -549,20 +549,15 @@ func TestModule_validateMemory(t *testing.T) {
 	})
 	t.Run("invalid const expr", func(t *testing.T) {
 		m := Module{DataSection: []DataSegment{{
-			OffsetExpression: ConstantExpression{
-				Opcode: OpcodeUnreachable, // Invalid!
-			},
+			OffsetExpression: makeConstExpr(OpcodeUnreachable, nil),
 		}}}
 		err := m.validateMemory(&Memory{}, nil, api.CoreFeaturesV1)
 		require.EqualError(t, err, "calculate offset: invalid opcode for const expression: 0x0")
 	})
 	t.Run("ok", func(t *testing.T) {
 		m := Module{DataSection: []DataSegment{{
-			Init: []byte{0x1},
-			OffsetExpression: ConstantExpression{
-				Opcode: OpcodeI32Const,
-				Data:   leb128.EncodeInt32(1),
-			},
+			Init:             []byte{0x1},
+			OffsetExpression: makeConstExpr(OpcodeI32Const, leb128.EncodeInt32(1)),
 		}}}
 		err := m.validateMemory(&Memory{}, nil, api.CoreFeaturesV1)
 		require.NoError(t, err)
@@ -752,54 +747,42 @@ func TestModule_buildGlobals(t *testing.T) {
 		GlobalSection: []Global{
 			{
 				Type: GlobalType{Mutable: true, ValType: ValueTypeF64},
-				Init: ConstantExpression{
-					Opcode: OpcodeF64Const,
-					Data:   u64.LeBytes(api.EncodeF64(math.MaxFloat64)),
-				},
+				Init: makeConstExpr(OpcodeF64Const, u64.LeBytes(api.EncodeF64(math.MaxFloat64))),
 			},
 			{
 				Type: GlobalType{Mutable: false, ValType: ValueTypeI32},
-				Init: ConstantExpression{
-					Opcode: OpcodeI32Const,
-					Data:   leb128.EncodeInt32(math.MaxInt32),
-				},
+				Init: makeConstExpr(OpcodeI32Const, leb128.EncodeInt32(math.MaxInt32)),
 			},
 			{
 				Type: GlobalType{Mutable: false, ValType: ValueTypeI32},
-				Init: ConstantExpression{
-					Opcode: OpcodeI32Const,
-					Data:   leb128.EncodeInt32(minusOne),
-				},
+				Init: makeConstExpr(OpcodeI32Const, leb128.EncodeInt32(minusOne)),
 			},
 			{
 				Type: GlobalType{Mutable: false, ValType: ValueTypeV128},
-				Init: ConstantExpression{
-					Opcode: OpcodeVecV128Const,
-					Data: []byte{
-						1, 0, 0, 0, 0, 0, 0, 0,
-						2, 0, 0, 0, 0, 0, 0, 0,
-					},
-				},
+				Init: makeConstExpr(OpcodeVecV128Const, []byte{
+					1, 0, 0, 0, 0, 0, 0, 0,
+					2, 0, 0, 0, 0, 0, 0, 0,
+				}),
 			},
 			{
 				Type: GlobalType{Mutable: false, ValType: ValueTypeExternref},
-				Init: ConstantExpression{Opcode: OpcodeRefNull, Data: []byte{ValueTypeExternref}},
+				Init: makeConstExpr(OpcodeRefNull, []byte{ValueTypeExternref}),
 			},
 			{
 				Type: GlobalType{Mutable: false, ValType: ValueTypeFuncref},
-				Init: ConstantExpression{Opcode: OpcodeRefNull, Data: []byte{ValueTypeFuncref}},
+				Init: makeConstExpr(OpcodeRefNull, []byte{ValueTypeFuncref}),
 			},
 			{
 				Type: GlobalType{Mutable: false, ValType: ValueTypeFuncref},
-				Init: ConstantExpression{Opcode: OpcodeRefFunc, Data: leb128.EncodeUint32(localFuncRefInstructionIndex)},
+				Init: makeConstExpr(OpcodeRefFunc, leb128.EncodeUint32(localFuncRefInstructionIndex)),
 			},
 			{
 				Type: GlobalType{Mutable: false, ValType: ValueTypeExternref},
-				Init: ConstantExpression{Opcode: OpcodeGlobalGet, Data: []byte{0}},
+				Init: makeConstExpr(OpcodeGlobalGet, []byte{0}),
 			},
 			{
 				Type: GlobalType{Mutable: false, ValType: ValueTypeFuncref},
-				Init: ConstantExpression{Opcode: OpcodeGlobalGet, Data: []byte{1}},
+				Init: makeConstExpr(OpcodeGlobalGet, []byte{1}),
 			},
 		},
 	}
@@ -930,15 +913,28 @@ func TestModule_declaredFunctionIndexes(t *testing.T) {
 				ElementSection: []ElementSegment{
 					{
 						Mode: ElementModeActive,
-						Init: []Index{0, ElementInitNullReference, 5},
+						Init: []ConstantExpression{
+							makeConstExpr(OpcodeRefFunc, []byte{0}),
+							makeConstExpr(OpcodeRefNull, []byte{ValueTypeExternref}),
+							makeConstExpr(OpcodeRefFunc, []byte{5}),
+						},
 					},
 					{
 						Mode: ElementModeDeclarative,
-						Init: []Index{1, ElementInitNullReference, 5},
+						Init: []ConstantExpression{
+							makeConstExpr(OpcodeRefFunc, []byte{1}),
+							makeConstExpr(OpcodeRefNull, []byte{ValueTypeExternref}),
+							makeConstExpr(OpcodeRefFunc, []byte{5}),
+						},
 					},
 					{
 						Mode: ElementModePassive,
-						Init: []Index{5, 2, ElementInitNullReference, ElementInitNullReference},
+						Init: []ConstantExpression{
+							makeConstExpr(OpcodeRefFunc, []byte{5}),
+							makeConstExpr(OpcodeRefFunc, []byte{2}),
+							makeConstExpr(OpcodeRefNull, []byte{ValueTypeExternref}),
+							makeConstExpr(OpcodeRefNull, []byte{ValueTypeExternref}),
+						},
 					},
 				},
 			},
@@ -953,30 +949,37 @@ func TestModule_declaredFunctionIndexes(t *testing.T) {
 				},
 				GlobalSection: []Global{
 					{
-						Init: ConstantExpression{
-							Opcode: OpcodeI32Const, // not funcref.
-							Data:   leb128.EncodeInt32(-1),
-						},
+						Init: makeConstExpr(OpcodeI32Const, leb128.EncodeInt32(-1)),
 					},
 					{
-						Init: ConstantExpression{
-							Opcode: OpcodeRefFunc,
-							Data:   leb128.EncodeInt32(123),
-						},
+						Init: makeConstExpr(OpcodeRefFunc, leb128.EncodeInt32(123)),
 					},
 				},
 				ElementSection: []ElementSegment{
 					{
 						Mode: ElementModeActive,
-						Init: []Index{0, ElementInitNullReference, 5},
+						Init: []ConstantExpression{
+							makeConstExpr(OpcodeRefFunc, []byte{0}),
+							makeConstExpr(OpcodeRefNull, []byte{ValueTypeExternref}),
+							makeConstExpr(OpcodeRefFunc, []byte{5}),
+						},
 					},
 					{
 						Mode: ElementModeDeclarative,
-						Init: []Index{1, ElementInitNullReference, 5},
+						Init: []ConstantExpression{
+							makeConstExpr(OpcodeRefFunc, []byte{1}),
+							makeConstExpr(OpcodeRefNull, []byte{ValueTypeExternref}),
+							makeConstExpr(OpcodeRefFunc, []byte{5}),
+						},
 					},
 					{
 						Mode: ElementModePassive,
-						Init: []Index{5, 2, ElementInitNullReference, ElementInitNullReference},
+						Init: []ConstantExpression{
+							makeConstExpr(OpcodeRefFunc, []byte{5}),
+							makeConstExpr(OpcodeRefFunc, []byte{2}),
+							makeConstExpr(OpcodeRefNull, []byte{ValueTypeExternref}),
+							makeConstExpr(OpcodeRefNull, []byte{ValueTypeExternref}),
+						},
 					},
 				},
 			},
@@ -986,15 +989,12 @@ func TestModule_declaredFunctionIndexes(t *testing.T) {
 			mod: &Module{
 				GlobalSection: []Global{
 					{
-						Init: ConstantExpression{
-							Opcode: OpcodeRefFunc,
-							Data:   nil,
-						},
+						Init: makeConstExpr(OpcodeRefFunc, nil),
 					},
 				},
 			},
 			name:   "invalid global",
-			expErr: `global[0] failed to initialize: EOF`,
+			expErr: `global[0] failed to initialize: unexpected EOF`,
 		},
 	}
 

@@ -3,7 +3,6 @@ package binaryencoding
 import (
 	"testing"
 
-	"github.com/tetratelabs/wazero/internal/leb128"
 	"github.com/tetratelabs/wazero/internal/testing/require"
 	"github.com/tetratelabs/wazero/internal/wasm"
 )
@@ -179,7 +178,7 @@ func TestModule_Encode(t *testing.T) {
 				GlobalSection: []wasm.Global{
 					{
 						Type: wasm.GlobalType{ValType: i32, Mutable: true},
-						Init: wasm.ConstantExpression{Opcode: wasm.OpcodeI32Const, Data: leb128.EncodeInt32(0)},
+						Init: wasm.ConstantExpression{Data: []byte{wasm.OpcodeI32Const, 0, wasm.OpcodeEnd}},
 					},
 				},
 				ExportSection: []wasm.Export{

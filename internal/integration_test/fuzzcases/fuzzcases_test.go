@@ -374,8 +374,7 @@ func Test888(t *testing.T) {
 						Mutable: false,
 					},
 					Init: wasm.ConstantExpression{
-						Opcode: wasm.OpcodeRefNull,
-						Data:   []byte{wasm.ValueTypeFuncref},
+						Data: []byte{wasm.OpcodeRefNull, wasm.ValueTypeFuncref, wasm.OpcodeEnd},
 					},
 				},
 			},

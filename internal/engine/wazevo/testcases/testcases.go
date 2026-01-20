@@ -1781,7 +1781,17 @@ var (
 				{
 					OffsetExpr: constExprI32(0), TableIndex: 0, Type: wasm.RefTypeFuncref, Mode: wasm.ElementModeActive,
 					// Set the function 1, 2, 3 at the beginning of the table.
-					Init: []wasm.Index{1, 2, 3},
+					Init: []wasm.ConstantExpression{
+						{
+							Data: []byte{wasm.OpcodeRefFunc, 1, wasm.OpcodeEnd},
+						},
+						{
+							Data: []byte{wasm.OpcodeRefFunc, 2, wasm.OpcodeEnd},
+						},
+						{
+							Data: []byte{wasm.OpcodeRefFunc, 3, wasm.OpcodeEnd},
+						},
+					},
 				},
 			},
 			CodeSection: []wasm.Code{
@@ -2770,46 +2780,56 @@ func maskedBuf(size int) []byte {
 }
 
 func constExprI32(i int32) wasm.ConstantExpression {
+	encoded := leb128.EncodeInt32(i)
+	data := make([]byte, 2+len(encoded))
+	copy(data[1:], encoded)
+	data[0] = wasm.OpcodeI32Const
+	data[len(data)-1] = wasm.OpcodeEnd
 	return wasm.ConstantExpression{
-		Opcode: wasm.OpcodeI32Const,
-		Data:   leb128.EncodeInt32(i),
+		Data: data,
 	}
 }
 
 func constExprI64(i int64) wasm.ConstantExpression {
+	encoded := leb128.EncodeInt64(i)
+	data := make([]byte, 2+len(encoded))
+	copy(data[1:], encoded)
+	data[0] = wasm.OpcodeI64Const
+	data[len(data)-1] = wasm.OpcodeEnd
 	return wasm.ConstantExpression{
-		Opcode: wasm.OpcodeI64Const,
-		Data:   leb128.EncodeInt64(i),
+		Data: data,
 	}
 }
 
 func constExprF32(i float32) wasm.ConstantExpression {
 	b := math.Float32bits(i)
 	return wasm.ConstantExpression{
-		Opcode: wasm.OpcodeF32Const,
-		Data:   []byte{byte(b), byte(b >> 8), byte(b >> 16), byte(b >> 24)},
+		Data: []byte{wasm.OpcodeF32Const, byte(b), byte(b >> 8), byte(b >> 16), byte(b >> 24), wasm.OpcodeEnd},
 	}
 }
 
 func constExprF64(i float64) wasm.ConstantExpression {
 	b := math.Float64bits(i)
 	return wasm.ConstantExpression{
-		Opcode: wasm.OpcodeF64Const,
 		Data: []byte{
+			wasm.OpcodeF64Const,
 			byte(b), byte(b >> 8), byte(b >> 16), byte(b >> 24),
 			byte(b >> 32), byte(b >> 40), byte(b >> 48), byte(b >> 56),
+			wasm.OpcodeEnd,
 		},
 	}
 }
 
 func constExprV128(lo, hi uint64) wasm.ConstantExpression {
 	return wasm.ConstantExpression{
-		Opcode: wasm.OpcodeVecV128Const,
 		Data: []byte{
+			wasm.OpcodeVecPrefix,
+			wasm.OpcodeVecV128Const,
 			byte(lo), byte(lo >> 8), byte(lo >> 16), byte(lo >> 24),
 			byte(lo >> 32), byte(lo >> 40), byte(lo >> 48), byte(lo >> 56),
 			byte(hi), byte(hi >> 8), byte(hi >> 16), byte(hi >> 24),
 			byte(hi >> 32), byte(hi >> 40), byte(hi >> 48), byte(hi >> 56),
+			wasm.OpcodeEnd,
 		},
 	}
 }

@@ -12,34 +12,24 @@ import (
 )
 
 func decodeConstantExpression(r *bytes.Reader, enabledFeatures api.CoreFeatures, ret *wasm.ConstantExpression) error {
-	b, err := r.ReadByte()
-	if err != nil {
-		return fmt.Errorf("read opcode: %v", err)
-	}
-
-	remainingBeforeData := int64(r.Len())
-	offsetAtData := r.Size() - remainingBeforeData
-
-	// TODO: this ain't good enough.
-	// Constants are encoded in postfix notation.
-	// Probably need to build an ConstantExpression stack,
-	// OpcodeAdd/Sub/Mul can check and consume
-	// their arguments from the stack to build a tree,
-	// and OpcodeEnd can check the stack is empty.
-	// Then, everywhere ConstantExpression is used needs updating.
-	opcode := b
+	lenAtStart := r.Len()
+	startPos := r.Size() - int64(lenAtStart)
 	for {
+		opcode, err := r.ReadByte()
+		if err != nil {
+			return fmt.Errorf("read const expression opcode: %v", err)
+		}
 		switch opcode {
 		case wasm.OpcodeI32Const:
 			// Treat constants as signed as their interpretation is not yet known per /RATIONALE.md
 			_, _, err = leb128.DecodeInt32(r)
 		case wasm.OpcodeI32Add, wasm.OpcodeI32Sub, wasm.OpcodeI32Mul:
-			//
+			// No immediate to read.
 		case wasm.OpcodeI64Const:
 			// Treat constants as signed as their interpretation is not yet known per /RATIONALE.md
 			_, _, err = leb128.DecodeInt64(r)
 		case wasm.OpcodeI64Add, wasm.OpcodeI64Sub, wasm.OpcodeI64Mul:
-			//
+			// No immediate to read.
 		case wasm.OpcodeF32Const:
 			buf := make([]byte, 4)
 			if _, err := io.ReadFull(r, buf); err != nil {
@@ -83,37 +73,25 @@ func decodeConstantExpression(r *bytes.Reader, enabledFeatures api.CoreFeatures,
 				return fmt.Errorf("invalid vector opcode for const expression: %#x", opcode)
 			}
 
-			remainingBeforeData = int64(r.Len())
-			offsetAtData = r.Size() - remainingBeforeData
-
 			n, err := r.Read(make([]byte, 16))
 			if err != nil {
 				return fmt.Errorf("read vector const instruction immediates: %w", err)
 			} else if n != 16 {
 				return fmt.Errorf("read vector const instruction immediates: needs 16 bytes but was %d bytes", n)
 			}
+		case wasm.OpcodeEnd:
+			data := make([]byte, lenAtStart-(r.Len()))
+			if _, err := r.ReadAt(data, startPos); err != nil {
+				return fmt.Errorf("error re-buffering ConstantExpression.Data: %w", err)
+			}
+			ret.Data = data
+			return nil
 		default:
-			return fmt.Errorf("%v for const expression opt code: %#x", ErrInvalidByte, b)
+			return fmt.Errorf("%v for const expression op code: %#x", ErrInvalidByte, opcode)
 		}
 
 		if err != nil {
 			return fmt.Errorf("read value: %v", err)
 		}
-
-		if b, err = r.ReadByte(); err != nil {
-			return fmt.Errorf("look for end opcode: %v", err)
-		}
-
-		if b == wasm.OpcodeEnd {
-			break
-		}
-		opcode = b
 	}
-
-	ret.Data = make([]byte, remainingBeforeData-int64(r.Len())-1)
-	if _, err = r.ReadAt(ret.Data, offsetAtData); err != nil {
-		return fmt.Errorf("error re-buffering ConstantExpression.Data")
-	}
-	ret.Opcode = opcode
-	return nil
 }

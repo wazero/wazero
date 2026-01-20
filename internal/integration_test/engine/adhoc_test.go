@@ -938,11 +938,13 @@ func testLookupFunction(t *testing.T, r wazero.Runtime) {
 		ElementSection: []wasm.ElementSegment{
 			{
 				OffsetExpr: wasm.ConstantExpression{
-					Opcode: wasm.OpcodeI32Const,
-					Data:   []byte{0},
+					Data: []byte{wasm.OpcodeI32Const, 0, wasm.OpcodeEnd},
 				},
 				TableIndex: 0,
-				Init:       []wasm.Index{2, 0},
+				Init: []wasm.ConstantExpression{
+					{Data: []byte{wasm.OpcodeRefFunc, 2, wasm.OpcodeEnd}},
+					{Data: []byte{wasm.OpcodeRefFunc, 0, wasm.OpcodeEnd}},
+				},
 			},
 		},
 	})
@@ -1358,11 +1360,11 @@ func testBeforeListenerGlobals(t *testing.T, r wazero.Runtime) {
 		GlobalSection: []wasm.Global{
 			{
 				Type: wasm.GlobalType{ValType: wasm.ValueTypeI32, Mutable: true},
-				Init: wasm.ConstantExpression{Opcode: wasm.OpcodeI32Const, Data: leb128.EncodeInt32(100)},
+				Init: wasm.ConstantExpression{Data: append(append([]byte{wasm.OpcodeI32Const}, leb128.EncodeInt32(100)...), wasm.OpcodeEnd)},
 			},
 			{
 				Type: wasm.GlobalType{ValType: wasm.ValueTypeI32, Mutable: true},
-				Init: wasm.ConstantExpression{Opcode: wasm.OpcodeI32Const, Data: leb128.EncodeInt32(200)},
+				Init: wasm.ConstantExpression{Data: append(append([]byte{wasm.OpcodeI32Const}, leb128.EncodeInt32(200)...), wasm.OpcodeEnd)},
 			},
 		},
 		CodeSection: []wasm.Code{
@@ -2136,7 +2138,7 @@ func testImportedMutableGlobalUpdate(t *testing.T, r wazero.Runtime) {
 		GlobalSection: []wasm.Global{
 			{
 				Type: wasm.GlobalType{ValType: i32, Mutable: true},
-				Init: wasm.ConstantExpression{Opcode: wasm.OpcodeI32Const, Data: []byte{1}},
+				Init: wasm.ConstantExpression{Data: []byte{wasm.OpcodeI32Const, 1, wasm.OpcodeEnd}},
 			},
 		},
 		NameSection: &wasm.NameSection{ModuleName: "imported"},
@@ -2245,11 +2247,13 @@ func testCloseTableExportingModule(t *testing.T, r wazero.Runtime) {
 		ElementSection: []wasm.ElementSegment{
 			{
 				OffsetExpr: wasm.ConstantExpression{
-					Opcode: wasm.OpcodeI32Const,
-					Data:   leb128.EncodeInt32(5),
+					Data: append(append([]byte{wasm.OpcodeI32Const}, leb128.EncodeInt32(5)...), wasm.OpcodeEnd),
 				}, TableIndex: 0, Type: wasm.RefTypeFuncref, Mode: wasm.ElementModeActive,
 				// Set the function 0, 1 at table offset 5.
-				Init: []wasm.Index{0, 1},
+				Init: []wasm.ConstantExpression{
+					{Data: []byte{wasm.OpcodeRefFunc, 0, wasm.OpcodeEnd}},
+					{Data: []byte{wasm.OpcodeRefFunc, 1, wasm.OpcodeEnd}},
+				},
 			},
 		},
 		TypeSection:     []wasm.FunctionType{{Results: []wasm.ValueType{i32}}},
@@ -2358,11 +2362,13 @@ func testCloseTableImportingModule(t *testing.T, r wazero.Runtime) {
 		ElementSection: []wasm.ElementSegment{
 			{
 				OffsetExpr: wasm.ConstantExpression{
-					Opcode: wasm.OpcodeI32Const,
-					Data:   leb128.EncodeInt32(5),
+					Data: append(append([]byte{wasm.OpcodeI32Const}, leb128.EncodeInt32(5)...), wasm.OpcodeEnd),
 				}, TableIndex: 0, Type: wasm.RefTypeFuncref, Mode: wasm.ElementModeActive,
 				// Set the function 0, 1 at table offset 5.
-				Init: []wasm.Index{0, 1},
+				Init: []wasm.ConstantExpression{
+					{Data: []byte{wasm.OpcodeRefFunc, 0, wasm.OpcodeEnd}},
+					{Data: []byte{wasm.OpcodeRefFunc, 1, wasm.OpcodeEnd}},
+				},
 			},
 		},
 		FunctionSection: []wasm.Index{0, 0},

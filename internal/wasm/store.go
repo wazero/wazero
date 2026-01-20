@@ -2,7 +2,6 @@ package wasm
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
@@ -12,7 +11,6 @@ import (
 	"github.com/tetratelabs/wazero/experimental"
 	"github.com/tetratelabs/wazero/internal/expctxkeys"
 	"github.com/tetratelabs/wazero/internal/internalapi"
-	"github.com/tetratelabs/wazero/internal/leb128"
 	internalsys "github.com/tetratelabs/wazero/internal/sys"
 	"github.com/tetratelabs/wazero/sys"
 )
@@ -181,14 +179,8 @@ func (m *ModuleInstance) buildElementInstances(elements []ElementSegment) {
 			inst := make([]Reference, len(inits))
 			m.ElementInstances[i] = inst
 			for j, idx := range inits {
-				if index, ok := unwrapElementInitGlobalReference(idx); ok {
-					global := m.Globals[index]
-					inst[j] = Reference(global.Val)
-				} else {
-					if idx != ElementInitNullReference {
-						inst[j] = m.Engine.FunctionInstanceReference(idx)
-					}
-				}
+				initExprResults := idx.evaluateInModuleInstance(m)
+				inst[j] = Reference(initExprResults[0])
 			}
 		}
 	}
@@ -202,17 +194,8 @@ func (m *ModuleInstance) applyElements(elems []ElementSegment) {
 			len(elem.Init) == 0 {
 			continue
 		}
-		var offset uint32
-		if elem.OffsetExpr.Opcode == OpcodeGlobalGet {
-			// Ignore error as it's already validated.
-			globalIdx, _, _ := leb128.LoadUint32(elem.OffsetExpr.Data)
-			global := m.Globals[globalIdx]
-			offset = uint32(global.Val)
-		} else {
-			// Ignore error as it's already validated.
-			o, _, _ := leb128.LoadInt32(elem.OffsetExpr.Data)
-			offset = uint32(o)
-		}
+		offsetExprResults := elem.OffsetExpr.evaluateInModuleInstance(m)
+		offset := uint32(offsetExprResults[0])
 
 		table := m.Tables[elem.TableIndex]
 		references := table.References
@@ -233,18 +216,8 @@ func (m *ModuleInstance) applyElements(elems []ElementSegment) {
 			}
 		} else {
 			for i, init := range elem.Init {
-				if init == ElementInitNullReference {
-					continue
-				}
-
-				var ref Reference
-				if index, ok := unwrapElementInitGlobalReference(init); ok {
-					global := m.Globals[index]
-					ref = Reference(global.Val)
-				} else {
-					ref = m.Engine.FunctionInstanceReference(index)
-				}
-				references[offset+uint32(i)] = ref
+				initExprResults := init.evaluateInModuleInstance(m)
+				references[offset+uint32(i)] = Reference(initExprResults[0])
 			}
 		}
 	}
@@ -256,7 +229,25 @@ func (m *ModuleInstance) validateData(data []DataSegment) (err error) {
 	for i := range data {
 		d := &data[i]
 		if !d.IsPassive() {
-			offset := int(executeConstExpressionI32(m.Globals, &d.OffsetExpression))
+			results, typ, err := d.OffsetExpression.Evaluate(
+				func(globalIndex Index) (ValueType, uint64, uint64, error) {
+					if globalIndex >= Index(len(m.Globals)) {
+						return 0, 0, 0, errors.New("global index out of range")
+					}
+					g := m.Globals[globalIndex]
+					return g.Type.ValType, g.Val, g.ValHi, nil
+				},
+				func(funcIndex Index) (Reference, error) {
+					return m.Engine.FunctionInstanceReference(funcIndex), nil
+				},
+			)
+			if err != nil {
+				return fmt.Errorf("%s[%d] failed to evaluate offset expression: %w", SectionIDName(SectionIDData), i, err)
+			}
+			if typ != ValueTypeI32 {
+				return fmt.Errorf("%s[%d] offset expression must return i32 but was %s", SectionIDName(SectionIDData), i, ValueTypeName(typ))
+			}
+			offset := int(results[0])
 			ceil := offset + len(d.Init)
 			if offset < 0 || ceil > len(m.MemoryInstance.Buffer) {
 				return fmt.Errorf("%s[%d]: out of bounds memory access", SectionIDName(SectionIDData), i)
@@ -275,8 +266,9 @@ func (m *ModuleInstance) applyData(data []DataSegment) error {
 		d := &data[i]
 		m.DataInstances[i] = d.Init
 		if !d.IsPassive() {
-			offset := executeConstExpressionI32(m.Globals, &d.OffsetExpression)
-			if offset < 0 || int(offset)+len(d.Init) > len(m.MemoryInstance.Buffer) {
+			offsetExprResults := d.OffsetExpression.evaluateInModuleInstance(m)
+			offset := int(offsetExprResults[0])
+			if offset < 0 || offset+len(d.Init) > len(m.MemoryInstance.Buffer) {
 				return fmt.Errorf("%s[%d]: out of bounds memory access", SectionIDName(SectionIDData), i)
 			}
 			copy(m.MemoryInstance.Buffer[offset:], d.Init)
@@ -531,67 +523,26 @@ func errorInvalidImport(i *Import, err error) error {
 	return fmt.Errorf("import %s[%s.%s]: %w", ExternTypeName(i.Type), i.Module, i.Name, err)
 }
 
-// executeConstExpressionI32 executes the ConstantExpression which returns ValueTypeI32.
-// The validity of the expression is ensured when calling this function as this is only called
-// during instantiation phrase, and the validation happens in compilation (validateConstExpression).
-func executeConstExpressionI32(importedGlobals []*GlobalInstance, expr *ConstantExpression) (ret int32) {
-	switch expr.Opcode {
-	case OpcodeI32Const:
-		ret, _, _ = leb128.LoadInt32(expr.Data)
-	case OpcodeGlobalGet:
-		id, _, _ := leb128.LoadUint32(expr.Data)
-		g := importedGlobals[id]
-		ret = int32(g.Val)
-	}
-	return
-}
-
 // initialize initializes the value of this global instance given the const expr and imported globals.
 // funcRefResolver is called to get the actual funcref (engine specific) from the OpcodeRefFunc const expr.
 //
 // Global initialization constant expression can only reference the imported globals.
 // See the note on https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#constant-expressions%E2%91%A0
 func (g *GlobalInstance) initialize(importedGlobals []*GlobalInstance, expr *ConstantExpression, funcRefResolver func(funcIndex Index) Reference) {
-	switch expr.Opcode {
-	case OpcodeI32Const:
-		// Treat constants as signed as their interpretation is not yet known per /RATIONALE.md
-		v, _, _ := leb128.LoadInt32(expr.Data)
-		g.Val = uint64(uint32(v))
-	case OpcodeI64Const:
-		// Treat constants as signed as their interpretation is not yet known per /RATIONALE.md
-		v, _, _ := leb128.LoadInt64(expr.Data)
-		g.Val = uint64(v)
-	case OpcodeF32Const:
-		g.Val = uint64(binary.LittleEndian.Uint32(expr.Data))
-	case OpcodeF64Const:
-		g.Val = binary.LittleEndian.Uint64(expr.Data)
-	case OpcodeGlobalGet:
-		id, _, _ := leb128.LoadUint32(expr.Data)
-		importedG := importedGlobals[id]
-		switch importedG.Type.ValType {
-		case ValueTypeI32:
-			g.Val = uint64(uint32(importedG.Val))
-		case ValueTypeI64:
-			g.Val = importedG.Val
-		case ValueTypeF32:
-			g.Val = importedG.Val
-		case ValueTypeF64:
-			g.Val = importedG.Val
-		case ValueTypeV128:
-			g.Val, g.ValHi = importedG.Val, importedG.ValHi
-		case ValueTypeFuncref, ValueTypeExternref:
-			g.Val = importedG.Val
-		}
-	case OpcodeRefNull:
-		switch expr.Data[0] {
-		case ValueTypeExternref, ValueTypeFuncref:
-			g.Val = 0 // Reference types are opaque 64bit pointer at runtime.
-		}
-	case OpcodeRefFunc:
-		v, _, _ := leb128.LoadUint32(expr.Data)
-		g.Val = uint64(funcRefResolver(v))
-	case OpcodeVecV128Const:
-		g.Val, g.ValHi = binary.LittleEndian.Uint64(expr.Data[0:8]), binary.LittleEndian.Uint64(expr.Data[8:16])
+	result, _, _ := expr.Evaluate(
+		func(globalIndex Index) (ValueType, uint64, uint64, error) {
+			g := importedGlobals[globalIndex]
+			return g.Type.ValType, g.Val, g.ValHi, nil
+		},
+		func(funcIndex Index) (Reference, error) {
+			return funcRefResolver(funcIndex), nil
+		},
+	)
+	switch len(result) {
+	case 1:
+		g.Val = result[0]
+	case 2:
+		g.Val, g.ValHi = result[0], result[1]
 	}
 }
 
