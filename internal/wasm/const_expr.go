@@ -220,17 +220,23 @@ func (e *ConstantExpression) Evaluate(globalResolver func(globalIndex Index) (Va
 	}
 }
 
-func makeConstExpr(
+func MakeConstantExpressionFromOpcode(
 	opcode byte, opData []byte,
 ) ConstantExpression {
+	data := make([]byte, 0, 3+len(opData)) // 2 for opcode and optional vec prefix, 1 for end
 	if opcode == OpcodeVecV128Const {
-		opcode = OpcodeVecPrefix
+		data = append(data, OpcodeVecPrefix)
 	}
-	data := []byte{opcode}
-	if opcode == OpcodeVecPrefix {
-		data = append(data, OpcodeVecV128Const)
-	}
+	data = append(data, opcode)
 	data = append(data, opData...)
 	data = append(data, OpcodeEnd)
 	return ConstantExpression{Data: data}
+}
+
+func MakeConstantExpressionFromI32(val int32) ConstantExpression {
+	return MakeConstantExpressionFromOpcode(OpcodeI32Const, leb128.EncodeInt32(val))
+}
+
+func MakeConstantExpressionFromI64(val int64) ConstantExpression {
+	return MakeConstantExpressionFromOpcode(OpcodeI64Const, leb128.EncodeInt64(val))
 }

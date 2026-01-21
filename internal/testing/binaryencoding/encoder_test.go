@@ -178,7 +178,7 @@ func TestModule_Encode(t *testing.T) {
 				GlobalSection: []wasm.Global{
 					{
 						Type: wasm.GlobalType{ValType: i32, Mutable: true},
-						Init: wasm.ConstantExpression{Data: []byte{wasm.OpcodeI32Const, 0, wasm.OpcodeEnd}},
+						Init: wasm.MakeConstantExpressionFromI32(0),
 					},
 				},
 				ExportSection: []wasm.Export{

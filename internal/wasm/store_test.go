@@ -156,7 +156,7 @@ func TestStore_CloseWithExitCode(t *testing.T) {
 				ImportSection:           []Import{{Type: ExternTypeFunc, Module: importedModuleName, Name: "fn", DescFunc: 0}},
 				MemorySection:           &Memory{Min: 1, Cap: 1},
 				MemoryDefinitionSection: []MemoryDefinition{{}},
-				GlobalSection:           []Global{{Type: GlobalType{}, Init: makeConstExpr(OpcodeI32Const, const1)}},
+				GlobalSection:           []Global{{Type: GlobalType{}, Init: MakeConstantExpressionFromI32(1)}},
 				TableSection:            []Table{{Min: 10}},
 			}, importingModuleName, nil, []FunctionTypeID{0})
 			require.NoError(t, err)
@@ -205,7 +205,7 @@ func TestStore_hammer(t *testing.T) {
 		MemoryDefinitionSection: []MemoryDefinition{{}},
 		GlobalSection: []Global{{
 			Type: GlobalType{ValType: ValueTypeI32},
-			Init: makeConstExpr(OpcodeI32Const, leb128.EncodeInt32(1)),
+			Init: MakeConstantExpressionFromI32(1),
 		}},
 		TableSection: []Table{{Min: 10}},
 		ImportSection: []Import{
@@ -264,7 +264,7 @@ func TestStore_hammer_close(t *testing.T) {
 		MemoryDefinitionSection: []MemoryDefinition{{}},
 		GlobalSection: []Global{{
 			Type: GlobalType{ValType: ValueTypeI32},
-			Init: makeConstExpr(OpcodeI32Const, leb128.EncodeInt32(1)),
+			Init: MakeConstantExpressionFromI32(1),
 		}},
 		TableSection: []Table{{Min: 10}},
 		ImportSection: []Import{
@@ -571,13 +571,13 @@ func TestGlobalInstance_initialize(t *testing.T) {
 				var expr ConstantExpression
 				switch vt {
 				case ValueTypeI32:
-					expr = makeConstExpr(OpcodeI32Const, []byte{1})
+					expr = MakeConstantExpressionFromI32(1)
 				case ValueTypeI64:
-					expr = makeConstExpr(OpcodeI64Const, []byte{2})
+					expr = MakeConstantExpressionFromI64(2)
 				case ValueTypeF32:
-					expr = makeConstExpr(OpcodeF32Const, u32.LeBytes(uint32(api.EncodeF32(math.MaxFloat32))))
+					expr = MakeConstantExpressionFromOpcode(OpcodeF32Const, u32.LeBytes(uint32(api.EncodeF32(math.MaxFloat32))))
 				case ValueTypeF64:
-					expr = makeConstExpr(OpcodeF64Const, u64.LeBytes(api.EncodeF64(math.MaxFloat64)))
+					expr = MakeConstantExpressionFromOpcode(OpcodeF64Const, u64.LeBytes(api.EncodeF64(math.MaxFloat64)))
 				}
 
 				g.initialize(nil, &expr, nil)
@@ -602,11 +602,11 @@ func TestGlobalInstance_initialize(t *testing.T) {
 		}{
 			{
 				name: "ref.null (externref)",
-				expr: makeConstExpr(OpcodeRefNull, []byte{RefTypeExternref}),
+				expr: MakeConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeExternref}),
 			},
 			{
 				name: "ref.null (funcref)",
-				expr: makeConstExpr(OpcodeRefNull, []byte{RefTypeFuncref}),
+				expr: MakeConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeFuncref}),
 			},
 		}
 
@@ -622,7 +622,7 @@ func TestGlobalInstance_initialize(t *testing.T) {
 	})
 	t.Run("ref.func", func(t *testing.T) {
 		g := GlobalInstance{Type: GlobalType{ValType: RefTypeFuncref}}
-		expr := makeConstExpr(OpcodeRefFunc, []byte{1})
+		expr := MakeConstantExpressionFromOpcode(OpcodeRefFunc, []byte{1})
 		g.initialize(nil,
 			&expr,
 			func(funcIndex Index) Reference {
@@ -650,7 +650,7 @@ func TestGlobalInstance_initialize(t *testing.T) {
 			tc := tt
 			t.Run(ValueTypeName(tc.valueType), func(t *testing.T) {
 				// The index specified in Data equals zero.
-				expr := makeConstExpr(OpcodeGlobalGet, []byte{0})
+				expr := MakeConstantExpressionFromOpcode(OpcodeGlobalGet, []byte{0})
 				globals := []*GlobalInstance{{Val: tc.val, ValHi: tc.valHi, Type: GlobalType{ValType: tc.valueType}}}
 
 				g := &GlobalInstance{Type: GlobalType{ValType: tc.valueType}}
@@ -675,7 +675,7 @@ func TestGlobalInstance_initialize(t *testing.T) {
 	})
 
 	t.Run("vector", func(t *testing.T) {
-		expr := makeConstExpr(OpcodeVecV128Const, []byte{
+		expr := MakeConstantExpressionFromOpcode(OpcodeVecV128Const, []byte{
 			1, 0, 0, 0, 0, 0, 0, 0,
 			2, 0, 0, 0, 0, 0, 0, 0,
 		})
@@ -900,22 +900,22 @@ func TestModuleInstance_validateData(t *testing.T) {
 		{
 			name: "ok",
 			data: []DataSegment{
-				{OffsetExpression: makeConstExpr(OpcodeI32Const, const1), Init: []byte{0}},
-				{OffsetExpression: makeConstExpr(OpcodeI32Const, leb128.EncodeInt32(2)), Init: []byte{0}},
+				{OffsetExpression: MakeConstantExpressionFromI32(1), Init: []byte{0}},
+				{OffsetExpression: MakeConstantExpressionFromI32(2), Init: []byte{0}},
 			},
 		},
 		{
 			name: "out of bounds - single one byte",
 			data: []DataSegment{
-				{OffsetExpression: makeConstExpr(OpcodeI32Const, leb128.EncodeInt32(5)), Init: []byte{0}},
+				{OffsetExpression: MakeConstantExpressionFromI32(5), Init: []byte{0}},
 			},
 			expErr: "data[0]: out of bounds memory access",
 		},
 		{
 			name: "out of bounds - multi bytes",
 			data: []DataSegment{
-				{OffsetExpression: makeConstExpr(OpcodeI32Const, leb128.EncodeInt32(0)), Init: []byte{0}},
-				{OffsetExpression: makeConstExpr(OpcodeI32Const, leb128.EncodeInt32(3)), Init: []byte{0, 1, 2}},
+				{OffsetExpression: MakeConstantExpressionFromI32(0), Init: []byte{0}},
+				{OffsetExpression: MakeConstantExpressionFromI32(3), Init: []byte{0, 1, 2}},
 			},
 			expErr: "data[1]: out of bounds memory access",
 		},
@@ -938,8 +938,8 @@ func TestModuleInstance_applyData(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		m := &ModuleInstance{MemoryInstance: &MemoryInstance{Buffer: make([]byte, 10)}}
 		err := m.applyData([]DataSegment{
-			{OffsetExpression: makeConstExpr(OpcodeI32Const, const0), Init: []byte{0xa, 0xf}},
-			{OffsetExpression: makeConstExpr(OpcodeI32Const, leb128.EncodeUint32(8)), Init: []byte{0x1, 0x5}},
+			{OffsetExpression: MakeConstantExpressionFromI32(0), Init: []byte{0xa, 0xf}},
+			{OffsetExpression: MakeConstantExpressionFromI32(8), Init: []byte{0x1, 0x5}},
 		})
 		require.NoError(t, err)
 		require.Equal(t, []byte{0xa, 0xf, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x5}, m.MemoryInstance.Buffer)
@@ -948,7 +948,7 @@ func TestModuleInstance_applyData(t *testing.T) {
 	t.Run("error", func(t *testing.T) {
 		m := &ModuleInstance{MemoryInstance: &MemoryInstance{Buffer: make([]byte, 5)}}
 		err := m.applyData([]DataSegment{
-			{OffsetExpression: makeConstExpr(OpcodeI32Const, leb128.EncodeUint32(8)), Init: []byte{}},
+			{OffsetExpression: MakeConstantExpressionFromI32(8), Init: []byte{}},
 		})
 		require.EqualError(t, err, "data[0]: out of bounds memory access")
 	})
@@ -964,8 +964,6 @@ func globalsContain(globals []*GlobalInstance, want *GlobalInstance) bool {
 }
 
 func TestModuleInstance_applyElements(t *testing.T) {
-	leb128_100 := leb128.EncodeInt32(100)
-
 	t.Run("extenref", func(t *testing.T) {
 		m := &ModuleInstance{}
 		m.Tables = []*TableInstance{{Type: RefTypeExternref, References: make([]Reference, 10)}}
@@ -974,16 +972,16 @@ func TestModuleInstance_applyElements(t *testing.T) {
 		}
 
 		// This shouldn't panic.
-		m.applyElements([]ElementSegment{{Mode: ElementModeActive, OffsetExpr: makeConstExpr(OpcodeI32Const, leb128_100)}})
+		m.applyElements([]ElementSegment{{Mode: ElementModeActive, OffsetExpr: MakeConstantExpressionFromI32(100)}})
 		m.applyElements([]ElementSegment{
-			{Mode: ElementModeActive, OffsetExpr: makeConstExpr(OpcodeI32Const, []byte{0}), Init: make([]ConstantExpression, 3)},
-			{Mode: ElementModeActive, OffsetExpr: makeConstExpr(OpcodeI32Const, leb128_100), Init: make([]ConstantExpression, 5)}, // Iteration stops at this point, so the offset:5 below shouldn't be applied.
-			{Mode: ElementModeActive, OffsetExpr: makeConstExpr(OpcodeI32Const, []byte{5}), Init: make([]ConstantExpression, 5)},
+			{Mode: ElementModeActive, OffsetExpr: MakeConstantExpressionFromI32(0), Init: make([]ConstantExpression, 3)},
+			{Mode: ElementModeActive, OffsetExpr: MakeConstantExpressionFromI32(100), Init: make([]ConstantExpression, 5)}, // Iteration stops at this point, so the offset:5 below shouldn't be applied.
+			{Mode: ElementModeActive, OffsetExpr: MakeConstantExpressionFromI32(5), Init: make([]ConstantExpression, 5)},
 		})
 		require.Equal(t, []Reference{0, 0, 0, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff},
 			m.Tables[0].References)
 		m.applyElements([]ElementSegment{
-			{Mode: ElementModeActive, OffsetExpr: makeConstExpr(OpcodeI32Const, []byte{5}), Init: make([]ConstantExpression, 5)},
+			{Mode: ElementModeActive, OffsetExpr: MakeConstantExpressionFromI32(5), Init: make([]ConstantExpression, 5)},
 		})
 		require.Equal(t, []Reference{0, 0, 0, 0xffff, 0xffff, 0, 0, 0, 0, 0}, m.Tables[0].References)
 	})
@@ -1000,30 +998,30 @@ func TestModuleInstance_applyElements(t *testing.T) {
 		}
 
 		// This shouldn't panic.
-		m.applyElements([]ElementSegment{{Mode: ElementModeActive, OffsetExpr: makeConstExpr(OpcodeI32Const, leb128_100), Init: []ConstantExpression{
-			makeConstExpr(OpcodeRefFunc, leb128.EncodeInt32(1)),
-			makeConstExpr(OpcodeRefFunc, leb128.EncodeInt32(2)),
-			makeConstExpr(OpcodeRefFunc, leb128.EncodeInt32(3)),
+		m.applyElements([]ElementSegment{{Mode: ElementModeActive, OffsetExpr: MakeConstantExpressionFromI32(100), Init: []ConstantExpression{
+			MakeConstantExpressionFromOpcode(OpcodeRefFunc, leb128.EncodeInt32(1)),
+			MakeConstantExpressionFromOpcode(OpcodeRefFunc, leb128.EncodeInt32(2)),
+			MakeConstantExpressionFromOpcode(OpcodeRefFunc, leb128.EncodeInt32(3)),
 		}}})
 		m.applyElements([]ElementSegment{
-			{Mode: ElementModeActive, OffsetExpr: makeConstExpr(OpcodeI32Const, []byte{0}), Init: []ConstantExpression{
-				makeConstExpr(OpcodeRefFunc, leb128.EncodeInt32(0)),
-				makeConstExpr(OpcodeRefFunc, leb128.EncodeInt32(1)),
-				makeConstExpr(OpcodeRefFunc, leb128.EncodeInt32(2)),
+			{Mode: ElementModeActive, OffsetExpr: MakeConstantExpressionFromI32(0), Init: []ConstantExpression{
+				MakeConstantExpressionFromOpcode(OpcodeRefFunc, leb128.EncodeInt32(0)),
+				MakeConstantExpressionFromOpcode(OpcodeRefFunc, leb128.EncodeInt32(1)),
+				MakeConstantExpressionFromOpcode(OpcodeRefFunc, leb128.EncodeInt32(2)),
 			}},
-			{Mode: ElementModeActive, OffsetExpr: makeConstExpr(OpcodeI32Const, []byte{9}), Init: []ConstantExpression{
-				makeConstExpr(OpcodeGlobalGet, leb128.EncodeUint32(1)),
+			{Mode: ElementModeActive, OffsetExpr: MakeConstantExpressionFromI32(9), Init: []ConstantExpression{
+				MakeConstantExpressionFromOpcode(OpcodeGlobalGet, leb128.EncodeUint32(1)),
 			}},
-			{Mode: ElementModeActive, OffsetExpr: makeConstExpr(OpcodeI32Const, leb128_100), Init: make([]ConstantExpression, 5)}, // Iteration stops at this point, so the offset:5 below shouldn't be applied.
-			{Mode: ElementModeActive, OffsetExpr: makeConstExpr(OpcodeI32Const, []byte{5}), Init: make([]ConstantExpression, 5)},
+			{Mode: ElementModeActive, OffsetExpr: MakeConstantExpressionFromI32(100), Init: make([]ConstantExpression, 5)}, // Iteration stops at this point, so the offset:5 below shouldn't be applied.
+			{Mode: ElementModeActive, OffsetExpr: MakeConstantExpressionFromI32(5), Init: make([]ConstantExpression, 5)},
 		})
 		require.Equal(t, []Reference{0xa, 0xaa, 0xaaa, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xabcde},
 			m.Tables[0].References)
 		m.applyElements([]ElementSegment{
-			{Mode: ElementModeActive, OffsetExpr: makeConstExpr(OpcodeI32Const, []byte{5}), Init: []ConstantExpression{
-				makeConstExpr(OpcodeRefFunc, leb128.EncodeInt32(0)),
-				makeConstExpr(OpcodeRefNull, []byte{RefTypeFuncref}),
-				makeConstExpr(OpcodeRefFunc, leb128.EncodeInt32(2)),
+			{Mode: ElementModeActive, OffsetExpr: MakeConstantExpressionFromI32(5), Init: []ConstantExpression{
+				MakeConstantExpressionFromOpcode(OpcodeRefFunc, leb128.EncodeInt32(0)),
+				MakeConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeFuncref}),
+				MakeConstantExpressionFromOpcode(OpcodeRefFunc, leb128.EncodeInt32(2)),
 			}},
 		})
 		require.Equal(t, []Reference{0xa, 0xaa, 0xaaa, 0xffff, 0xffff, 0xa, 0x0, 0xaaa, 0xffff, 0xabcde},

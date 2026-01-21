@@ -29,7 +29,7 @@ func decodeElementInitValueVector(r *bytes.Reader) ([]wasm.ConstantExpression, e
 
 	vec := make([]wasm.ConstantExpression, vs)
 	for i := range vec {
-		u32, n, err := leb128.DecodeUint32(r)
+		u32, _, err := leb128.DecodeUint32(r)
 		if err != nil {
 			return nil, fmt.Errorf("read function index: %w", err)
 		}
@@ -37,11 +37,7 @@ func decodeElementInitValueVector(r *bytes.Reader) ([]wasm.ConstantExpression, e
 		if u32 >= wasm.MaximumFunctionIndex {
 			return nil, fmt.Errorf("too large function index in Element init: %d", u32)
 		}
-		data := make([]byte, 0, n+2)
-		data = append(data, wasm.OpcodeRefFunc)
-		data = append(data, leb128.EncodeUint32(u32)...)
-		data = append(data, wasm.OpcodeEnd)
-		vec[i] = wasm.ConstantExpression{Data: data}
+		vec[i] = wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, leb128.EncodeUint32(u32))
 	}
 	return vec, nil
 }

@@ -29,11 +29,11 @@ func Test_decodeElementInitValueVector(t *testing.T) {
 		{
 			in: []byte{5, 1, 2, 3, 4, 5},
 			exp: []wasm.ConstantExpression{
-				makeConstExpr(wasm.OpcodeRefFunc, []byte{1}),
-				makeConstExpr(wasm.OpcodeRefFunc, []byte{2}),
-				makeConstExpr(wasm.OpcodeRefFunc, []byte{3}),
-				makeConstExpr(wasm.OpcodeRefFunc, []byte{4}),
-				makeConstExpr(wasm.OpcodeRefFunc, []byte{5}),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{2}),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{3}),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{4}),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{5}),
 			},
 		},
 		{
@@ -78,7 +78,10 @@ func Test_decodeElementConstExprVector(t *testing.T) {
 				wasm.OpcodeRefNull, wasm.RefTypeFuncref, wasm.OpcodeEnd,
 				wasm.OpcodeRefFunc, 100, wasm.OpcodeEnd,
 			},
-			exp:      []wasm.ConstantExpression{{Data: []byte{wasm.OpcodeRefNull, wasm.RefTypeFuncref, wasm.OpcodeEnd}}, {Data: []byte{wasm.OpcodeRefFunc, 100, wasm.OpcodeEnd}}},
+			exp: []wasm.ConstantExpression{
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{100}),
+			},
 			refType:  wasm.RefTypeFuncref,
 			features: api.CoreFeatureBulkMemoryOperations,
 		},
@@ -93,10 +96,10 @@ func Test_decodeElementConstExprVector(t *testing.T) {
 				wasm.OpcodeRefNull, wasm.RefTypeFuncref, wasm.OpcodeEnd,
 			},
 			exp: []wasm.ConstantExpression{
-				makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
-				makeConstExpr(wasm.OpcodeRefFunc, leb128.EncodeUint32(16256)),
-				makeConstExpr(wasm.OpcodeGlobalGet, leb128.EncodeUint32(1)),
-				makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, leb128.EncodeUint32(16256)),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeGlobalGet, leb128.EncodeUint32(1)),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
 			},
 			refType:  wasm.RefTypeFuncref,
 			features: api.CoreFeatureBulkMemoryOperations,
@@ -109,9 +112,9 @@ func Test_decodeElementConstExprVector(t *testing.T) {
 				wasm.OpcodeRefNull, wasm.RefTypeExternref, wasm.OpcodeEnd,
 			},
 			exp: []wasm.ConstantExpression{
-				makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeExternref}),
-				makeConstExpr(wasm.OpcodeGlobalGet, leb128.EncodeUint32(1)),
-				makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeExternref}),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeExternref}),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeGlobalGet, leb128.EncodeUint32(1)),
+				wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeExternref}),
 			},
 			refType:  wasm.RefTypeExternref,
 			features: api.CoreFeatureBulkMemoryOperations,
@@ -181,13 +184,13 @@ func TestDecodeElementSegment(t *testing.T) {
 				5, 1, 2, 3, 4, 5,
 			},
 			exp: wasm.ElementSegment{
-				OffsetExpr: makeConstExpr(wasm.OpcodeI32Const, []byte{1}),
+				OffsetExpr: wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeI32Const, []byte{1}),
 				Init: []wasm.ConstantExpression{
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{1}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{2}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{3}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{4}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{5}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{2}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{3}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{4}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{5}),
 				},
 				Mode: wasm.ElementModeActive,
 				Type: wasm.RefTypeFuncref,
@@ -204,13 +207,13 @@ func TestDecodeElementSegment(t *testing.T) {
 				5, 1, 2, 3, 4, 5,
 			},
 			exp: wasm.ElementSegment{
-				OffsetExpr: makeConstExpr(wasm.OpcodeI32Const, []byte{0x80, 0}),
+				OffsetExpr: wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeI32Const, []byte{0x80, 0}),
 				Init: []wasm.ConstantExpression{
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{1}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{2}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{3}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{4}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{5}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{2}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{3}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{4}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{5}),
 				},
 				Mode: wasm.ElementModeActive,
 				Type: wasm.RefTypeFuncref,
@@ -227,11 +230,11 @@ func TestDecodeElementSegment(t *testing.T) {
 			},
 			exp: wasm.ElementSegment{
 				Init: []wasm.ConstantExpression{
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{1}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{2}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{3}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{4}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{5}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{2}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{3}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{4}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{5}),
 				},
 				Mode: wasm.ElementModePassive,
 				Type: wasm.RefTypeFuncref,
@@ -250,13 +253,13 @@ func TestDecodeElementSegment(t *testing.T) {
 				5, 1, 2, 3, 4, 5,
 			},
 			exp: wasm.ElementSegment{
-				OffsetExpr: makeConstExpr(wasm.OpcodeI32Const, []byte{0x80, 0}),
+				OffsetExpr: wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeI32Const, []byte{0x80, 0}),
 				Init: []wasm.ConstantExpression{
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{1}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{2}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{3}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{4}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{5}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{2}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{3}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{4}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{5}),
 				},
 				Mode: wasm.ElementModeActive,
 				Type: wasm.RefTypeFuncref,
@@ -275,13 +278,13 @@ func TestDecodeElementSegment(t *testing.T) {
 				5, 1, 2, 3, 4, 5,
 			},
 			exp: wasm.ElementSegment{
-				OffsetExpr: makeConstExpr(wasm.OpcodeI32Const, []byte{0x80, 0}),
+				OffsetExpr: wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeI32Const, []byte{0x80, 0}),
 				Init: []wasm.ConstantExpression{
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{1}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{2}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{3}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{4}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{5}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{2}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{3}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{4}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{5}),
 				},
 				Mode:       wasm.ElementModeActive,
 				Type:       wasm.RefTypeFuncref,
@@ -313,11 +316,11 @@ func TestDecodeElementSegment(t *testing.T) {
 			},
 			exp: wasm.ElementSegment{
 				Init: []wasm.ConstantExpression{
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{1}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{2}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{3}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{4}),
-					makeConstExpr(wasm.OpcodeRefFunc, []byte{5}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{2}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{3}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{4}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{5}),
 				},
 				Mode: wasm.ElementModeDeclarative,
 				Type: wasm.RefTypeFuncref,
@@ -339,11 +342,11 @@ func TestDecodeElementSegment(t *testing.T) {
 				wasm.OpcodeRefNull, wasm.RefTypeFuncref, wasm.OpcodeEnd,
 			},
 			exp: wasm.ElementSegment{
-				OffsetExpr: makeConstExpr(wasm.OpcodeI32Const, []byte{0x80, 1}),
+				OffsetExpr: wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeI32Const, []byte{0x80, 1}),
 				Init: []wasm.ConstantExpression{
-					makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
-					makeConstExpr(wasm.OpcodeRefFunc, leb128.EncodeUint32(16256)),
-					makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, leb128.EncodeUint32(16256)),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
 				},
 				Mode: wasm.ElementModeActive,
 				Type: wasm.RefTypeFuncref,
@@ -365,9 +368,9 @@ func TestDecodeElementSegment(t *testing.T) {
 			},
 			exp: wasm.ElementSegment{
 				Init: []wasm.ConstantExpression{
-					makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
-					makeConstExpr(wasm.OpcodeRefFunc, leb128.EncodeUint32(16256)),
-					makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, leb128.EncodeUint32(16256)),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
 				},
 				Mode: wasm.ElementModePassive,
 				Type: wasm.RefTypeFuncref,
@@ -400,11 +403,11 @@ func TestDecodeElementSegment(t *testing.T) {
 				wasm.OpcodeRefNull, wasm.RefTypeFuncref, wasm.OpcodeEnd,
 			},
 			exp: wasm.ElementSegment{
-				OffsetExpr: makeConstExpr(wasm.OpcodeI32Const, []byte{0x80, 1}),
+				OffsetExpr: wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeI32Const, []byte{0x80, 1}),
 				Init: []wasm.ConstantExpression{
-					makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
-					makeConstExpr(wasm.OpcodeRefFunc, leb128.EncodeUint32(16256)),
-					makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, leb128.EncodeUint32(16256)),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
 				},
 				Mode: wasm.ElementModeActive,
 				Type: wasm.RefTypeFuncref,
@@ -428,11 +431,11 @@ func TestDecodeElementSegment(t *testing.T) {
 				wasm.OpcodeRefNull, wasm.RefTypeFuncref, wasm.OpcodeEnd,
 			},
 			exp: wasm.ElementSegment{
-				OffsetExpr: makeConstExpr(wasm.OpcodeI32Const, []byte{0x80, 1}),
+				OffsetExpr: wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeI32Const, []byte{0x80, 1}),
 				Init: []wasm.ConstantExpression{
-					makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
-					makeConstExpr(wasm.OpcodeRefFunc, leb128.EncodeUint32(16256)),
-					makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, leb128.EncodeUint32(16256)),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
 				},
 				Mode:       wasm.ElementModeActive,
 				Type:       wasm.RefTypeFuncref,
@@ -473,8 +476,8 @@ func TestDecodeElementSegment(t *testing.T) {
 			},
 			exp: wasm.ElementSegment{
 				Init: []wasm.ConstantExpression{
-					makeConstExpr(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
-					makeConstExpr(wasm.OpcodeRefFunc, leb128.EncodeUint32(16256)),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, leb128.EncodeUint32(16256)),
 				},
 				Mode: wasm.ElementModeDeclarative,
 				Type: wasm.RefTypeFuncref,
@@ -502,13 +505,4 @@ func TestDecodeElementSegment_errors(t *testing.T) {
 	var actual wasm.ElementSegment
 	err := decodeElementSegment(bytes.NewReader([]byte{1}), api.CoreFeatureMultiValue, &actual)
 	require.EqualError(t, err, `non-zero prefix for element segment is invalid as feature "bulk-memory-operations" is disabled`)
-}
-
-func makeConstExpr(
-	opcode byte, opData []byte,
-) wasm.ConstantExpression {
-	data := []byte{opcode}
-	data = append(data, opData...)
-	data = append(data, wasm.OpcodeEnd)
-	return wasm.ConstantExpression{Data: data}
 }

@@ -37,10 +37,8 @@ func Test_decodeDataSegment(t *testing.T) {
 				0x2, 0xf, 0xf,
 			},
 			exp: wasm.DataSegment{
-				OffsetExpression: wasm.ConstantExpression{
-					Data: []byte{wasm.OpcodeI32Const, 0x1, wasm.OpcodeEnd},
-				},
-				Init: []byte{0xf, 0xf},
+				OffsetExpression: wasm.MakeConstantExpressionFromI32(1),
+				Init:             []byte{0xf, 0xf},
 			},
 			features: api.CoreFeatureBulkMemoryOperations,
 		},
@@ -76,10 +74,8 @@ func Test_decodeDataSegment(t *testing.T) {
 				0x2, 0xf, 0xf,
 			},
 			exp: wasm.DataSegment{
-				OffsetExpression: wasm.ConstantExpression{
-					Data: []byte{wasm.OpcodeI32Const, 0x1, wasm.OpcodeEnd},
-				},
-				Init: []byte{0xf, 0xf},
+				OffsetExpression: wasm.MakeConstantExpressionFromI32(1),
+				Init:             []byte{0xf, 0xf},
 			},
 			features: api.CoreFeatureBulkMemoryOperations,
 		},

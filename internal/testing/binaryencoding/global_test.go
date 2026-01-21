@@ -17,7 +17,7 @@ func TestEncodeGlobal(t *testing.T) {
 			name: "const",
 			input: wasm.Global{
 				Type: wasm.GlobalType{ValType: wasm.ValueTypeI32},
-				Init: wasm.ConstantExpression{Data: []byte{wasm.OpcodeI32Const, 1, wasm.OpcodeEnd}},
+				Init: wasm.MakeConstantExpressionFromI32(1),
 			},
 			expected: []byte{
 				wasm.ValueTypeI32, 0x00, // 0 == const
@@ -28,7 +28,7 @@ func TestEncodeGlobal(t *testing.T) {
 			name: "var",
 			input: wasm.Global{
 				Type: wasm.GlobalType{ValType: wasm.ValueTypeI32, Mutable: true},
-				Init: wasm.ConstantExpression{Data: []byte{wasm.OpcodeI32Const, 1, wasm.OpcodeEnd}},
+				Init: wasm.MakeConstantExpressionFromI32(1),
 			},
 			expected: []byte{
 				wasm.ValueTypeI32, 0x01, // 1 == var
