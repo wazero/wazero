@@ -116,6 +116,9 @@ jobs:
         platform:
           - os: ubuntu-24.04
             arch: amd64
+          - os: ubuntu-24.04
+            arch: amd64
+            no_prot_exec: true
           - os: ubuntu-24.04-arm
             arch: arm64
           - os: ubuntu-24.04
@@ -156,9 +159,26 @@ jobs:
           echo 'CMD ["/test", "-test.v"]' >> Dockerfile
           docker buildx build -t wazero:test --platform linux/${{ matrix.platform.arch }} .
 
+      - name: Write seccomp config
+        if: ${{ matrix.platform.no_prot_exec }}
+        run: |
+          echo '{
+            "defaultAction": "SCMP_ACT_ALLOW",
+            "syscalls": [
+              {
+                "names": ["mprotect", "pkey_mprotect", "mmap", "mmap2"],
+                "action": "SCMP_ACT_ERRNO",
+                "errnoRet": 1,
+                "args": [
+                  { "index": 2, "value": 4, "valueTwo": 4, "op": "SCMP_CMP_MASKED_EQ" }
+                ]
+              }
+            ]
+          }' > no-prot-exec.json
+
       - name: Run built test binaries
         # This runs all tests compiled above in sequence. Note: This mounts /tmp to allow t.TempDir() in tests.
-        run: find _tests -name "*.test" | xargs -t -Itestbin docker run --platform linux/${{ matrix.platform.arch }} -v $(pwd)/testbin:/test -v $(pwd)/wazerocli:/wazero -e WAZEROCLI=/wazero --tmpfs /tmp --rm -t wazero:test
+        run: find _tests -name "*.test" | xargs -t -Itestbin docker run --platform linux/${{ matrix.platform.arch }} -v $(pwd)/testbin:/test -v $(pwd)/wazerocli:/wazero -e WAZEROCLI=/wazero --tmpfs /tmp ${{ matrix.platform.no_prot_exec && '--security-opt seccomp=$PWD/no-prot-exec.json' }} --rm -t wazero:test
 
   test_bsd:
     name: amd64, ${{ matrix.os.name }}
