@@ -352,6 +352,10 @@ func (h hostModuleInstance) ExportedFunction(name string) api.Function {
 	panic("calling ExportedFunction is forbidden on host modules. See the note on ExportedFunction interface")
 }
 
+func (h hostModuleInstance) WrappedModule() api.Module {
+	return h.Module
+}
+
 // Instantiate implements HostModuleBuilder.Instantiate
 func (b *hostModuleBuilder) Instantiate(ctx context.Context) (api.Module, error) {
 	if compiled, err := b.Compile(ctx); err != nil {

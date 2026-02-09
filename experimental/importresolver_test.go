@@ -24,7 +24,7 @@ func TestImportResolver(t *testing.T) {
 		start := func(ctx context.Context) {
 			callCount++
 		}
-		modImport, err := r.NewHostModuleBuilder(fmt.Sprintf("env%d", i)).
+		modImport, err := r.NewHostModuleBuilder(fmt.Sprintf("env_%d", i)).
 			NewFunctionBuilder().WithFunc(start).Export("start").
 			Compile(ctx)
 		require.NoError(t, err)
@@ -32,9 +32,17 @@ func TestImportResolver(t *testing.T) {
 		instanceImport, err := r.InstantiateModule(ctx, modImport, wazero.NewModuleConfig().WithName(""))
 		require.NoError(t, err)
 
+		instanceImport2, err := r.NewHostModuleBuilder(fmt.Sprintf("env2_%d", i)).
+			NewFunctionBuilder().WithFunc(start).Export("start").
+			Instantiate(ctx)
+		require.NoError(t, err)
+
 		resolveImport := func(name string) api.Module {
 			if name == "env" {
 				return instanceImport
+			}
+			if name == "env2" {
+				return instanceImport2
 			}
 			return nil
 		}
@@ -42,10 +50,13 @@ func TestImportResolver(t *testing.T) {
 		// Set the import resolver in the context.
 		ctx = experimental.WithImportResolver(context.Background(), resolveImport)
 
-		one := uint32(1)
+		one := uint32(2)
 		binary := binaryencoding.EncodeModule(&wasm.Module{
-			TypeSection:     []wasm.FunctionType{{}},
-			ImportSection:   []wasm.Import{{Module: "env", Name: "start", Type: wasm.ExternTypeFunc, DescFunc: 0}},
+			TypeSection: []wasm.FunctionType{{}},
+			ImportSection: []wasm.Import{
+				{Module: "env", Name: "start", Type: wasm.ExternTypeFunc, DescFunc: 0},
+				{Module: "env2", Name: "start", Type: wasm.ExternTypeFunc, DescFunc: 0},
+			},
 			FunctionSection: []wasm.Index{0},
 			CodeSection: []wasm.Code{
 				{Body: []byte{wasm.OpcodeCall, 0, wasm.OpcodeEnd}}, // Call the imported env.start.
