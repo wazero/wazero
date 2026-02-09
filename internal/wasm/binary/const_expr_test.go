@@ -21,10 +21,7 @@ func TestDecodeConstantExpression(t *testing.T) {
 				0x80, 0, // Multi byte zero.
 				wasm.OpcodeEnd,
 			},
-			exp: wasm.ConstantExpression{
-				Opcode: wasm.OpcodeRefFunc,
-				Data:   []byte{0x80, 0},
-			},
+			exp: wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{0x80, 0}),
 		},
 		{
 			in: []byte{
@@ -32,10 +29,7 @@ func TestDecodeConstantExpression(t *testing.T) {
 				0x80, 0x80, 0x80, 0x4f, // 165675008 in varint encoding.
 				wasm.OpcodeEnd,
 			},
-			exp: wasm.ConstantExpression{
-				Opcode: wasm.OpcodeRefFunc,
-				Data:   []byte{0x80, 0x80, 0x80, 0x4f},
-			},
+			exp: wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{0x80, 0x80, 0x80, 0x4f}),
 		},
 		{
 			in: []byte{
@@ -43,12 +37,7 @@ func TestDecodeConstantExpression(t *testing.T) {
 				wasm.RefTypeFuncref,
 				wasm.OpcodeEnd,
 			},
-			exp: wasm.ConstantExpression{
-				Opcode: wasm.OpcodeRefNull,
-				Data: []byte{
-					wasm.RefTypeFuncref,
-				},
-			},
+			exp: wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
 		},
 		{
 			in: []byte{
@@ -56,12 +45,7 @@ func TestDecodeConstantExpression(t *testing.T) {
 				wasm.RefTypeExternref,
 				wasm.OpcodeEnd,
 			},
-			exp: wasm.ConstantExpression{
-				Opcode: wasm.OpcodeRefNull,
-				Data: []byte{
-					wasm.RefTypeExternref,
-				},
-			},
+			exp: wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeExternref}),
 		},
 		{
 			in: []byte{
@@ -71,13 +55,10 @@ func TestDecodeConstantExpression(t *testing.T) {
 				1, 1, 1, 1, 1, 1, 1, 1,
 				wasm.OpcodeEnd,
 			},
-			exp: wasm.ConstantExpression{
-				Opcode: wasm.OpcodeVecV128Const,
-				Data: []byte{
-					1, 1, 1, 1, 1, 1, 1, 1,
-					1, 1, 1, 1, 1, 1, 1, 1,
-				},
-			},
+			exp: wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeVecV128Const, []byte{
+				1, 1, 1, 1, 1, 1, 1, 1,
+				1, 1, 1, 1, 1, 1, 1, 1,
+			}),
 		},
 	}
 
@@ -104,7 +85,7 @@ func TestDecodeConstantExpression_errors(t *testing.T) {
 				wasm.OpcodeRefFunc,
 				0,
 			},
-			expectedErr: "look for end opcode: EOF",
+			expectedErr: "read const expression opcode: EOF",
 			features:    api.CoreFeatureBulkMemoryOperations,
 		},
 		{

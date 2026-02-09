@@ -3,7 +3,6 @@ package testcases
 import (
 	"math"
 
-	"github.com/tetratelabs/wazero/internal/leb128"
 	"github.com/tetratelabs/wazero/internal/wasm"
 )
 
@@ -1781,7 +1780,11 @@ var (
 				{
 					OffsetExpr: constExprI32(0), TableIndex: 0, Type: wasm.RefTypeFuncref, Mode: wasm.ElementModeActive,
 					// Set the function 1, 2, 3 at the beginning of the table.
-					Init: []wasm.Index{1, 2, 3},
+					Init: []wasm.ConstantExpression{
+						wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
+						wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{2}),
+						wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{3}),
+					},
 				},
 			},
 			CodeSection: []wasm.Code{
@@ -2770,46 +2773,40 @@ func maskedBuf(size int) []byte {
 }
 
 func constExprI32(i int32) wasm.ConstantExpression {
-	return wasm.ConstantExpression{
-		Opcode: wasm.OpcodeI32Const,
-		Data:   leb128.EncodeInt32(i),
-	}
+	return wasm.MakeConstantExpressionFromI32(i)
 }
 
 func constExprI64(i int64) wasm.ConstantExpression {
-	return wasm.ConstantExpression{
-		Opcode: wasm.OpcodeI64Const,
-		Data:   leb128.EncodeInt64(i),
-	}
+	return wasm.MakeConstantExpressionFromI64(i)
 }
 
 func constExprF32(i float32) wasm.ConstantExpression {
 	b := math.Float32bits(i)
-	return wasm.ConstantExpression{
-		Opcode: wasm.OpcodeF32Const,
-		Data:   []byte{byte(b), byte(b >> 8), byte(b >> 16), byte(b >> 24)},
-	}
+	return wasm.MakeConstantExpressionFromOpcode(
+		wasm.OpcodeF32Const, []byte{
+			byte(b), byte(b >> 8), byte(b >> 16), byte(b >> 24),
+		},
+	)
 }
 
 func constExprF64(i float64) wasm.ConstantExpression {
 	b := math.Float64bits(i)
-	return wasm.ConstantExpression{
-		Opcode: wasm.OpcodeF64Const,
-		Data: []byte{
+	return wasm.MakeConstantExpressionFromOpcode(
+		wasm.OpcodeF64Const, []byte{
 			byte(b), byte(b >> 8), byte(b >> 16), byte(b >> 24),
 			byte(b >> 32), byte(b >> 40), byte(b >> 48), byte(b >> 56),
 		},
-	}
+	)
 }
 
 func constExprV128(lo, hi uint64) wasm.ConstantExpression {
-	return wasm.ConstantExpression{
-		Opcode: wasm.OpcodeVecV128Const,
-		Data: []byte{
+	return wasm.MakeConstantExpressionFromOpcode(
+		wasm.OpcodeVecV128Const,
+		[]byte{
 			byte(lo), byte(lo >> 8), byte(lo >> 16), byte(lo >> 24),
 			byte(lo >> 32), byte(lo >> 40), byte(lo >> 48), byte(lo >> 56),
 			byte(hi), byte(hi >> 8), byte(hi >> 16), byte(hi >> 24),
 			byte(hi >> 32), byte(hi >> 40), byte(hi >> 48), byte(hi >> 56),
 		},
-	}
+	)
 }

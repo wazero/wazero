@@ -11,7 +11,6 @@ import (
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/experimental"
 	"github.com/tetratelabs/wazero/internal/filecache"
-	"github.com/tetratelabs/wazero/internal/leb128"
 	"github.com/tetratelabs/wazero/internal/platform"
 	"github.com/tetratelabs/wazero/internal/testing/binaryencoding"
 	"github.com/tetratelabs/wazero/internal/testing/require"
@@ -256,7 +255,7 @@ func TestModule_Global(t *testing.T) {
 				GlobalSection: []wasm.Global{
 					{
 						Type: wasm.GlobalType{ValType: wasm.ValueTypeI64, Mutable: true},
-						Init: wasm.ConstantExpression{Opcode: wasm.OpcodeI64Const, Data: leb128.EncodeInt64(globalVal)},
+						Init: wasm.MakeConstantExpressionFromI64(globalVal),
 					},
 				},
 			},
@@ -267,7 +266,7 @@ func TestModule_Global(t *testing.T) {
 				GlobalSection: []wasm.Global{
 					{
 						Type: wasm.GlobalType{ValType: wasm.ValueTypeI64},
-						Init: wasm.ConstantExpression{Opcode: wasm.OpcodeI64Const, Data: leb128.EncodeInt64(globalVal)},
+						Init: wasm.MakeConstantExpressionFromI64(globalVal),
 					},
 				},
 				Exports: map[string]*wasm.Export{
@@ -282,7 +281,7 @@ func TestModule_Global(t *testing.T) {
 				GlobalSection: []wasm.Global{
 					{
 						Type: wasm.GlobalType{ValType: wasm.ValueTypeI64, Mutable: true},
-						Init: wasm.ConstantExpression{Opcode: wasm.OpcodeI64Const, Data: leb128.EncodeInt64(globalVal)},
+						Init: wasm.MakeConstantExpressionFromI64(globalVal),
 					},
 				},
 				Exports: map[string]*wasm.Export{
