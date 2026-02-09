@@ -8,7 +8,7 @@ import (
 
 	"github.com/tetratelabs/wazero/experimental/sys"
 	experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
-	"github.com/tetratelabs/wazero/internal/fsapi"
+	"github.com/tetratelabs/wazero/experimental/fsapi"
 	socketapi "github.com/tetratelabs/wazero/internal/sock"
 )
 
