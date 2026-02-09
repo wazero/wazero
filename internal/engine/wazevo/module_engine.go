@@ -242,15 +242,13 @@ func (m *moduleEngine) ResolveImportedFunction(index, descFunc, indexInImportedM
 	executableOffset, moduleCtxOffset, typeIDOffset := m.parent.offsets.ImportedFunctionOffset(index)
 	importedME := importedModuleEngine.(*moduleEngine)
 
-	if int(indexInImportedModule) >= len(importedME.importedFunctions) {
-		indexInImportedModule -= wasm.Index(len(importedME.importedFunctions))
-	} else {
+	if int(indexInImportedModule) < len(importedME.importedFunctions) {
 		imported := &importedME.importedFunctions[indexInImportedModule]
 		m.ResolveImportedFunction(index, descFunc, imported.indexInModule, imported.me)
 		return // Recursively resolve the imported function.
 	}
 
-	offset := importedME.parent.functionOffsets[indexInImportedModule]
+	offset := importedME.parent.functionOffsets[indexInImportedModule-wasm.Index(len(importedME.importedFunctions))]
 	typeID := m.module.TypeIDs[descFunc]
 	executable := &importedME.parent.executable[offset]
 	// Write functionInstance.
