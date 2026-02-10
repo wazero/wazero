@@ -385,22 +385,26 @@ func TestRuntime_Instantiate_DoesntEnforce_Start(t *testing.T) {
 }
 
 func TestRuntime_Instantiate_ErrorOnStart(t *testing.T) {
+	var indexZero wasm.Index
 	tests := []struct {
-		name, wasm string
+		name string
+		wasm *wasm.Module
 	}{
 		{
 			name: "_start function",
-			wasm: `(module
-	(import "" "start" (func $start))
-	(export "_start" (func $start))
-)`,
+			wasm: &wasm.Module{
+				TypeSection:   []wasm.FunctionType{{}},
+				ImportSection: []wasm.Import{{Module: "host", Name: "start", Type: wasm.ExternTypeFunc, DescFunc: 0}},
+				ExportSection: []wasm.Export{{Name: "_start", Type: wasm.ExternTypeFunc, Index: 0}},
+			},
 		},
 		{
 			name: ".start function",
-			wasm: `(module
-	(import "" "start" (func $start))
-	(start $start)
-)`,
+			wasm: &wasm.Module{
+				TypeSection:   []wasm.FunctionType{{}},
+				ImportSection: []wasm.Import{{Module: "host", Name: "start", Type: wasm.ExternTypeFunc, DescFunc: 0}},
+				StartSection:  &indexZero,
+			},
 		},
 	}
 
@@ -420,9 +424,11 @@ func TestRuntime_Instantiate_ErrorOnStart(t *testing.T) {
 				Instantiate(testCtx)
 			require.NoError(t, err)
 
-			// Start the module as a WASI command. We expect it to fail.
-			_, err = r.Instantiate(testCtx, []byte(tc.wasm))
+			// Start the module as a WASI command. We expect it to fail with the error from the
+			// start function.
+			_, err = r.Instantiate(testCtx, binaryencoding.EncodeModule(tc.wasm))
 			require.Error(t, err)
+			require.Contains(t, err.Error(), "ice cream")
 
 			// Close the imported module, which should remove its compiler cache.
 			require.NoError(t, host.Close(testCtx))
