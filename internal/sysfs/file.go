@@ -7,7 +7,7 @@ import (
 	"time"
 
 	experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
-	"github.com/tetratelabs/wazero/experimental/fsapi"
+	"github.com/tetratelabs/wazero/internal/fsapi"
 	"github.com/tetratelabs/wazero/sys"
 )
 
@@ -351,14 +351,9 @@ func (f *fsFile) SetNonblock(bool) experimentalsys.Errno {
 	return experimentalsys.ENOSYS
 }
 
-// pollable has just the Poll function.
-type pollable interface {
-	Poll(fsapi.Pflag, int32) (ready bool, errno experimentalsys.Errno)
-}
-
 // Poll implements the same method as documented on fsapi.File
 func (f *fsFile) Poll(flag fsapi.Pflag, timeoutMillis int32) (ready bool, errno experimentalsys.Errno) {
-	if p, isPollable := f.fs.(pollable); isPollable {
+	if p, ok := f.fs.(experimentalsys.Pollable); ok {
 		return p.Poll(flag, timeoutMillis)
 	}
 
