@@ -189,8 +189,8 @@ func simulatePauseResumeLoop(hostFunctions map[string]func(args map[string]any) 
 	//   print(message, result)
 	//
 	calls := []struct {
-		Function string
-		Args     map[string]any
+		Function string         `json:"function"`
+		Args     map[string]any `json:"args"`
 	}{
 		{Function: "greet", Args: map[string]any{"name": "wazero"}},
 		{Function: "sqrt", Args: map[string]any{"x": float64(144)}},

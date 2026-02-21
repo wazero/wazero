@@ -109,7 +109,7 @@ The guest returns numeric status codes to indicate why execution paused:
 ### Real-World Usage
 
 This pattern is used by projects like
-[monty-go](https://github.com/aspect-build/monty-go), which embeds a Python
+[monty-go](https://github.com/fugue-labs/monty-go), which embeds a Python
 interpreter (RustPython compiled to WASM) in Go applications. The embedded
 Python can call Go-defined functions as if they were native Python functions,
 with the pause/resume loop handling the cross-boundary communication
