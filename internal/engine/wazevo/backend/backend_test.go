@@ -2391,7 +2391,7 @@ L5 (SSA Block: blk5):
 
 			ssab := ssa.NewBuilder()
 			offset := wazevoapi.NewModuleContextOffsetData(tc.m, false)
-			fc := frontend.NewFrontendCompiler(tc.m, ssab, &offset, false, false, false)
+			fc := frontend.NewFrontendCompiler(tc.m, ssab, &offset, false, 0, false, false)
 			machine := newMachine()
 			machine.DisableStackCheck()
 			be := backend.NewCompiler(context.Background(), machine, ssab)

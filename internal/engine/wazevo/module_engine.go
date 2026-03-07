@@ -209,6 +209,7 @@ func (m *moduleEngine) NewFunction(index wasm.Index) api.Function {
 	ce.execCtx.memoryWait64TrampolineAddress = sharedFunctions.memoryWait64Address
 	ce.execCtx.memoryNotifyTrampolineAddress = sharedFunctions.memoryNotifyAddress
 	ce.execCtx.memmoveAddress = memmovPtr
+	ce.execCtx.interruptCounter = &globalCounter
 	ce.init()
 	return ce
 }

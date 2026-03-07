@@ -186,7 +186,8 @@ func NewRuntimeWithConfig(ctx context.Context, rConfig RuntimeConfig) Runtime {
 		memoryCapacityFromMax: config.memoryCapacityFromMax,
 		dwarfDisabled:         config.dwarfDisabled,
 		storeCustomSections:   config.storeCustomSections,
-		ensureTermination:     config.ensureTermination,
+		ensureTermination:      config.ensureTermination,
+		interruptCheckInterval: config.interruptCheckInterval,
 	}
 }
 
@@ -208,7 +209,8 @@ type runtime struct {
 	// See /RATIONALE.md
 	closed atomic.Uint64
 
-	ensureTermination bool
+	ensureTermination      bool
+	interruptCheckInterval uint64
 }
 
 // Module implements Runtime.Module.
@@ -258,8 +260,8 @@ func (r *runtime) CompileModule(ctx context.Context, binary []byte) (CompiledMod
 	if err != nil {
 		return nil, err
 	}
-	internal.AssignModuleID(binary, listeners, r.ensureTermination)
-	if err = r.store.Engine.CompileModule(ctx, internal, listeners, r.ensureTermination); err != nil {
+	internal.AssignModuleID(binary, listeners, r.ensureTermination, r.interruptCheckInterval)
+	if err = r.store.Engine.CompileModule(ctx, internal, listeners, r.ensureTermination, r.interruptCheckInterval); err != nil {
 		return nil, err
 	}
 	return c, nil

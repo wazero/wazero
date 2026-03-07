@@ -72,6 +72,11 @@ func TestRuntimeConfig(t *testing.T) {
 			with:     func(c RuntimeConfig) RuntimeConfig { return c.WithCloseOnContextDone(true) },
 			expected: &runtimeConfig{ensureTermination: true},
 		},
+		{
+			name:     "WithInterruptCheckInterval",
+			with:     func(c RuntimeConfig) RuntimeConfig { return c.WithInterruptCheckInterval(32) },
+			expected: &runtimeConfig{interruptCheckInterval: 32},
+		},
 	}
 
 	for _, tt := range tests {
@@ -647,7 +652,7 @@ func Test_compiledModule_Close(t *testing.T) {
 		var cs []*compiledModule
 		for i := 0; i < 10; i++ {
 			m := &wasm.Module{}
-			err := e.CompileModule(ctx, m, nil, false)
+			err := e.CompileModule(ctx, m, nil, false, 0)
 			require.NoError(t, err)
 			cs = append(cs, &compiledModule{module: m, compiledEngine: e})
 		}

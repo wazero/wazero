@@ -18,6 +18,10 @@ import (
 	"github.com/tetratelabs/wazero/internal/wasmruntime"
 )
 
+// globalCounter is the shared counter used for interrupt check interval optimization.
+// All callEngine instances point to this counter to amortize context cancellation checks.
+var globalCounter uint64
+
 type (
 	// callEngine implements api.Function.
 	callEngine struct {
@@ -90,6 +94,10 @@ type (
 		memoryWait64TrampolineAddress *byte
 		// memoryNotifyTrampolineAddress holds the address of the memory_notify trampoline function.
 		memoryNotifyTrampolineAddress *byte
+		// interruptCounter is a pointer to the global counter used for loop termination checking.
+		// When interruptCheckInterval is configured, the counter is incremented on each loop iteration
+		// and the exit code check is only performed when (counter & mask) == 0.
+		interruptCounter *uint64
 	}
 )
 

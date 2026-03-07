@@ -168,6 +168,17 @@ type RuntimeConfig interface {
 	// When the invocations of api.Function are closed due to this, sys.ExitError is raised to the callers and
 	// the api.Module from which the functions are derived is made closed.
 	WithCloseOnContextDone(bool) RuntimeConfig
+
+	// WithInterruptCheckInterval configures the interrupt check interval for the compiler engine
+	// when WithCloseOnContextDone is enabled. Instead of checking for context cancellation on every
+	// loop iteration, the check is performed every N iterations, reducing overhead.
+	//
+	// The interval must be a power of 2 (e.g., 1, 2, 4, 8, 16, 32, 64). A value of 0 means
+	// check every iteration (default behavior). Internally, the value is used as a bitmask
+	// (interval - 1) for efficient modulo checking.
+	//
+	// This setting only affects the compiler engine (wazevo). The interpreter engine ignores it.
+	WithInterruptCheckInterval(interval uint64) RuntimeConfig
 }
 
 // NewRuntimeConfig returns a RuntimeConfig using the compiler if it is supported in this environment,
@@ -188,8 +199,9 @@ type runtimeConfig struct {
 	dwarfDisabled         bool // negative as defaults to enabled
 	newEngine             newEngine
 	cache                 CompilationCache
-	storeCustomSections   bool
-	ensureTermination     bool
+	storeCustomSections      bool
+	ensureTermination        bool
+	interruptCheckInterval   uint64
 }
 
 // engineLessConfig helps avoid copy/pasting the wrong defaults.
@@ -262,6 +274,13 @@ func (c *runtimeConfig) WithCoreFeatures(features api.CoreFeatures) RuntimeConfi
 func (c *runtimeConfig) WithCloseOnContextDone(ensure bool) RuntimeConfig {
 	ret := c.clone()
 	ret.ensureTermination = ensure
+	return ret
+}
+
+// WithInterruptCheckInterval implements RuntimeConfig.WithInterruptCheckInterval
+func (c *runtimeConfig) WithInterruptCheckInterval(interval uint64) RuntimeConfig {
+	ret := c.clone()
+	ret.interruptCheckInterval = interval
 	return ret
 }
 
