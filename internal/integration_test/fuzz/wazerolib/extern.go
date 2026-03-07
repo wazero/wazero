@@ -93,7 +93,7 @@ func test_signal_stack() {
 		FunctionSection: []wasm.Index{0},
 		GlobalSection: []wasm.Global{{
 			Type: wasm.GlobalType{ValType: wasm.ValueTypeI32, Mutable: true},
-			Init: wasm.MakeConstantExpressionFromI32(math.MaxInt32),
+			Init: wasm.NewConstantExpressionFromI32(math.MaxInt32),
 		}},
 		ExportSection: []wasm.Export{{Type: wasm.ExternTypeFunc, Name: "long_loop", Index: 0}},
 		CodeSection: []wasm.Code{

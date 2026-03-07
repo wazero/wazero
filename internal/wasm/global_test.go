@@ -184,7 +184,7 @@ func TestPublicModule_Global(t *testing.T) {
 				GlobalSection: []Global{
 					{
 						Type: GlobalType{ValType: ValueTypeI32},
-						Init: MakeConstantExpressionFromI32(1),
+						Init: NewConstantExpressionFromI32(1),
 					},
 				},
 			},
@@ -195,7 +195,7 @@ func TestPublicModule_Global(t *testing.T) {
 				GlobalSection: []Global{
 					{
 						Type: GlobalType{ValType: ValueTypeI32},
-						Init: MakeConstantExpressionFromI32(1),
+						Init: NewConstantExpressionFromI32(1),
 					},
 				},
 				Exports: map[string]*Export{"global": {Type: ExternTypeGlobal, Name: "global"}},
@@ -211,7 +211,7 @@ func TestPublicModule_Global(t *testing.T) {
 				GlobalSection: []Global{
 					{
 						Type: GlobalType{ValType: ValueTypeI64},
-						Init: MakeConstantExpressionFromI64(1),
+						Init: NewConstantExpressionFromI64(1),
 					},
 				},
 				Exports: map[string]*Export{"global": {Type: ExternTypeGlobal, Name: "global"}},
@@ -227,7 +227,7 @@ func TestPublicModule_Global(t *testing.T) {
 				GlobalSection: []Global{
 					{
 						Type: GlobalType{ValType: ValueTypeF32},
-						Init: MakeConstantExpressionFromOpcode(OpcodeF32Const, u32.LeBytes(uint32(api.EncodeF32(1.0)))),
+						Init: NewConstantExpressionFromOpcode(OpcodeF32Const, u32.LeBytes(uint32(api.EncodeF32(1.0)))),
 					},
 				},
 				Exports: map[string]*Export{"global": {Type: ExternTypeGlobal, Name: "global"}},
@@ -243,7 +243,7 @@ func TestPublicModule_Global(t *testing.T) {
 				GlobalSection: []Global{
 					{
 						Type: GlobalType{ValType: ValueTypeF64},
-						Init: MakeConstantExpressionFromOpcode(OpcodeF64Const, u64.LeBytes(api.EncodeF64(1.0))),
+						Init: NewConstantExpressionFromOpcode(OpcodeF64Const, u64.LeBytes(api.EncodeF64(1.0))),
 					},
 				},
 				Exports: map[string]*Export{"global": {Type: ExternTypeGlobal, Name: "global"}},
@@ -259,7 +259,7 @@ func TestPublicModule_Global(t *testing.T) {
 				GlobalSection: []Global{
 					{
 						Type: GlobalType{ValType: ValueTypeI32, Mutable: true},
-						Init: MakeConstantExpressionFromI32(1),
+						Init: NewConstantExpressionFromI32(1),
 					},
 				},
 				Exports: map[string]*Export{"global": {Type: ExternTypeGlobal, Name: "global"}},
@@ -276,7 +276,7 @@ func TestPublicModule_Global(t *testing.T) {
 				GlobalSection: []Global{
 					{
 						Type: GlobalType{ValType: ValueTypeI64, Mutable: true},
-						Init: MakeConstantExpressionFromI64(1),
+						Init: NewConstantExpressionFromI64(1),
 					},
 				},
 				Exports: map[string]*Export{"global": {Type: ExternTypeGlobal, Name: "global"}},
@@ -293,7 +293,7 @@ func TestPublicModule_Global(t *testing.T) {
 				GlobalSection: []Global{
 					{
 						Type: GlobalType{ValType: ValueTypeF32, Mutable: true},
-						Init: MakeConstantExpressionFromOpcode(OpcodeF32Const, u32.LeBytes(uint32(api.EncodeF32(1.0)))),
+						Init: NewConstantExpressionFromOpcode(OpcodeF32Const, u32.LeBytes(uint32(api.EncodeF32(1.0)))),
 					},
 				},
 				Exports: map[string]*Export{"global": {Type: ExternTypeGlobal, Name: "global"}},
@@ -310,7 +310,7 @@ func TestPublicModule_Global(t *testing.T) {
 				GlobalSection: []Global{
 					{
 						Type: GlobalType{ValType: ValueTypeF64, Mutable: true},
-						Init: MakeConstantExpressionFromOpcode(OpcodeF64Const, u64.LeBytes(api.EncodeF64(1.0))),
+						Init: NewConstantExpressionFromOpcode(OpcodeF64Const, u64.LeBytes(api.EncodeF64(1.0))),
 					},
 				},
 				Exports: map[string]*Export{"global": {Type: ExternTypeGlobal, Name: "global"}},

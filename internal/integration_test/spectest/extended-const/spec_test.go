@@ -16,7 +16,7 @@ import (
 //go:embed testdata/*.json
 var testcases embed.FS
 
-const enabledFeatures = api.CoreFeaturesV2 | experimental.CoreFeaturesTailCall
+const enabledFeatures = api.CoreFeaturesV2 | experimental.CoreFeaturesExtendedConst
 
 func TestCompiler(t *testing.T) {
 	if !platform.CompilerSupported() {

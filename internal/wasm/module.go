@@ -350,7 +350,7 @@ func (m *Module) validateFunctions(enabledFeatures api.CoreFeatures, functions [
 		return fmt.Errorf("code count (%d) != function count (%d)", codeCount, functionCount)
 	}
 
-	declaredFuncIndexes, err := m.declaredFunctionIndexes()
+	declaredFuncIndexes, err := m.declaredFunctionIndexes(enabledFeatures)
 	if err != nil {
 		return err
 	}
@@ -394,7 +394,7 @@ func (m *Module) validateFunctions(enabledFeatures api.CoreFeatures, functions [
 //
 // See https://github.com/WebAssembly/reference-types/issues/31
 // See https://github.com/WebAssembly/reference-types/issues/76
-func (m *Module) declaredFunctionIndexes() (ret map[Index]struct{}, err error) {
+func (m *Module) declaredFunctionIndexes(enabledFeatures api.CoreFeatures) (ret map[Index]struct{}, err error) {
 	ret = map[uint32]struct{}{}
 
 	for i := range m.ExportSection {
@@ -407,9 +407,10 @@ func (m *Module) declaredFunctionIndexes() (ret map[Index]struct{}, err error) {
 	for i := range m.GlobalSection {
 		g := &m.GlobalSection[i]
 
-		_, _, initErr := g.Init.Evaluate(
+		_, _, initErr := evaluateConstExpr(
+			&g.Init,
 			func(globalIndex Index) (ValueType, uint64, uint64, error) {
-				vt, err := m.resolveConstExprGlobalType(SectionIDGlobal, Index(i), globalIndex)
+				vt, err := m.resolveConstExprGlobalType(enabledFeatures, SectionIDGlobal, Index(i), globalIndex)
 				return vt, 0, 0, err
 			},
 			func(funcIndex Index) (Reference, error) {
@@ -427,9 +428,10 @@ func (m *Module) declaredFunctionIndexes() (ret map[Index]struct{}, err error) {
 	for i := range m.ElementSection {
 		elem := &m.ElementSection[i]
 		for _, initExpr := range elem.Init {
-			_, _, _ = initExpr.Evaluate(
+			_, _, _ = evaluateConstExpr(
+				&initExpr,
 				func(globalIndex Index) (ValueType, uint64, uint64, error) {
-					vt, err := m.resolveConstExprGlobalType(SectionIDElement, Index(i), globalIndex)
+					vt, err := m.resolveConstExprGlobalType(enabledFeatures, SectionIDElement, Index(i), globalIndex)
 					return vt, 0, 0, err
 				},
 				func(funcIndex Index) (Reference, error) {
@@ -542,7 +544,8 @@ func (m *Module) validateExports(enabledFeatures api.CoreFeatures, functions []I
 }
 
 func validateConstExpression(globals []GlobalType, numFuncs uint32, expr *ConstantExpression, expectedType ValueType) (err error) {
-	_, typ, err := expr.Evaluate(
+	_, typ, err := evaluateConstExpr(
+		expr,
 		func(globalIndex Index) (ValueType, uint64, uint64, error) {
 			if uint32(len(globals)) <= globalIndex {
 				return 0, 0, 0, fmt.Errorf("global index out of range")
@@ -591,7 +594,7 @@ func (m *ModuleInstance) buildGlobals(module *Module, funcRefResolver func(funcI
 	}
 }
 
-func (m *Module) resolveConstExprGlobalType(sectionID SectionID, sectionIdx Index, idx Index) (ValueType, error) {
+func (m *Module) resolveConstExprGlobalType(enabledFeatures api.CoreFeatures, sectionID SectionID, sectionIdx Index, idx Index) (ValueType, error) {
 	if idx < m.ImportGlobalCount {
 		// Imports are not exclusively globals. This is the current global index in the loop.
 		cur := uint32(0)
@@ -612,11 +615,9 @@ func (m *Module) resolveConstExprGlobalType(sectionID SectionID, sectionIdx Inde
 
 	// NOTE: in the <= 2.0 spec, global.get in a constant expression can only refer to imported globals.
 	// In version 3.0, this restriction is removed, and all globals prior to the current one are allowed.
-	// Not sure if we need to conditionally check this based on enabled features, but for now, we align with 2.0 spec.
-	// To align with 3.0, remove this if block.
-	// To conditionally check based on enabled features, we need to pass enabledFeatures to this function, and replace
-	// `if true` with `if !enabledFeatures.IsEnabled(api.CoreFeatureReferenceGlobalsInConstExpr)`.
-	if true {
+	// To avoid implementing too many flags, this relaxation is gated behind the CoreFeaturesExtendedConst flag,
+	// which includes other related extensions in constant expressions.
+	if !enabledFeatures.IsEnabled(experimental.CoreFeaturesExtendedConst) {
 		return 0, fmt.Errorf("%s[%d] (global.get %d): out of range of imported globals", SectionIDName(sectionID), sectionIdx, idx)
 	}
 

@@ -34,10 +34,10 @@ func TestLookupFunction(t *testing.T) {
 		},
 		ElementSection: []wasm.ElementSegment{
 			{
-				OffsetExpr: wasm.MakeConstantExpressionFromI32(0),
+				OffsetExpr: wasm.NewConstantExpressionFromI32(0),
 				Init: []wasm.ConstantExpression{
-					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{0}),
-					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
+					wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{0}),
+					wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
 				},
 				Type: wasm.RefTypeFuncref,
 			},

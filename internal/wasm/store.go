@@ -179,7 +179,7 @@ func (m *ModuleInstance) buildElementInstances(elements []ElementSegment) {
 			inst := make([]Reference, len(inits))
 			m.ElementInstances[i] = inst
 			for j, idx := range inits {
-				initExprResults := idx.evaluateInModuleInstance(m)
+				initExprResults := evaluateConstExprInModuleInstance(&idx, m)
 				inst[j] = Reference(initExprResults[0])
 			}
 		}
@@ -194,7 +194,7 @@ func (m *ModuleInstance) applyElements(elems []ElementSegment) {
 			len(elem.Init) == 0 {
 			continue
 		}
-		offsetExprResults := elem.OffsetExpr.evaluateInModuleInstance(m)
+		offsetExprResults := evaluateConstExprInModuleInstance(&elem.OffsetExpr, m)
 		offset := uint32(offsetExprResults[0])
 
 		table := m.Tables[elem.TableIndex]
@@ -216,7 +216,7 @@ func (m *ModuleInstance) applyElements(elems []ElementSegment) {
 			}
 		} else {
 			for i, init := range elem.Init {
-				initExprResults := init.evaluateInModuleInstance(m)
+				initExprResults := evaluateConstExprInModuleInstance(&init, m)
 				references[offset+uint32(i)] = Reference(initExprResults[0])
 			}
 		}
@@ -229,7 +229,8 @@ func (m *ModuleInstance) validateData(data []DataSegment) (err error) {
 	for i := range data {
 		d := &data[i]
 		if !d.IsPassive() {
-			results, typ, err := d.OffsetExpression.Evaluate(
+			results, typ, err := evaluateConstExpr(
+				&d.OffsetExpression,
 				func(globalIndex Index) (ValueType, uint64, uint64, error) {
 					if globalIndex >= Index(len(m.Globals)) {
 						return 0, 0, 0, errors.New("global index out of range")
@@ -266,7 +267,7 @@ func (m *ModuleInstance) applyData(data []DataSegment) error {
 		d := &data[i]
 		m.DataInstances[i] = d.Init
 		if !d.IsPassive() {
-			offsetExprResults := d.OffsetExpression.evaluateInModuleInstance(m)
+			offsetExprResults := evaluateConstExprInModuleInstance(&d.OffsetExpression, m)
 			offset := int(offsetExprResults[0])
 			if offset < 0 || offset+len(d.Init) > len(m.MemoryInstance.Buffer) {
 				return fmt.Errorf("%s[%d]: out of bounds memory access", SectionIDName(SectionIDData), i)
@@ -529,7 +530,8 @@ func errorInvalidImport(i *Import, err error) error {
 // Global initialization constant expression can only reference the imported globals.
 // See the note on https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#constant-expressions%E2%91%A0
 func (g *GlobalInstance) initialize(importedGlobals []*GlobalInstance, expr *ConstantExpression, funcRefResolver func(funcIndex Index) Reference) {
-	result, _, _ := expr.Evaluate(
+	result, _, _ := evaluateConstExpr(
+		expr,
 		func(globalIndex Index) (ValueType, uint64, uint64, error) {
 			g := importedGlobals[globalIndex]
 			return g.Type.ValType, g.Val, g.ValHi, nil

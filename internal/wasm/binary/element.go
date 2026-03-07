@@ -37,7 +37,7 @@ func decodeElementInitValueVector(r *bytes.Reader) ([]wasm.ConstantExpression, e
 		if u32 >= wasm.MaximumFunctionIndex {
 			return nil, fmt.Errorf("too large function index in Element init: %d", u32)
 		}
-		vec[i] = wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, leb128.EncodeUint32(u32))
+		vec[i] = wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefFunc, leb128.EncodeUint32(u32))
 	}
 	return vec, nil
 }

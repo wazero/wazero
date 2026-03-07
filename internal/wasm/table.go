@@ -140,12 +140,13 @@ func (m *Module) validateTable(enabledFeatures api.CoreFeatures, tables []Table,
 
 		// Any offset applied is to the element, not the function index: validate here if the funcidx is sound.
 		for ei, init := range elem.Init {
-			_, initType, err := init.Evaluate(
+			_, initType, err := evaluateConstExpr(
+				&init,
 				func(globalIndex Index) (ValueType, uint64, uint64, error) {
 					if globalIndex >= Index(globalsCount) {
 						return 0, 0, 0, fmt.Errorf("%s[%d].init[%d] global index %d out of range", SectionIDName(SectionIDElement), idx, ei, globalIndex)
 					}
-					vt, err := m.resolveConstExprGlobalType(SectionIDElement, idx, globalIndex)
+					vt, err := m.resolveConstExprGlobalType(enabledFeatures, SectionIDElement, idx, globalIndex)
 					return vt, 0, 0, err
 				},
 				func(funcIndex Index) (Reference, error) {
@@ -185,7 +186,8 @@ func (m *Module) validateTable(enabledFeatures api.CoreFeatures, tables []Table,
 
 			hasGlobalRef := false
 
-			offsetExprResults, offsetExprType, err := elem.OffsetExpr.Evaluate(
+			offsetExprResults, offsetExprType, err := evaluateConstExpr(
+				&elem.OffsetExpr,
 				func(globalIndex Index) (ValueType, uint64, uint64, error) {
 					hasGlobalRef = true
 
@@ -193,7 +195,7 @@ func (m *Module) validateTable(enabledFeatures api.CoreFeatures, tables []Table,
 						return 0, 0, 0, fmt.Errorf("%s[%d] global index %d out of range", SectionIDName(SectionIDElement), idx, globalIndex)
 					}
 
-					vt, err := m.resolveConstExprGlobalType(SectionIDElement, idx, globalIndex)
+					vt, err := m.resolveConstExprGlobalType(enabledFeatures, SectionIDElement, idx, globalIndex)
 					if err != nil {
 						return 0, 0, 0, err
 					}
@@ -248,7 +250,7 @@ func (m *ModuleInstance) buildTables(module *Module, skipBoundCheck bool) (err e
 		for elemI := range module.ElementSection { // Do not loop over the value since elementSegments is a slice of value.
 			elem := &module.ElementSection[elemI]
 			table := m.Tables[elem.TableIndex]
-			offset := uint32(elem.OffsetExpr.evaluateInModuleInstance(m)[0])
+			offset := uint32(evaluateConstExprInModuleInstance(&elem.OffsetExpr, m)[0])
 			// Check to see if we are out-of-bounds
 			initCount := uint64(len(elem.Init))
 			if err = checkSegmentBounds(table.Min, uint64(offset)+initCount, Index(elemI)); err != nil {

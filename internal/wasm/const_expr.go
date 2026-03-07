@@ -13,20 +13,7 @@ type ConstantExpression struct {
 	Data []byte
 }
 
-func (e *ConstantExpression) evaluateInModuleInstance(m *ModuleInstance) []uint64 {
-	v, _, _ := e.Evaluate(
-		func(globalIndex Index) (ValueType, uint64, uint64, error) {
-			g := m.Globals[globalIndex]
-			return g.Type.ValType, g.Val, g.ValHi, nil
-		},
-		func(funcIndex Index) (Reference, error) {
-			return m.Engine.FunctionInstanceReference(funcIndex), nil
-		},
-	)
-	return v
-}
-
-func (e *ConstantExpression) Evaluate(globalResolver func(globalIndex Index) (ValueType, uint64, uint64, error), funcRefResolver func(funcIndex Index) (Reference, error)) ([]uint64, ValueType, error) {
+func evaluateConstExpr(e *ConstantExpression, globalResolver func(globalIndex Index) (ValueType, uint64, uint64, error), funcRefResolver func(funcIndex Index) (Reference, error)) ([]uint64, ValueType, error) {
 	var stack []uint64
 	var typeStack []ValueType
 	var pc uint64
@@ -220,7 +207,21 @@ func (e *ConstantExpression) Evaluate(globalResolver func(globalIndex Index) (Va
 	}
 }
 
-func MakeConstantExpressionFromOpcode(
+func evaluateConstExprInModuleInstance(e *ConstantExpression, m *ModuleInstance) []uint64 {
+	v, _, _ := evaluateConstExpr(
+		e,
+		func(globalIndex Index) (ValueType, uint64, uint64, error) {
+			g := m.Globals[globalIndex]
+			return g.Type.ValType, g.Val, g.ValHi, nil
+		},
+		func(funcIndex Index) (Reference, error) {
+			return m.Engine.FunctionInstanceReference(funcIndex), nil
+		},
+	)
+	return v
+}
+
+func NewConstantExpressionFromOpcode(
 	opcode byte, opData []byte,
 ) ConstantExpression {
 	data := make([]byte, 0, 3+len(opData)) // 2 for opcode and optional vec prefix, 1 for end
@@ -233,10 +234,10 @@ func MakeConstantExpressionFromOpcode(
 	return ConstantExpression{Data: data}
 }
 
-func MakeConstantExpressionFromI32(val int32) ConstantExpression {
-	return MakeConstantExpressionFromOpcode(OpcodeI32Const, leb128.EncodeInt32(val))
+func NewConstantExpressionFromI32(val int32) ConstantExpression {
+	return NewConstantExpressionFromOpcode(OpcodeI32Const, leb128.EncodeInt32(val))
 }
 
-func MakeConstantExpressionFromI64(val int64) ConstantExpression {
-	return MakeConstantExpressionFromOpcode(OpcodeI64Const, leb128.EncodeInt64(val))
+func NewConstantExpressionFromI64(val int64) ConstantExpression {
+	return NewConstantExpressionFromOpcode(OpcodeI64Const, leb128.EncodeInt64(val))
 }

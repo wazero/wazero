@@ -255,7 +255,7 @@ func TestModule_Global(t *testing.T) {
 				GlobalSection: []wasm.Global{
 					{
 						Type: wasm.GlobalType{ValType: wasm.ValueTypeI64, Mutable: true},
-						Init: wasm.MakeConstantExpressionFromI64(globalVal),
+						Init: wasm.NewConstantExpressionFromI64(globalVal),
 					},
 				},
 			},
@@ -266,7 +266,7 @@ func TestModule_Global(t *testing.T) {
 				GlobalSection: []wasm.Global{
 					{
 						Type: wasm.GlobalType{ValType: wasm.ValueTypeI64},
-						Init: wasm.MakeConstantExpressionFromI64(globalVal),
+						Init: wasm.NewConstantExpressionFromI64(globalVal),
 					},
 				},
 				Exports: map[string]*wasm.Export{
@@ -281,7 +281,7 @@ func TestModule_Global(t *testing.T) {
 				GlobalSection: []wasm.Global{
 					{
 						Type: wasm.GlobalType{ValType: wasm.ValueTypeI64, Mutable: true},
-						Init: wasm.MakeConstantExpressionFromI64(globalVal),
+						Init: wasm.NewConstantExpressionFromI64(globalVal),
 					},
 				},
 				Exports: map[string]*wasm.Export{

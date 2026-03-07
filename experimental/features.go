@@ -16,3 +16,14 @@ const CoreFeaturesThreads = api.CoreFeatureSIMD << 1
 
 // CoreFeaturesThreads enables tail call instructions ("tail-call").
 const CoreFeaturesTailCall = api.CoreFeatureSIMD << 2
+
+// CoreFeaturesExtendedConst enables extended constant expressions.
+//
+// # Notes
+//
+//   - Enables i32.add/sub/mul and i64.add/sub/mul in constant expressions.
+//   - Enables references to any previous global index in constant expressions,
+//     instead of just imported globals.
+//
+// See https://github.com/WebAssembly/extended-const for further details.
+const CoreFeaturesExtendedConst = api.CoreFeatureSIMD << 3

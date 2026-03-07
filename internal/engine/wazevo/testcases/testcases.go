@@ -1781,9 +1781,9 @@ var (
 					OffsetExpr: constExprI32(0), TableIndex: 0, Type: wasm.RefTypeFuncref, Mode: wasm.ElementModeActive,
 					// Set the function 1, 2, 3 at the beginning of the table.
 					Init: []wasm.ConstantExpression{
-						wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
-						wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{2}),
-						wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{3}),
+						wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
+						wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{2}),
+						wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{3}),
 					},
 				},
 			},
@@ -2773,16 +2773,16 @@ func maskedBuf(size int) []byte {
 }
 
 func constExprI32(i int32) wasm.ConstantExpression {
-	return wasm.MakeConstantExpressionFromI32(i)
+	return wasm.NewConstantExpressionFromI32(i)
 }
 
 func constExprI64(i int64) wasm.ConstantExpression {
-	return wasm.MakeConstantExpressionFromI64(i)
+	return wasm.NewConstantExpressionFromI64(i)
 }
 
 func constExprF32(i float32) wasm.ConstantExpression {
 	b := math.Float32bits(i)
-	return wasm.MakeConstantExpressionFromOpcode(
+	return wasm.NewConstantExpressionFromOpcode(
 		wasm.OpcodeF32Const, []byte{
 			byte(b), byte(b >> 8), byte(b >> 16), byte(b >> 24),
 		},
@@ -2791,7 +2791,7 @@ func constExprF32(i float32) wasm.ConstantExpression {
 
 func constExprF64(i float64) wasm.ConstantExpression {
 	b := math.Float64bits(i)
-	return wasm.MakeConstantExpressionFromOpcode(
+	return wasm.NewConstantExpressionFromOpcode(
 		wasm.OpcodeF64Const, []byte{
 			byte(b), byte(b >> 8), byte(b >> 16), byte(b >> 24),
 			byte(b >> 32), byte(b >> 40), byte(b >> 48), byte(b >> 56),
@@ -2800,7 +2800,7 @@ func constExprF64(i float64) wasm.ConstantExpression {
 }
 
 func constExprV128(lo, hi uint64) wasm.ConstantExpression {
-	return wasm.MakeConstantExpressionFromOpcode(
+	return wasm.NewConstantExpressionFromOpcode(
 		wasm.OpcodeVecV128Const,
 		[]byte{
 			byte(lo), byte(lo >> 8), byte(lo >> 16), byte(lo >> 24),

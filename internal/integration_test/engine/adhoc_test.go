@@ -937,11 +937,11 @@ func testLookupFunction(t *testing.T, r wazero.Runtime) {
 		TableSection: []wasm.Table{{Min: 10, Type: wasm.RefTypeFuncref}},
 		ElementSection: []wasm.ElementSegment{
 			{
-				OffsetExpr: wasm.MakeConstantExpressionFromI32(0),
+				OffsetExpr: wasm.NewConstantExpressionFromI32(0),
 				TableIndex: 0,
 				Init: []wasm.ConstantExpression{
-					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{2}),
-					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{0}),
+					wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{2}),
+					wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{0}),
 				},
 			},
 		},
@@ -1358,11 +1358,11 @@ func testBeforeListenerGlobals(t *testing.T, r wazero.Runtime) {
 		GlobalSection: []wasm.Global{
 			{
 				Type: wasm.GlobalType{ValType: wasm.ValueTypeI32, Mutable: true},
-				Init: wasm.MakeConstantExpressionFromI32(100),
+				Init: wasm.NewConstantExpressionFromI32(100),
 			},
 			{
 				Type: wasm.GlobalType{ValType: wasm.ValueTypeI32, Mutable: true},
-				Init: wasm.MakeConstantExpressionFromI32(200),
+				Init: wasm.NewConstantExpressionFromI32(200),
 			},
 		},
 		CodeSection: []wasm.Code{
@@ -2136,7 +2136,7 @@ func testImportedMutableGlobalUpdate(t *testing.T, r wazero.Runtime) {
 		GlobalSection: []wasm.Global{
 			{
 				Type: wasm.GlobalType{ValType: i32, Mutable: true},
-				Init: wasm.MakeConstantExpressionFromI32(1),
+				Init: wasm.NewConstantExpressionFromI32(1),
 			},
 		},
 		NameSection: &wasm.NameSection{ModuleName: "imported"},
@@ -2244,12 +2244,12 @@ func testCloseTableExportingModule(t *testing.T, r wazero.Runtime) {
 		NameSection:  &wasm.NameSection{ModuleName: "exporting"},
 		ElementSection: []wasm.ElementSegment{
 			{
-				OffsetExpr: wasm.MakeConstantExpressionFromI32(5),
+				OffsetExpr: wasm.NewConstantExpressionFromI32(5),
 				TableIndex: 0, Type: wasm.RefTypeFuncref, Mode: wasm.ElementModeActive,
 				// Set the function 0, 1 at table offset 5.
 				Init: []wasm.ConstantExpression{
-					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{0}),
-					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
+					wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{0}),
+					wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
 				},
 			},
 		},
@@ -2358,12 +2358,12 @@ func testCloseTableImportingModule(t *testing.T, r wazero.Runtime) {
 		},
 		ElementSection: []wasm.ElementSegment{
 			{
-				OffsetExpr: wasm.MakeConstantExpressionFromI32(5),
+				OffsetExpr: wasm.NewConstantExpressionFromI32(5),
 				TableIndex: 0, Type: wasm.RefTypeFuncref, Mode: wasm.ElementModeActive,
 				// Set the function 0, 1 at table offset 5.
 				Init: []wasm.ConstantExpression{
-					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{0}),
-					wasm.MakeConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
+					wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{0}),
+					wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefFunc, []byte{1}),
 				},
 			},
 		},

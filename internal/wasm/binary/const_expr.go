@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/tetratelabs/wazero/api"
+	"github.com/tetratelabs/wazero/experimental"
 	"github.com/tetratelabs/wazero/internal/ieee754"
 	"github.com/tetratelabs/wazero/internal/leb128"
 	"github.com/tetratelabs/wazero/internal/wasm"
@@ -25,11 +26,17 @@ func decodeConstantExpression(r *bytes.Reader, enabledFeatures api.CoreFeatures,
 			_, _, err = leb128.DecodeInt32(r)
 		case wasm.OpcodeI32Add, wasm.OpcodeI32Sub, wasm.OpcodeI32Mul:
 			// No immediate to read.
+			if !enabledFeatures.IsEnabled(experimental.CoreFeaturesExtendedConst) {
+				return fmt.Errorf("%v is not supported in a constant expression as feature \"extended-const\" is disabled", wasm.InstructionName(opcode))
+			}
 		case wasm.OpcodeI64Const:
 			// Treat constants as signed as their interpretation is not yet known per /RATIONALE.md
 			_, _, err = leb128.DecodeInt64(r)
 		case wasm.OpcodeI64Add, wasm.OpcodeI64Sub, wasm.OpcodeI64Mul:
 			// No immediate to read.
+			if !enabledFeatures.IsEnabled(experimental.CoreFeaturesExtendedConst) {
+				return fmt.Errorf("%v is not supported in a constant expression as feature \"extended-const\" is disabled", wasm.InstructionName(opcode))
+			}
 		case wasm.OpcodeF32Const:
 			buf := make([]byte, 4)
 			if _, err := io.ReadFull(r, buf); err != nil {
