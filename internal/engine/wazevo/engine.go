@@ -227,7 +227,7 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 		offsets: wazevoapi.NewModuleContextOffsetData(module, withListener), parent: e, module: module,
 		ensureTermination:      ensureTermination,
 		interruptCheckInterval: interruptCheckInterval,
-		executables:       &executables{},
+		executables:            &executables{},
 	}
 
 	importedFns, localFns := int(module.ImportFunctionCount), len(module.FunctionSection)

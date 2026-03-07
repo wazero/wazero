@@ -192,16 +192,16 @@ func NewRuntimeConfig() RuntimeConfig {
 type newEngine func(context.Context, api.CoreFeatures, filecache.Cache) wasm.Engine
 
 type runtimeConfig struct {
-	enabledFeatures       api.CoreFeatures
-	memoryLimitPages      uint32
-	memoryCapacityFromMax bool
-	engineKind            engineKind
-	dwarfDisabled         bool // negative as defaults to enabled
-	newEngine             newEngine
-	cache                 CompilationCache
-	storeCustomSections      bool
-	ensureTermination        bool
-	interruptCheckInterval   uint64
+	enabledFeatures        api.CoreFeatures
+	memoryLimitPages       uint32
+	memoryCapacityFromMax  bool
+	engineKind             engineKind
+	dwarfDisabled          bool // negative as defaults to enabled
+	newEngine              newEngine
+	cache                  CompilationCache
+	storeCustomSections    bool
+	ensureTermination      bool
+	interruptCheckInterval uint64
 }
 
 // engineLessConfig helps avoid copy/pasting the wrong defaults.
@@ -279,6 +279,10 @@ func (c *runtimeConfig) WithCloseOnContextDone(ensure bool) RuntimeConfig {
 
 // WithInterruptCheckInterval implements RuntimeConfig.WithInterruptCheckInterval
 func (c *runtimeConfig) WithInterruptCheckInterval(interval uint64) RuntimeConfig {
+	if interval != 0 && (interval&(interval-1)) != 0 {
+		panic(fmt.Errorf("interruptCheckInterval invalid: %d is not zero or a power of two", interval))
+	}
+
 	ret := c.clone()
 	ret.interruptCheckInterval = interval
 	return ret

@@ -99,11 +99,10 @@ func TestInterruptCheckInterval_ModuleClose(t *testing.T) {
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		moduleInstance.CloseWithExitCode(ctx, 1)
+		_ = moduleInstance.CloseWithExitCode(ctx, 1)
 	}()
 
 	_, err = infiniteLoop.Call(ctx)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "exit_code(1)")
 }
-

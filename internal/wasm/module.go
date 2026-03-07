@@ -214,9 +214,11 @@ func (m *Module) AssignModuleID(wasm []byte, listeners []experimental.FunctionLi
 	// Write the flag of ensureTermination to the checksum.
 	m.ID[0] = boolToByte(withEnsureTermination)
 	h.Write(m.ID[:1])
-	// Write the interruptCheckInterval to the checksum.
-	binary.LittleEndian.PutUint64(m.ID[:8], interruptCheckInterval)
-	h.Write(m.ID[:8])
+	// Write the interruptCheckInterval to the checksum only when it can affect codegen.
+	if withEnsureTermination {
+		binary.LittleEndian.PutUint64(m.ID[:8], interruptCheckInterval)
+		h.Write(m.ID[:8])
+	}
 	// Get checksum by passing the slice underlying m.ID.
 	h.Sum(m.ID[:0])
 }

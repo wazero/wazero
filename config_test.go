@@ -98,6 +98,14 @@ func TestRuntimeConfig(t *testing.T) {
 		})
 		require.EqualError(t, err, "memoryLimitPages invalid: 65537 > 65536")
 	})
+
+	t.Run("interruptCheckInterval non-power-of-two panics", func(t *testing.T) {
+		err := require.CapturePanic(func() {
+			input := &runtimeConfig{}
+			input.WithInterruptCheckInterval(3)
+		})
+		require.EqualError(t, err, "interruptCheckInterval invalid: 3 is not zero or a power of two")
+	})
 }
 
 func TestModuleConfig(t *testing.T) {

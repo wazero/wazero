@@ -179,13 +179,13 @@ func NewRuntimeWithConfig(ctx context.Context, rConfig RuntimeConfig) Runtime {
 	}
 	store := wasm.NewStore(config.enabledFeatures, engine)
 	return &runtime{
-		cache:                 cacheImpl,
-		store:                 store,
-		enabledFeatures:       config.enabledFeatures,
-		memoryLimitPages:      config.memoryLimitPages,
-		memoryCapacityFromMax: config.memoryCapacityFromMax,
-		dwarfDisabled:         config.dwarfDisabled,
-		storeCustomSections:   config.storeCustomSections,
+		cache:                  cacheImpl,
+		store:                  store,
+		enabledFeatures:        config.enabledFeatures,
+		memoryLimitPages:       config.memoryLimitPages,
+		memoryCapacityFromMax:  config.memoryCapacityFromMax,
+		dwarfDisabled:          config.dwarfDisabled,
+		storeCustomSections:    config.storeCustomSections,
 		ensureTermination:      config.ensureTermination,
 		interruptCheckInterval: config.interruptCheckInterval,
 	}
@@ -260,8 +260,12 @@ func (r *runtime) CompileModule(ctx context.Context, binary []byte) (CompiledMod
 	if err != nil {
 		return nil, err
 	}
-	internal.AssignModuleID(binary, listeners, r.ensureTermination, r.interruptCheckInterval)
-	if err = r.store.Engine.CompileModule(ctx, internal, listeners, r.ensureTermination, r.interruptCheckInterval); err != nil {
+	interruptCheckInterval := r.interruptCheckInterval
+	if !r.ensureTermination {
+		interruptCheckInterval = 0
+	}
+	internal.AssignModuleID(binary, listeners, r.ensureTermination, interruptCheckInterval)
+	if err = r.store.Engine.CompileModule(ctx, internal, listeners, r.ensureTermination, interruptCheckInterval); err != nil {
 		return nil, err
 	}
 	return c, nil
