@@ -1366,17 +1366,11 @@ func (c *Compiler) lowerCurrentOpcode() {
 				// Counter-based checking: only check every N iterations using bitmask.
 				mask := c.interruptCheckInterval - 1
 
-				// Load the pointer to the counter from execution context.
-				counterPtrLoad := builder.AllocateInstruction()
-				counterPtrLoad.AsLoad(c.execCtxPtrValue,
+				// Load current counter value directly from execution context.
+				currentLoad := builder.AllocateInstruction()
+				currentLoad.AsLoad(c.execCtxPtrValue,
 					wazevoapi.ExecutionContextOffsetInterruptCounter.U32(),
 					ssa.TypeI64)
-				counterPtrLoad.Insert(builder)
-				counterPtr := counterPtrLoad.Return()
-
-				// Load current counter value.
-				currentLoad := builder.AllocateInstruction()
-				currentLoad.AsLoad(counterPtr, 0, ssa.TypeI64)
 				currentLoad.Insert(builder)
 				currentValue := currentLoad.Return()
 
@@ -1390,9 +1384,10 @@ func (c *Compiler) lowerCurrentOpcode() {
 				increment.Insert(builder)
 				newValue := increment.Return()
 
-				// Store the incremented value back.
+				// Store the incremented value back directly to execution context.
 				store := builder.AllocateInstruction()
-				store.AsStore(ssa.OpcodeStore, newValue, counterPtr, 0)
+				store.AsStore(ssa.OpcodeStore, newValue, c.execCtxPtrValue,
+					wazevoapi.ExecutionContextOffsetInterruptCounter.U32())
 				store.Insert(builder)
 
 				// Check if we should do context check: (counter & mask) == 0.

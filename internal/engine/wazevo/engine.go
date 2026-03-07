@@ -41,6 +41,7 @@ type (
 		sharedFunctions *sharedFunctions
 		// setFinalizer defaults to runtime.SetFinalizer, but overridable for tests.
 		setFinalizer func(obj interface{}, finalizer interface{})
+
 		// The followings are reused for compiling shared functions.
 		machine backend.Machine
 		be      backend.Compiler
