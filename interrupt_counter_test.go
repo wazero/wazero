@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/experimental"
 	"github.com/tetratelabs/wazero/internal/testing/require"
 )
 
@@ -25,11 +26,10 @@ func TestInterruptCheckInterval_ContextTimeout(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := experimental.WithInterruptCheckInterval(context.Background(), tc.interval)
 
 			config := wazero.NewRuntimeConfig().
-				WithCloseOnContextDone(true).
-				WithInterruptCheckInterval(tc.interval)
+				WithCloseOnContextDone(true)
 
 			r := wazero.NewRuntimeWithConfig(ctx, config)
 			defer r.Close(ctx)
@@ -53,11 +53,10 @@ func TestInterruptCheckInterval_ContextTimeout(t *testing.T) {
 // TestInterruptCheckInterval_ContextCancel verifies that an infinite loop is
 // terminated by context cancellation when the interrupt check interval is configured.
 func TestInterruptCheckInterval_ContextCancel(t *testing.T) {
-	ctx := context.Background()
+	ctx := experimental.WithInterruptCheckInterval(context.Background(), 32)
 
 	config := wazero.NewRuntimeConfig().
-		WithCloseOnContextDone(true).
-		WithInterruptCheckInterval(32)
+		WithCloseOnContextDone(true)
 
 	r := wazero.NewRuntimeWithConfig(ctx, config)
 	defer r.Close(ctx)
@@ -82,11 +81,10 @@ func TestInterruptCheckInterval_ContextCancel(t *testing.T) {
 // TestInterruptCheckInterval_ModuleClose verifies that an infinite loop is
 // terminated by explicit module close when the interrupt check interval is configured.
 func TestInterruptCheckInterval_ModuleClose(t *testing.T) {
-	ctx := context.Background()
+	ctx := experimental.WithInterruptCheckInterval(context.Background(), 32)
 
 	config := wazero.NewRuntimeConfig().
-		WithCloseOnContextDone(true).
-		WithInterruptCheckInterval(32)
+		WithCloseOnContextDone(true)
 
 	r := wazero.NewRuntimeWithConfig(ctx, config)
 	defer r.Close(ctx)
@@ -105,4 +103,13 @@ func TestInterruptCheckInterval_ModuleClose(t *testing.T) {
 	_, err = infiniteLoop.Call(ctx)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "exit_code(1)")
+}
+
+// TestInterruptCheckInterval_NonPowerOfTwoPanics verifies that a non-power-of-two
+// interval panics.
+func TestInterruptCheckInterval_NonPowerOfTwoPanics(t *testing.T) {
+	err := require.CapturePanic(func() {
+		experimental.WithInterruptCheckInterval(context.Background(), 3)
+	})
+	require.EqualError(t, err, "interruptCheckInterval invalid: 3 is not zero or a power of two")
 }

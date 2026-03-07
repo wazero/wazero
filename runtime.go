@@ -179,15 +179,14 @@ func NewRuntimeWithConfig(ctx context.Context, rConfig RuntimeConfig) Runtime {
 	}
 	store := wasm.NewStore(config.enabledFeatures, engine)
 	return &runtime{
-		cache:                  cacheImpl,
-		store:                  store,
-		enabledFeatures:        config.enabledFeatures,
-		memoryLimitPages:       config.memoryLimitPages,
-		memoryCapacityFromMax:  config.memoryCapacityFromMax,
-		dwarfDisabled:          config.dwarfDisabled,
-		storeCustomSections:    config.storeCustomSections,
-		ensureTermination:      config.ensureTermination,
-		interruptCheckInterval: config.interruptCheckInterval,
+		cache:                 cacheImpl,
+		store:                 store,
+		enabledFeatures:       config.enabledFeatures,
+		memoryLimitPages:      config.memoryLimitPages,
+		memoryCapacityFromMax: config.memoryCapacityFromMax,
+		dwarfDisabled:         config.dwarfDisabled,
+		storeCustomSections:   config.storeCustomSections,
+		ensureTermination:     config.ensureTermination,
 	}
 }
 
@@ -209,8 +208,7 @@ type runtime struct {
 	// See /RATIONALE.md
 	closed atomic.Uint64
 
-	ensureTermination      bool
-	interruptCheckInterval uint64
+	ensureTermination bool
 }
 
 // Module implements Runtime.Module.
@@ -260,7 +258,7 @@ func (r *runtime) CompileModule(ctx context.Context, binary []byte) (CompiledMod
 	if err != nil {
 		return nil, err
 	}
-	interruptCheckInterval := r.interruptCheckInterval
+	interruptCheckInterval := experimentalapi.GetInterruptCheckInterval(ctx)
 	if !r.ensureTermination {
 		interruptCheckInterval = 0
 	}
