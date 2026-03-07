@@ -40,9 +40,10 @@ type (
 		// execCtx holds various information to be read/written by assembly functions.
 		execCtx executionContext
 		// execCtxPtr holds the pointer to the executionContext which doesn't change after callEngine is created.
-		execCtxPtr        uintptr
-		numberOfResults   int
-		stackIteratorImpl stackIterator
+		execCtxPtr            uintptr
+		numberOfResults       int
+		stackIteratorImpl     stackIterator
+		interruptCounterValue uint64
 	}
 
 	// executionContext is the struct to be read/written by assembly functions.
@@ -90,7 +91,7 @@ type (
 		memoryWait64TrampolineAddress *byte
 		// memoryNotifyTrampolineAddress holds the address of the memory_notify trampoline function.
 		memoryNotifyTrampolineAddress *byte
-		// interruptCounter is a pointer to the counter on the engine struct, used for loop termination checking.
+		// interruptCounter points to callEngine.interruptCounterValue, used for loop termination checking.
 		// When interruptCheckInterval is configured, the counter is incremented on each loop iteration
 		// and the exit code check is only performed when (counter & mask) == 0.
 		interruptCounter *uint64
