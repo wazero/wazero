@@ -41,6 +41,9 @@ type (
 		sharedFunctions *sharedFunctions
 		// setFinalizer defaults to runtime.SetFinalizer, but overridable for tests.
 		setFinalizer func(obj interface{}, finalizer interface{})
+		// interruptCounter is the shared counter used for interrupt check interval optimization.
+		// All callEngine instances point to this counter to amortize context cancellation checks.
+		interruptCounter uint64
 
 		// The followings are reused for compiling shared functions.
 		machine backend.Machine
