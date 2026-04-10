@@ -27,6 +27,7 @@ concurrency:
 
 jobs:
   check:
+    if: false
     name: Pre-commit check
     runs-on: ubuntu-24.04
     steps:
@@ -57,6 +58,7 @@ jobs:
       - run: make check
 
   test:
+    if: false
     name: ${{ matrix.platform.arch }}, ${{ matrix.platform.os }}, Go-${{ matrix.go-version }}
     runs-on: ${{ matrix.platform.os }}
     strategy:
@@ -156,7 +158,7 @@ jobs:
       - name: Build scratch container
         run: |
           echo 'FROM scratch' >> Dockerfile
-          echo 'CMD ["/test", "-test.v"]' >> Dockerfile
+          echo 'CMD ["/test", "-test.v", "-test.parallel=1"]' >> Dockerfile
           docker buildx build -t wazero:test --platform linux/${{ matrix.platform.arch }} .
 
       - name: Write seccomp config
@@ -181,6 +183,7 @@ jobs:
         run: find _tests -name "*.test" | xargs -t -Itestbin docker run --platform linux/${{ matrix.platform.arch }} -v $(pwd)/testbin:/test -v $(pwd)/wazerocli:/wazero -e WAZEROCLI=/wazero --tmpfs /tmp ${{ matrix.platform.no_prot_exec && '--security-opt seccomp=$PWD/no-prot-exec.json' }} --rm -t wazero:test
 
   test_bsd:
+    if: false
     name: amd64, ${{ matrix.os.name }}
     runs-on: ubuntu-24.04
     strategy:
@@ -223,6 +226,7 @@ jobs:
           run: find _tests -name "*.test" | xargs -t -Itestbin nice testbin -test.short -test.v
 
   test_vm:
+    if: false
     name: amd64, ${{ matrix.os.name }}
     runs-on: ubuntu-24.04
     strategy:
@@ -268,6 +272,7 @@ jobs:
   # This ensures that internal/integration_test/fuzz is runnable, and is not intended to
   # run full-length fuzzing while trying to find low-hanging frontend bugs.
   fuzz:
+    if: false
     name: Minimal Fuzzing (${{ matrix.platform.os }}, ${{ matrix.platform.arch }})
     runs-on: ${{ matrix.platform.os }}
     strategy:

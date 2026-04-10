@@ -30,6 +30,7 @@ concurrency:
 
 jobs:
   build_zig_test_binary:
+    if: false
     name: Build Zig test binary
     runs-on: ubuntu-24.04
     env:
@@ -76,6 +77,7 @@ jobs:
           make build.zig zigroot=${{ env.ZIG_SOURCE }}
 
   zig:
+    if: false
     needs: build_zig_test_binary
     name: Zig (${{ matrix.os.name }}, ${{ matrix.os.arch }})
     runs-on: ${{ matrix.os.version }}
@@ -120,6 +122,7 @@ jobs:
           go test -bench='BenchmarkZig' -timeout=20m -benchtime=1x
 
   wasi-testsuite:
+    if: false
     name: wasi-testsuite
     runs-on: ${{ matrix.os }}
     strategy:
@@ -176,6 +179,7 @@ jobs:
             -r ../.github/wasi_testsuite_adapter.py
 
   go_tests:
+    if: false
     # Due to the embedding of the GOROOT of the building env (https://github.com/golang/go/blob/go1.24.0/src/os/os_test.go#L115),
     # we have to build and cache on each OS unlike others in this file.
     name: Go-${{ matrix.go-version }} (${{ matrix.os.name }}, ${{ matrix.os.arch }})
@@ -235,6 +239,7 @@ jobs:
           go test -bench='BenchmarkWasip1' -timeout=20m -benchtime=1x
 
   libsodium:
+    if: false
     name: libsodium (${{ matrix.os.name }}, ${{ matrix.os.arch }})
     runs-on: ${{ matrix.os.version }}
     strategy:

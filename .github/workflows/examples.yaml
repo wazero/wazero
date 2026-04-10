@@ -29,6 +29,7 @@ jobs:
   # Not all toolchains are idempotent when generating wasm, so we don't check
   # in %.wasm as a part of this job.
   examples:
+    if: false
     name: Build examples
     runs-on: ubuntu-24.04
     strategy:

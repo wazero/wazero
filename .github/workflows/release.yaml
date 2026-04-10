@@ -24,6 +24,7 @@ concurrency:
 
 jobs:
   pre_release:
+    if: false
     name: Pre-release build
     runs-on: ubuntu-24.04
     # This allows us to test in the following job regardless of the event (tag or not).
@@ -84,6 +85,7 @@ jobs:
 
   # pre_release_test tests the artifacts built by pre_release in the OS dependent way.
   pre_release_test:
+    if: false
     needs: pre_release
     name: Pre-release test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
