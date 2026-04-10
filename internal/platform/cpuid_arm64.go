@@ -1,3 +1,5 @@
+//go:build !windows
+
 package platform
 
 import "golang.org/x/sys/cpu"
