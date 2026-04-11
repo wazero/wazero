@@ -121,9 +121,8 @@ jobs:
             no_prot_exec: true
           - os: ubuntu-24.04-arm
             arch: arm64
-          - os: ubuntu-24.04
+          - os: ubuntu-24.04-riscv
             arch: riscv64
-            qemu: true
 
     steps:
 
@@ -145,13 +144,6 @@ jobs:
         env:
           GOARCH: ${{ matrix.platform.arch }}
           CGO_ENABLED: 0
-
-      - name: Set up QEMU
-        if: ${{ matrix.platform.qemu }}
-        uses: docker/setup-qemu-action@v4
-        with:  # Avoid docker.io rate-limits; built with internal-images.yml
-          image: ghcr.io/tetratelabs/wazero/internal-binfmt
-          platforms: ${{ matrix.arch }}
 
       - name: Build scratch container
         run: |
