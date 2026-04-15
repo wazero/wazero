@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/internal/platform"
 )
 
 //go:embed testdata/i32_upper_bits.wasm
@@ -114,6 +115,10 @@ func TestI32UpperBits(t *testing.T) {
 		{"compiler", wazero.NewRuntimeConfigCompiler()},
 	} {
 		t.Run(engine.name, func(t *testing.T) {
+			if engine.name == "compiler" && !platform.CompilerSupported() {
+				t.Skip("Compiler is not supported on this host")
+			}
+
 			ctx := context.Background()
 			r := wazero.NewRuntimeWithConfig(ctx, engine.config)
 			defer r.Close(ctx)
@@ -154,6 +159,10 @@ func TestI32UpperBits(t *testing.T) {
 // TestI32UpperBitsNoDiff verifies that interpreter and compiler produce the same
 // lower-32-bit results even when params have garbage upper bits.
 func TestI32UpperBitsNoDiff(t *testing.T) {
+	if !platform.CompilerSupported() {
+		t.Skip("Compiler is not supported on this host")
+	}
+
 	ctx := context.Background()
 
 	rInterp := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigInterpreter())
