@@ -973,7 +973,10 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 		case operationKindNe:
 			var b bool
 			switch unsignedType(op.B1) {
-			case unsignedTypeI32, unsignedTypeI64:
+			case unsignedTypeI32:
+				v2, v1 := ce.popValue(), ce.popValue()
+				b = uint32(v1) != uint32(v2)
+			case unsignedTypeI64:
 				v2, v1 := ce.popValue(), ce.popValue()
 				b = v1 != v2
 			case unsignedTypeF32:
@@ -990,7 +993,11 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			}
 			frame.pc++
 		case operationKindEqz:
-			if ce.popValue() == 0 {
+			v := ce.popValue()
+			if unsignedInt(op.B1) == unsignedInt32 {
+				v = uint64(uint32(v))
+			}
+			if v == 0 {
 				ce.pushValue(1)
 			} else {
 				ce.pushValue(0)
@@ -1005,7 +1012,9 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				b = int32(v1) < int32(v2)
 			case signedTypeInt64:
 				b = int64(v1) < int64(v2)
-			case signedTypeUint32, signedTypeUint64:
+			case signedTypeUint32:
+				b = uint32(v1) < uint32(v2)
+			case signedTypeUint64:
 				b = v1 < v2
 			case signedTypeFloat32:
 				b = math.Float32frombits(uint32(v1)) < math.Float32frombits(uint32(v2))
@@ -1027,7 +1036,9 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				b = int32(v1) > int32(v2)
 			case signedTypeInt64:
 				b = int64(v1) > int64(v2)
-			case signedTypeUint32, signedTypeUint64:
+			case signedTypeUint32:
+				b = uint32(v1) > uint32(v2)
+			case signedTypeUint64:
 				b = v1 > v2
 			case signedTypeFloat32:
 				b = math.Float32frombits(uint32(v1)) > math.Float32frombits(uint32(v2))
@@ -1049,7 +1060,9 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				b = int32(v1) <= int32(v2)
 			case signedTypeInt64:
 				b = int64(v1) <= int64(v2)
-			case signedTypeUint32, signedTypeUint64:
+			case signedTypeUint32:
+				b = uint32(v1) <= uint32(v2)
+			case signedTypeUint64:
 				b = v1 <= v2
 			case signedTypeFloat32:
 				b = math.Float32frombits(uint32(v1)) <= math.Float32frombits(uint32(v2))
@@ -1071,7 +1084,9 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				b = int32(v1) >= int32(v2)
 			case signedTypeInt64:
 				b = int64(v1) >= int64(v2)
-			case signedTypeUint32, signedTypeUint64:
+			case signedTypeUint32:
+				b = uint32(v1) >= uint32(v2)
+			case signedTypeUint64:
 				b = v1 >= v2
 			case signedTypeFloat32:
 				b = math.Float32frombits(uint32(v1)) >= math.Float32frombits(uint32(v2))
@@ -1166,6 +1181,10 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			v2, v1 := ce.popValue(), ce.popValue()
 			switch t {
 			case signedTypeFloat32, signedTypeFloat64: // not integers
+			case signedTypeInt32, signedTypeUint32:
+				if uint32(v2) == 0 {
+					panic(wasmruntime.ErrRuntimeIntegerDivideByZero)
+				}
 			default:
 				if v2 == 0 {
 					panic(wasmruntime.ErrRuntimeIntegerDivideByZero)
@@ -1203,8 +1222,15 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			frame.pc++
 		case operationKindRem:
 			v2, v1 := ce.popValue(), ce.popValue()
-			if v2 == 0 {
-				panic(wasmruntime.ErrRuntimeIntegerDivideByZero)
+			switch signedInt(op.B1) {
+			case signedInt32, signedUint32:
+				if uint32(v2) == 0 {
+					panic(wasmruntime.ErrRuntimeIntegerDivideByZero)
+				}
+			default:
+				if v2 == 0 {
+					panic(wasmruntime.ErrRuntimeIntegerDivideByZero)
+				}
 			}
 			switch signedInt(op.B1) {
 			case signedInt32:
@@ -4623,7 +4649,9 @@ func (ce *callEngine) callNativeFuncWithListener(ctx context.Context, m *wasm.Mo
 // popMemoryOffset takes a memory offset off the stack for use in load and store instructions.
 // As the top of stack value is 64-bit, this ensures it is in range before returning it.
 func (ce *callEngine) popMemoryOffset(op *unionOperation) uint32 {
-	offset := op.U2 + ce.popValue()
+	// Memory addresses are i32; mask to 32 bits to ignore any
+	// garbage in the upper bits of the uint64 stack slot.
+	offset := op.U2 + uint64(uint32(ce.popValue()))
 	if offset > math.MaxUint32 {
 		panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
 	}
