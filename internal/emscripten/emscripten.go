@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/tetratelabs/wazero/api"
+	"github.com/tetratelabs/wazero/internal/internalapi"
 	"github.com/tetratelabs/wazero/internal/wasm"
 	"github.com/tetratelabs/wazero/sys"
 )
@@ -27,8 +28,20 @@ var NotifyMemoryGrowth = &wasm.HostFunc{
 // it ignores the error and does not act on it.
 const FunctionThrowLongjmp = "_emscripten_throw_longjmp"
 
+type ThrowLongjmpErrorType struct {
+	internalapi.WazeroOnlyType
+}
+
+func (e ThrowLongjmpErrorType) Error() string {
+	return "_emscripten_throw_longjmp"
+}
+
+func (e ThrowLongjmpErrorType) IsIntentional() bool {
+	return true
+}
+
 var (
-	ThrowLongjmpError = errors.New("_emscripten_throw_longjmp")
+	ThrowLongjmpError = ThrowLongjmpErrorType{}
 	ThrowLongjmp      = &wasm.HostFunc{
 		ExportName: FunctionThrowLongjmp,
 		Name:       FunctionThrowLongjmp,

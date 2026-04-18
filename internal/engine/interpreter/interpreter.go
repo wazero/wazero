@@ -20,6 +20,7 @@ import (
 	"github.com/tetratelabs/wazero/internal/wasm"
 	"github.com/tetratelabs/wazero/internal/wasmdebug"
 	"github.com/tetratelabs/wazero/internal/wasmruntime"
+	"github.com/tetratelabs/wazero/sys"
 )
 
 // callStackCeiling is the maximum WebAssembly call frame stack height. This allows wazero to raise
@@ -644,7 +645,15 @@ func (ce *callEngine) recoverOnCall(ctx context.Context, m *wasm.ModuleInstance,
 		panic(s)
 	}
 
-	builder := wasmdebug.NewErrorBuilder()
+	// Only create a builder when the error is not intentional.
+	// We should not collect debug and DWARF information for
+	// intentional errors.
+	intentionalError, isIntentionalError := v.(sys.IntentionalError)
+	var builder wasmdebug.ErrorBuilder
+	if !isIntentionalError {
+		builder = wasmdebug.NewErrorBuilder()
+	}
+
 	frameCount := len(ce.frames)
 	functionListeners := make([]functionListenerInvocation, 0, 16)
 
@@ -654,12 +663,16 @@ func (ce *callEngine) recoverOnCall(ctx context.Context, m *wasm.ModuleInstance,
 	for i := 0; i < frameCount; i++ {
 		frame := ce.popFrame()
 		f := frame.f
-		def := f.definition()
-		var sources []string
-		if parent := frame.f.parent; parent.body != nil && len(parent.offsetsInWasmBinary) > 0 {
-			sources = parent.source.DWARFLines.Line(parent.offsetsInWasmBinary[frame.pc])
+
+		if builder != nil {
+			def := f.definition()
+			var sources []string
+			if parent := frame.f.parent; parent.body != nil && len(parent.offsetsInWasmBinary) > 0 {
+				sources = parent.source.DWARFLines.Line(parent.offsetsInWasmBinary[frame.pc])
+			}
+			builder.AddFrame(def.DebugName(), def.ParamTypes(), def.ResultTypes(), sources)
 		}
-		builder.AddFrame(def.DebugName(), def.ParamTypes(), def.ResultTypes(), sources)
+
 		if f.parent.listener != nil {
 			functionListeners = append(functionListeners, functionListenerInvocation{
 				FunctionListener: f.parent.listener,
@@ -668,7 +681,12 @@ func (ce *callEngine) recoverOnCall(ctx context.Context, m *wasm.ModuleInstance,
 		}
 	}
 
-	err = builder.FromRecovered(v)
+	if isIntentionalError {
+		err = intentionalError
+	} else {
+		err = builder.FromRecovered(v)
+	}
+
 	for i := range functionListeners {
 		functionListeners[i].Abort(ctx, m, functionListeners[i].def, err)
 	}

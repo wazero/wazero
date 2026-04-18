@@ -16,6 +16,7 @@ import (
 	"github.com/tetratelabs/wazero/internal/wasm"
 	"github.com/tetratelabs/wazero/internal/wasmdebug"
 	"github.com/tetratelabs/wazero/internal/wasmruntime"
+	"github.com/tetratelabs/wazero/sys"
 )
 
 type (
@@ -170,12 +171,14 @@ func (c *callEngine) addFrame(builder wasmdebug.ErrorBuilder, addr uintptr) (def
 	if cm != nil {
 		index := cm.functionIndexOf(addr)
 		def = cm.module.FunctionDefinition(cm.module.ImportFunctionCount + index)
-		var sources []string
-		if dw := cm.module.DWARFLines; dw != nil {
-			sourceOffset := cm.getSourceOffset(addr)
-			sources = dw.Line(sourceOffset)
+		if builder != nil {
+			var sources []string
+			if dw := cm.module.DWARFLines; dw != nil {
+				sourceOffset := cm.getSourceOffset(addr)
+				sources = dw.Line(sourceOffset)
+			}
+			builder.AddFrame(def.DebugName(), def.ParamTypes(), def.ResultTypes(), sources)
 		}
-		builder.AddFrame(def.DebugName(), def.ParamTypes(), def.ResultTypes(), sources)
 		if len(cm.listeners) > 0 {
 			listener = cm.listeners[index]
 		}
@@ -228,6 +231,7 @@ func (c *callEngine) callWithStack(ctx context.Context, paramResultStack []uint6
 			// let it propagate up to be handled by the caller.
 			panic(s)
 		}
+
 		if r != nil {
 			type listenerForAbort struct {
 				def api.FunctionDefinition
@@ -235,7 +239,16 @@ func (c *callEngine) callWithStack(ctx context.Context, paramResultStack []uint6
 			}
 
 			var listeners []listenerForAbort
-			builder := wasmdebug.NewErrorBuilder()
+
+			// Only create a builder when the error is not intentional.
+			// We should not collect debug and DWARF information for
+			// intentional errors.
+			intentionalError, isIntentionalError := r.(sys.IntentionalError)
+			var builder wasmdebug.ErrorBuilder
+			if !isIntentionalError {
+				builder = wasmdebug.NewErrorBuilder()
+			}
+
 			def, lsn := c.addFrame(builder, uintptr(unsafe.Pointer(c.execCtx.goCallReturnAddress)))
 			if lsn != nil {
 				listeners = append(listeners, listenerForAbort{def, lsn})
@@ -252,7 +265,12 @@ func (c *callEngine) callWithStack(ctx context.Context, paramResultStack []uint6
 					listeners = append(listeners, listenerForAbort{def, lsn})
 				}
 			}
-			err = builder.FromRecovered(r)
+
+			if isIntentionalError {
+				err = intentionalError
+			} else {
+				err = builder.FromRecovered(r)
+			}
 
 			for _, lsn := range listeners {
 				lsn.lsn.Abort(ctx, m, lsn.def, err)

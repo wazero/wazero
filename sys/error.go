@@ -81,3 +81,16 @@ func (e *ExitError) Is(err error) bool {
 	}
 	return false
 }
+
+func (e *ExitError) IsIntentional() bool {
+	// ExitError is always intentional and should not collect debug/DWARF
+	// information, because that information is never used anyway.
+	return true
+}
+
+// IntentionalError is an error interface that can be used by intentional
+// internal errors that should skip default error handling.
+type IntentionalError interface {
+	error
+	IsIntentional() bool
+}
