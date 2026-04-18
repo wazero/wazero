@@ -42,12 +42,6 @@ considering their efforts before starting your own!
 |:-----------------------|----------------------------------------------------|
 | [yoke][47] | A WebAssembly-based package deployer for Kubernetes, enabling declarative and programmable deployments with Wasm |
 
-### Applications
-
-| Name               | Description                                   |
-|:-------------------|-----------------------------------------------|
-| [f4][50] | Far Manager clone in Go using wazero for plug-in system |
-
 ### Middleware
 
 | Name                   | Description                                        |
@@ -193,5 +187,3 @@ experience.
 [48]: https://github.com/klippa-app/go-libtiff
 
 [49]: https://libtiff.gitlab.io/libtiff/
-
-[50]: https://github.com/unxed/f4
