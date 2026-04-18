@@ -27,3 +27,8 @@ const CoreFeaturesTailCall = api.CoreFeatureSIMD << 2
 //
 // See https://github.com/WebAssembly/extended-const for further details.
 const CoreFeaturesExtendedConst = api.CoreFeatureSIMD << 3
+
+// CoreFeaturesExceptionHandling enables exception handling instructions.
+//
+// See https://github.com/WebAssembly/exception-handling for further details.
+const CoreFeaturesExceptionHandling = api.CoreFeatureSIMD << 4

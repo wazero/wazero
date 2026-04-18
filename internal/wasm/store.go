@@ -77,6 +77,7 @@ type (
 		Globals        []*GlobalInstance
 		MemoryInstance *MemoryInstance
 		Tables         []*TableInstance
+		Tags           []*TagInstance
 
 		// Engine implements function calls for this module.
 		Engine ModuleEngine
@@ -147,6 +148,13 @@ type (
 		// If me is non-nil, the value is stored in the module engine.
 		Me    ModuleEngine
 		Index Index
+	}
+
+	// TagInstance represents an instantiated exception handling tag.
+	// Tags are compared by identity (pointer equality), not structural type equality.
+	TagInstance struct {
+		// Type is the function type of this tag (params only; results must be empty).
+		Type *FunctionType
 	}
 
 	// FunctionTypeID is a uniquely assigned integer for a function type.
@@ -341,6 +349,7 @@ func (s *Store) instantiate(
 
 	m.Tables = make([]*TableInstance, int(module.ImportTableCount)+len(module.TableSection))
 	m.Globals = make([]*GlobalInstance, int(module.ImportGlobalCount)+len(module.GlobalSection))
+	m.Tags = make([]*TagInstance, int(module.ImportTagCount)+len(module.TagSection))
 	m.Engine, err = s.Engine.NewModuleEngine(module, m)
 	if err != nil {
 		return nil, err
@@ -360,6 +369,7 @@ func (s *Store) instantiate(
 	allocator, _ := ctx.Value(expctxkeys.MemoryAllocatorKey{}).(experimental.MemoryAllocator)
 
 	m.buildGlobals(module, m.Engine.FunctionInstanceReference)
+	m.buildTags(module)
 	m.buildMemory(module, allocator)
 	m.Exports = module.Exports
 	for _, exp := range m.Exports {
@@ -502,6 +512,15 @@ func (m *ModuleInstance) resolveImports(ctx context.Context, module *Module) (er
 					return
 				}
 				m.Globals[i.IndexPerType] = importedGlobal
+			case ExternTypeTag:
+				expected := &module.TypeSection[i.DescTag]
+				importedTag := importedModule.Tags[imported.Index]
+				if !importedTag.Type.EqualsType(expected) {
+					err = errorInvalidImport(i, fmt.Errorf("tag type mismatch: %s != %s",
+						expected, importedTag.Type))
+					return
+				}
+				m.Tags[i.IndexPerType] = importedTag
 			}
 		}
 	}

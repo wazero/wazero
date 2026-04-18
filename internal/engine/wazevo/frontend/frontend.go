@@ -4,6 +4,7 @@ package frontend
 import (
 	"bytes"
 	"math"
+	"sync"
 
 	"github.com/tetratelabs/wazero/internal/engine/wazevo/ssa"
 	"github.com/tetratelabs/wazero/internal/engine/wazevo/wazevoapi"
@@ -62,6 +63,20 @@ type Compiler struct {
 
 	execCtxPtrValue, moduleCtxPtrValue ssa.Value
 
+	// throwAllocSig is the signature for the throw-alloc trampoline:
+	// (execCtx, tagIndex) → (exnref). Allocates the Exception and returns
+	// its pointer so compiled code can pass it to the throw trampoline.
+	throwAllocSig ssa.Signature
+	// throwSig is the signature for the throw/throw_ref trampoline:
+	// (execCtx, exnref) → (). Searches for a matching handler and restores.
+	throwSig ssa.Signature
+	// tryTableEnterSig is the signature for the try_table enter trampoline.
+	tryTableEnterSig ssa.Signature
+	// tryTableLeaveSig is the signature for the try_table leave trampoline.
+	tryTableLeaveSig ssa.Signature
+	// catchClauseTable accumulates catch clause info for each try_table during compilation.
+	catchClauseTable catchClauseTable
+
 	// Following are reused for the known safe bounds analysis.
 
 	pointers []int
@@ -95,10 +110,68 @@ func NewFrontendCompiler(m *wasm.Module, ssaBuilder ssa.Builder, offset *wazevoa
 		offset:                            offset,
 		ensureTermination:                 ensureTermination,
 		needSourceOffsetInfo:              sourceInfo,
+		catchClauseTable:                  &localCatchClauseTable{},
 		varLengthKnownSafeBoundWithIDPool: wazevoapi.NewVarLengthPool[knownSafeBoundWithID](),
 	}
 	c.declareSignatures(listenerOn)
 	return c
+}
+
+// catchClauseTable accumulates catch clause entries during compilation.
+type catchClauseTable interface {
+	Append(clauses []wazevoapi.CatchClauseInstance) int
+	Table() [][]wazevoapi.CatchClauseInstance
+}
+
+// localCatchClauseTable is the single-threaded implementation.
+type localCatchClauseTable struct {
+	table [][]wazevoapi.CatchClauseInstance
+}
+
+func (t *localCatchClauseTable) Append(clauses []wazevoapi.CatchClauseInstance) int {
+	id := len(t.table)
+	t.table = append(t.table, clauses)
+	return id
+}
+
+func (t *localCatchClauseTable) Table() [][]wazevoapi.CatchClauseInstance {
+	return t.table
+}
+
+// SharedCatchClauseTable is the thread-safe implementation for parallel compilation.
+type SharedCatchClauseTable struct {
+	mu    sync.Mutex
+	table [][]wazevoapi.CatchClauseInstance
+}
+
+// NewSharedCatchClauseTable creates a new SharedCatchClauseTable.
+func NewSharedCatchClauseTable() *SharedCatchClauseTable {
+	return &SharedCatchClauseTable{}
+}
+
+func (s *SharedCatchClauseTable) Append(clauses []wazevoapi.CatchClauseInstance) int {
+	s.mu.Lock()
+	id := len(s.table)
+	s.table = append(s.table, clauses)
+	s.mu.Unlock()
+	return id
+}
+
+func (s *SharedCatchClauseTable) Table() [][]wazevoapi.CatchClauseInstance {
+	return s.table
+}
+
+// WithCatchClauseTable replaces the catch clause table implementation.
+// Used by the parallel compilation path to share a single mutex-protected
+// table across workers.
+func (c *Compiler) WithCatchClauseTable(t catchClauseTable) *Compiler {
+	c.catchClauseTable = t
+	return c
+}
+
+// CatchClauseTable returns the accumulated catch clause table.
+func (c *Compiler) CatchClauseTable() [][]wazevoapi.CatchClauseInstance {
+	return c.catchClauseTable.Table()
 }
 
 func (c *Compiler) declareSignatures(listenerOn bool) {
@@ -194,6 +267,34 @@ func (c *Compiler) declareSignatures(listenerOn bool) {
 		Results: []ssa.Type{ssa.TypeI32},
 	}
 	c.ssaBuilder.DeclareSignature(&c.memoryNotifySig)
+
+	c.throwAllocSig = ssa.Signature{
+		ID:      c.memoryNotifySig.ID + 1,
+		Params:  []ssa.Type{ssa.TypeI64 /* exec context */, ssa.TypeI64 /* tag index */},
+		Results: []ssa.Type{ssa.TypeI64 /* exnref */},
+	}
+	c.ssaBuilder.DeclareSignature(&c.throwAllocSig)
+
+	c.throwSig = ssa.Signature{
+		ID:      c.throwAllocSig.ID + 1,
+		Params:  []ssa.Type{ssa.TypeI64 /* exec context */, ssa.TypeI64 /* exnref */},
+		Results: []ssa.Type{},
+	}
+	c.ssaBuilder.DeclareSignature(&c.throwSig)
+
+	c.tryTableEnterSig = ssa.Signature{
+		ID:      c.throwSig.ID + 1,
+		Params:  []ssa.Type{ssa.TypeI64 /* exec context */, ssa.TypeI64 /* encoded exit code */},
+		Results: []ssa.Type{},
+	}
+	c.ssaBuilder.DeclareSignature(&c.tryTableEnterSig)
+
+	c.tryTableLeaveSig = ssa.Signature{
+		ID:      c.tryTableEnterSig.ID + 1,
+		Params:  []ssa.Type{ssa.TypeI64 /* exec context */},
+		Results: []ssa.Type{},
+	}
+	c.ssaBuilder.DeclareSignature(&c.tryTableLeaveSig)
 }
 
 // SignatureForWasmFunctionType returns the ssa.Signature for the given wasm.FunctionType.
@@ -234,7 +335,8 @@ func (c *Compiler) Init(idx, typIndex wasm.Index, typ *wasm.FunctionType, localT
 // Note: this assumes 64-bit platform (I believe we won't have 32-bit backend ;)).
 const executionContextPtrTyp, moduleContextPtrTyp = ssa.TypeI64, ssa.TypeI64
 
-// LowerToSSA lowers the current function to SSA function which will be held by ssaBuilder.
+// LowerToSSA lowers the current function to SSA IR which will be held by ssaBuilder.
+//
 // After calling this, the caller will be able to access the SSA info in *Compiler.ssaBuilder.
 //
 // Note that this only does the naive lowering, and do not do any optimization, instead the caller is expected to do so.
@@ -345,8 +447,8 @@ func (c *Compiler) declareWasmGlobal(typ wasm.ValueType, mutable bool) {
 	case wasm.ValueTypeI32:
 		st = ssa.TypeI32
 	case wasm.ValueTypeI64,
-		// Both externref and funcref are represented as I64 since we only support 64-bit platforms.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref:
+		// externref, funcref, and exnref are represented as I64 since we only support 64-bit platforms.
+		wasm.ValueTypeExternref, wasm.ValueTypeFuncref, wasm.ValueTypeExnref:
 		st = ssa.TypeI64
 	case wasm.ValueTypeF32:
 		st = ssa.TypeF32
@@ -372,8 +474,9 @@ func WasmTypeToSSAType(vt wasm.ValueType) ssa.Type {
 	case wasm.ValueTypeI32:
 		return ssa.TypeI32
 	case wasm.ValueTypeI64,
-		// Both externref and funcref are represented as I64 since we only support 64-bit platforms.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref:
+		// externref, funcref, and exnref are represented as I64 since we only support 64-bit platforms.
+		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
+		wasm.ValueTypeExnref:
 		return ssa.TypeI64
 	case wasm.ValueTypeF32:
 		return ssa.TypeF32

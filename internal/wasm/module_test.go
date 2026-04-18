@@ -41,6 +41,17 @@ func TestFunctionType_String(t *testing.T) {
 	}
 }
 
+func TestIsReferenceValueType(t *testing.T) {
+	refTypes := []ValueType{ValueTypeFuncref, ValueTypeExternref, ValueTypeExnref}
+	for _, vt := range refTypes {
+		require.True(t, isReferenceValueType(vt), "expected %#x to be a reference type", vt)
+	}
+	nonRefTypes := []ValueType{ValueTypeI32, ValueTypeI64, ValueTypeF32, ValueTypeF64, ValueTypeV128}
+	for _, vt := range nonRefTypes {
+		require.False(t, isReferenceValueType(vt), "expected %#x to not be a reference type", vt)
+	}
+}
+
 func TestSectionIDName(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -129,6 +140,7 @@ func TestModule_allDeclarations(t *testing.T) {
 		expectedGlobals   []GlobalType
 		expectedMemory    *Memory
 		expectedTables    []Table
+		expectedTags      []Index
 	}{
 		// Functions.
 		{
@@ -196,17 +208,38 @@ func TestModule_allDeclarations(t *testing.T) {
 			},
 			expectedTables: []Table{{Min: 10}},
 		},
+		// Tags.
+		{
+			module: &Module{
+				ImportSection: []Import{{Type: ExternTypeTag, DescTag: 5}},
+			},
+			expectedTags: []Index{5},
+		},
+		{
+			module: &Module{
+				TagSection: []Tag{{Type: 3}},
+			},
+			expectedTags: []Index{3},
+		},
+		{
+			module: &Module{
+				ImportSection: []Import{{Type: ExternTypeTag, DescTag: 5}},
+				TagSection:    []Tag{{Type: 3}},
+			},
+			expectedTags: []Index{5, 3},
+		},
 	}
 
 	for i, tt := range tests {
 		tc := tt
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			functions, globals, memory, tables, err := tc.module.AllDeclarations()
+			functions, globals, memory, tables, tags, err := tc.module.AllDeclarations()
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedFunctions, functions)
 			require.Equal(t, tc.expectedGlobals, globals)
 			require.Equal(t, tc.expectedTables, tables)
 			require.Equal(t, tc.expectedMemory, memory)
+			require.Equal(t, tc.expectedTags, tags)
 		})
 	}
 }
@@ -461,12 +494,12 @@ func TestModule_validateFunctions(t *testing.T) {
 			FunctionSection: []uint32{0},
 			CodeSection:     []Code{{Body: []byte{OpcodeI32Const, 0, OpcodeDrop, OpcodeEnd}}},
 		}
-		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, MaximumFunctionIndex)
+		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, nil, MaximumFunctionIndex)
 		require.NoError(t, err)
 	})
 	t.Run("too many functions", func(t *testing.T) {
 		m := Module{}
-		err := m.validateFunctions(api.CoreFeaturesV1, []uint32{1, 2, 3, 4}, nil, nil, nil, 3)
+		err := m.validateFunctions(api.CoreFeaturesV1, []uint32{1, 2, 3, 4}, nil, nil, nil, nil, 3)
 		require.Error(t, err)
 		require.EqualError(t, err, "too many functions (4) in a module")
 	})
@@ -476,7 +509,7 @@ func TestModule_validateFunctions(t *testing.T) {
 			FunctionSection: []Index{0},
 			CodeSection:     nil,
 		}
-		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, MaximumFunctionIndex)
+		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, nil, MaximumFunctionIndex)
 		require.Error(t, err)
 		require.EqualError(t, err, "code count (0) != function count (1)")
 	})
@@ -486,7 +519,7 @@ func TestModule_validateFunctions(t *testing.T) {
 			FunctionSection: []Index{1},
 			CodeSection:     []Code{{Body: []byte{OpcodeEnd}}},
 		}
-		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, MaximumFunctionIndex)
+		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, nil, MaximumFunctionIndex)
 		require.Error(t, err)
 		require.EqualError(t, err, "invalid function[0]: type section index 1 out of range")
 	})
@@ -496,7 +529,7 @@ func TestModule_validateFunctions(t *testing.T) {
 			FunctionSection: []Index{0},
 			CodeSection:     []Code{{Body: []byte{OpcodeF32Abs}}},
 		}
-		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, MaximumFunctionIndex)
+		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, nil, MaximumFunctionIndex)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid function[0]: cannot pop the 1st f32 operand")
 	})
@@ -507,7 +540,7 @@ func TestModule_validateFunctions(t *testing.T) {
 			CodeSection:     []Code{{Body: []byte{OpcodeF32Abs}}},
 			ExportSection:   []Export{{Name: "f1", Type: ExternTypeFunc, Index: 0}},
 		}
-		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, MaximumFunctionIndex)
+		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, nil, MaximumFunctionIndex)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), `invalid function[0] export["f1"]: cannot pop the 1st f32`)
 	})
@@ -520,7 +553,7 @@ func TestModule_validateFunctions(t *testing.T) {
 			CodeSection:         []Code{{Body: []byte{OpcodeF32Abs}}},
 			ExportSection:       []Export{{Name: "f1", Type: ExternTypeFunc, Index: 1}},
 		}
-		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, MaximumFunctionIndex)
+		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, nil, MaximumFunctionIndex)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), `invalid function[0] export["f1"]: cannot pop the 1st f32`)
 	})
@@ -534,7 +567,7 @@ func TestModule_validateFunctions(t *testing.T) {
 				{Name: "f2", Type: ExternTypeFunc, Index: 0},
 			},
 		}
-		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, MaximumFunctionIndex)
+		err := m.validateFunctions(api.CoreFeaturesV1, nil, nil, nil, nil, nil, MaximumFunctionIndex)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), `invalid function[0] export["f1","f2"]: cannot pop the 1st f32`)
 	})
@@ -728,7 +761,7 @@ func TestModule_validateExports(t *testing.T) {
 		tc := tt
 		t.Run(tc.name, func(t *testing.T) {
 			m := Module{ExportSection: tc.exportSection}
-			err := m.validateExports(tc.enabledFeatures, tc.functions, tc.globals, tc.memory, tc.tables)
+			err := m.validateExports(tc.enabledFeatures, tc.functions, tc.globals, tc.memory, tc.tables, nil)
 			if tc.expectedErr != "" {
 				require.EqualError(t, err, tc.expectedErr)
 			} else {

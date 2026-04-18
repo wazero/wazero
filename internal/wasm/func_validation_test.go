@@ -37,12 +37,12 @@ func TestModule_ValidateFunction_validateFunctionWithMaxStackValues(t *testing.T
 
 	t.Run("not exceed", func(t *testing.T) {
 		err := m.validateFunctionWithMaxStackValues(&stacks{}, api.CoreFeaturesV1,
-			0, []Index{0}, nil, nil, nil, max+1, nil, bytes.NewReader(nil))
+			0, []Index{0}, nil, nil, nil, nil, max+1, nil, bytes.NewReader(nil))
 		require.NoError(t, err)
 	})
 	t.Run("exceed", func(t *testing.T) {
 		err := m.validateFunctionWithMaxStackValues(&stacks{}, api.CoreFeaturesV1,
-			0, []Index{0}, nil, nil, nil, max, nil, bytes.NewReader(nil))
+			0, []Index{0}, nil, nil, nil, nil, max, nil, bytes.NewReader(nil))
 		require.Error(t, err)
 		expMsg := fmt.Sprintf("function may have %d stack values, which exceeds limit %d", valuesNum, max)
 		require.Equal(t, expMsg, err.Error())
@@ -86,7 +86,7 @@ func TestModule_ValidateFunction_SignExtensionOps(t *testing.T) {
 					CodeSection:     []Code{{Body: []byte{tc.input}}},
 				}
 				err := m.validateFunction(&stacks{}, api.CoreFeaturesV1,
-					0, []Index{0}, nil, nil, nil, nil,
+					0, []Index{0}, nil, nil, nil, nil, nil,
 					bytes.NewReader(nil))
 				require.EqualError(t, err, tc.expectedErrOnDisable)
 			})
@@ -105,7 +105,7 @@ func TestModule_ValidateFunction_SignExtensionOps(t *testing.T) {
 					CodeSection:     []Code{{Body: body}},
 				}
 				err := m.validateFunction(&stacks{}, api.CoreFeatureSignExtensionOps,
-					0, []Index{0}, nil, nil, nil,
+					0, []Index{0}, nil, nil, nil, nil,
 					nil, bytes.NewReader(nil))
 				require.NoError(t, err)
 			})
@@ -162,7 +162,7 @@ func TestModule_ValidateFunction_NonTrappingFloatToIntConversion(t *testing.T) {
 					CodeSection:     []Code{{Body: []byte{OpcodeMiscPrefix, tc.input}}},
 				}
 				err := m.validateFunction(&stacks{}, api.CoreFeaturesV1,
-					0, []Index{0}, nil, nil, nil, nil, bytes.NewReader(nil))
+					0, []Index{0}, nil, nil, nil, nil, nil, bytes.NewReader(nil))
 				require.EqualError(t, err, tc.expectedErrOnDisable)
 			})
 			t.Run("enabled", func(t *testing.T) {
@@ -181,7 +181,7 @@ func TestModule_ValidateFunction_NonTrappingFloatToIntConversion(t *testing.T) {
 					CodeSection:     []Code{{Body: body}},
 				}
 				err := m.validateFunction(&stacks{}, api.CoreFeatureNonTrappingFloatToIntConversion,
-					0, []Index{0}, nil, nil, nil, nil, bytes.NewReader(nil))
+					0, []Index{0}, nil, nil, nil, nil, nil, bytes.NewReader(nil))
 				require.NoError(t, err)
 			})
 		})
@@ -259,12 +259,12 @@ func TestModule_ValidateFunction_MultiValue(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("disabled", func(t *testing.T) {
 				err := tc.module.validateFunction(&stacks{}, api.CoreFeaturesV1,
-					0, []Index{0}, nil, nil, nil, nil, bytes.NewReader(nil))
+					0, []Index{0}, nil, nil, nil, nil, nil, bytes.NewReader(nil))
 				require.EqualError(t, err, tc.expectedErrOnDisable)
 			})
 			t.Run("enabled", func(t *testing.T) {
 				err := tc.module.validateFunction(&stacks{}, api.CoreFeatureMultiValue,
-					0, []Index{0}, nil, nil, nil, nil, bytes.NewReader(nil))
+					0, []Index{0}, nil, nil, nil, nil, nil, bytes.NewReader(nil))
 				require.NoError(t, err)
 			})
 		})
@@ -302,7 +302,7 @@ func TestModule_ValidateFunction_BulkMemoryOperations(t *testing.T) {
 					DataCountSection: &c,
 				}
 				err := m.validateFunction(&stacks{}, api.CoreFeatureBulkMemoryOperations,
-					0, []Index{0}, nil, &Memory{}, []Table{{}, {}}, nil, bytes.NewReader(nil))
+					0, []Index{0}, nil, &Memory{}, []Table{{}, {}}, nil, nil, bytes.NewReader(nil))
 				require.NoError(t, err)
 			})
 		}
@@ -666,7 +666,7 @@ func TestModule_ValidateFunction_BulkMemoryOperations(t *testing.T) {
 					c := uint32(0)
 					m.DataCountSection = &c
 				}
-				err := m.validateFunction(&stacks{}, tc.flag, 0, []Index{0}, nil, tc.memory, tc.tables, nil, bytes.NewReader(nil))
+				err := m.validateFunction(&stacks{}, tc.flag, 0, []Index{0}, nil, tc.memory, tc.tables, nil, nil, bytes.NewReader(nil))
 				require.EqualError(t, err, tc.expectedErr)
 			})
 		}
@@ -2203,7 +2203,7 @@ func TestModule_ValidateFunction_MultiValue_TypeMismatch(t *testing.T) {
 
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.module.validateFunction(&stacks{}, api.CoreFeatureMultiValue,
-				0, []Index{0}, nil, nil, nil, nil, bytes.NewReader(nil))
+				0, []Index{0}, nil, nil, nil, nil, nil, bytes.NewReader(nil))
 			require.EqualError(t, err, tc.expectedErr)
 		})
 	}
@@ -2221,7 +2221,7 @@ func TestModule_funcValidation_CallIndirect(t *testing.T) {
 			}}},
 		}
 		err := m.validateFunction(&stacks{}, api.CoreFeatureReferenceTypes,
-			0, []Index{0}, nil, &Memory{}, []Table{{Type: RefTypeFuncref}}, nil, bytes.NewReader(nil))
+			0, []Index{0}, nil, &Memory{}, []Table{{Type: RefTypeFuncref}}, nil, nil, bytes.NewReader(nil))
 		require.NoError(t, err)
 	})
 	t.Run("non zero table index", func(t *testing.T) {
@@ -2236,12 +2236,12 @@ func TestModule_funcValidation_CallIndirect(t *testing.T) {
 		}
 		t.Run("disabled", func(t *testing.T) {
 			err := m.validateFunction(&stacks{}, api.CoreFeaturesV1,
-				0, []Index{0}, nil, &Memory{}, []Table{{}, {}}, nil, bytes.NewReader(nil))
+				0, []Index{0}, nil, &Memory{}, []Table{{}, {}}, nil, nil, bytes.NewReader(nil))
 			require.EqualError(t, err, "table index must be zero but was 100: feature \"reference-types\" is disabled")
 		})
 		t.Run("enabled but out of range", func(t *testing.T) {
 			err := m.validateFunction(&stacks{}, api.CoreFeatureReferenceTypes,
-				0, []Index{0}, nil, &Memory{}, []Table{{}, {}}, nil, bytes.NewReader(nil))
+				0, []Index{0}, nil, &Memory{}, []Table{{}, {}}, nil, nil, bytes.NewReader(nil))
 			require.EqualError(t, err, "unknown table index: 100")
 		})
 	})
@@ -2256,7 +2256,7 @@ func TestModule_funcValidation_CallIndirect(t *testing.T) {
 			}}},
 		}
 		err := m.validateFunction(&stacks{}, api.CoreFeatureReferenceTypes,
-			0, []Index{0}, nil, &Memory{}, []Table{{Type: RefTypeExternref}}, nil, bytes.NewReader(nil))
+			0, []Index{0}, nil, &Memory{}, []Table{{Type: RefTypeExternref}}, nil, nil, bytes.NewReader(nil))
 		require.EqualError(t, err, "table is not funcref type but was externref for call_indirect")
 	})
 }
@@ -2352,7 +2352,7 @@ func TestModule_funcValidation_RefTypes(t *testing.T) {
 				CodeSection:     []Code{{Body: tc.body}},
 			}
 			err := m.validateFunction(&stacks{}, tc.flag,
-				0, []Index{0}, nil, nil, nil, tc.declaredFunctionIndexes, bytes.NewReader(nil))
+				0, []Index{0}, nil, nil, nil, nil, tc.declaredFunctionIndexes, bytes.NewReader(nil))
 			if tc.expectedErr != "" {
 				require.EqualError(t, err, tc.expectedErr)
 			} else {
@@ -2521,7 +2521,7 @@ func TestModule_funcValidation_TableGrowSizeFill(t *testing.T) {
 				CodeSection:     []Code{{Body: tc.body}},
 			}
 			err := m.validateFunction(&stacks{}, tc.flag,
-				0, []Index{0}, nil, nil, tables, nil, bytes.NewReader(nil))
+				0, []Index{0}, nil, nil, tables, nil, nil, bytes.NewReader(nil))
 			if tc.expectedErr != "" {
 				require.EqualError(t, err, tc.expectedErr)
 			} else {
@@ -2634,7 +2634,7 @@ func TestModule_funcValidation_TableGetSet(t *testing.T) {
 				CodeSection:     []Code{{Body: tc.body}},
 			}
 			err := m.validateFunction(&stacks{}, tc.flag,
-				0, []Index{0}, nil, nil, tables, nil, bytes.NewReader(nil))
+				0, []Index{0}, nil, nil, tables, nil, nil, bytes.NewReader(nil))
 			if tc.expectedErr != "" {
 				require.EqualError(t, err, tc.expectedErr)
 			} else {
@@ -2692,7 +2692,7 @@ func TestModule_funcValidation_Select_error(t *testing.T) {
 				CodeSection:     []Code{{Body: tc.body}},
 			}
 			err := m.validateFunction(&stacks{}, tc.flag,
-				0, []Index{0}, nil, nil, nil, nil, bytes.NewReader(nil))
+				0, []Index{0}, nil, nil, nil, nil, nil, bytes.NewReader(nil))
 			require.EqualError(t, err, tc.expectedErr)
 		})
 	}
@@ -3178,7 +3178,7 @@ func TestModule_funcValidation_SIMD(t *testing.T) {
 				CodeSection:     []Code{{Body: tc.body}},
 			}
 			err := m.validateFunction(&stacks{}, api.CoreFeatureSIMD,
-				0, []Index{0}, nil, &Memory{}, nil, nil, bytes.NewReader(nil))
+				0, []Index{0}, nil, &Memory{}, nil, nil, nil, bytes.NewReader(nil))
 			require.NoError(t, err)
 		})
 	}
@@ -3324,7 +3324,7 @@ func TestModule_funcValidation_SIMD_error(t *testing.T) {
 				CodeSection:     []Code{{Body: tc.body}},
 			}
 			err := m.validateFunction(&stacks{}, tc.flag,
-				0, []Index{0}, nil, &Memory{}, nil, nil, bytes.NewReader(nil))
+				0, []Index{0}, nil, &Memory{}, nil, nil, nil, bytes.NewReader(nil))
 			require.EqualError(t, err, tc.expectedErr)
 		})
 	}
@@ -3442,7 +3442,7 @@ func TestFuncValidation_UnreachableBrTable_NotModifyTypes(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.m.validateFunction(&stacks{}, api.CoreFeaturesV2,
-				0, nil, nil, nil, nil, nil, bytes.NewReader(nil))
+				0, nil, nil, nil, nil, nil, nil, bytes.NewReader(nil))
 			require.NoError(t, err)
 
 			// Ensures that funcType has remained intact.
@@ -3567,7 +3567,7 @@ func TestModule_funcValidation_loopWithParams(t *testing.T) {
 				CodeSection:     []Code{{Body: tc.body}},
 			}
 			err := m.validateFunction(&stacks{}, api.CoreFeatureMultiValue,
-				0, []Index{0}, nil, nil, nil, nil, bytes.NewReader(nil))
+				0, []Index{0}, nil, nil, nil, nil, nil, bytes.NewReader(nil))
 			if tc.expErr != "" {
 				require.EqualError(t, err, tc.expErr)
 			} else {
@@ -3585,7 +3585,7 @@ func TestFunctionValidation_redundantEnd(t *testing.T) {
 		CodeSection:     []Code{{Body: []byte{OpcodeEnd, OpcodeEnd}}},
 	}
 	err := m.validateFunction(&stacks{}, api.CoreFeaturesV2,
-		0, nil, nil, nil, nil, nil, bytes.NewReader(nil))
+		0, nil, nil, nil, nil, nil, nil, bytes.NewReader(nil))
 	require.EqualError(t, err, "unexpected end of function at pc=0x1")
 }
 
@@ -3618,7 +3618,7 @@ func TestFunctionValidation_redundantElse(t *testing.T) {
 		t.Run(tc.expErr, func(t *testing.T) {
 			m := &Module{TypeSection: []FunctionType{{}}, FunctionSection: []Index{0}, CodeSection: []Code{{Body: tc.body}}}
 			err := m.validateFunction(&stacks{}, api.CoreFeaturesV2,
-				0, nil, nil, nil, nil, nil, bytes.NewReader(nil))
+				0, nil, nil, nil, nil, nil, nil, bytes.NewReader(nil))
 			require.EqualError(t, err, tc.expErr)
 		})
 	}
@@ -4272,13 +4272,13 @@ func TestModule_funcValidation_Atomic(t *testing.T) {
 
 				t.Run("with memory", func(t *testing.T) {
 					err := m.validateFunction(&stacks{}, experimental.CoreFeaturesThreads,
-						0, []Index{0}, nil, &Memory{}, []Table{}, nil, bytes.NewReader(nil))
+						0, []Index{0}, nil, &Memory{}, []Table{}, nil, nil, bytes.NewReader(nil))
 					require.NoError(t, err)
 				})
 
 				t.Run("without memory", func(t *testing.T) {
 					err := m.validateFunction(&stacks{}, experimental.CoreFeaturesThreads,
-						0, []Index{0}, nil, nil, []Table{}, nil, bytes.NewReader(nil))
+						0, []Index{0}, nil, nil, []Table{}, nil, nil, bytes.NewReader(nil))
 					// Only fence doesn't require memory
 					if tc.name == "memory.atomic.fence" {
 						require.NoError(t, err)
@@ -4301,7 +4301,7 @@ func TestModule_funcValidation_Atomic(t *testing.T) {
 			CodeSection:     []Code{{Body: body}},
 		}
 		err := m.validateFunction(&stacks{}, experimental.CoreFeaturesThreads,
-			0, []Index{0}, nil, &Memory{}, []Table{}, nil, bytes.NewReader(nil))
+			0, []Index{0}, nil, &Memory{}, []Table{}, nil, nil, bytes.NewReader(nil))
 		require.Error(t, err, "invalid immediate value for atomic.fence")
 	})
 
@@ -4864,7 +4864,7 @@ func TestModule_funcValidation_Atomic(t *testing.T) {
 					CodeSection:     []Code{{Body: body}},
 				}
 				err := m.validateFunction(&stacks{}, experimental.CoreFeaturesThreads,
-					0, []Index{0}, nil, &Memory{}, []Table{}, nil, bytes.NewReader(nil))
+					0, []Index{0}, nil, &Memory{}, []Table{}, nil, nil, bytes.NewReader(nil))
 				require.Error(t, err, "invalid memory alignment")
 			})
 		}
