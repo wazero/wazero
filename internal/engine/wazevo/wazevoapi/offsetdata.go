@@ -53,6 +53,8 @@ const (
 	ExecutionContextOffsetMemoryWait32TrampolineAddress Offset = 1160
 	ExecutionContextOffsetMemoryWait64TrampolineAddress Offset = 1168
 	ExecutionContextOffsetMemoryNotifyTrampolineAddress Offset = 1176
+	// ExecutionContextOffsetInterruptCounter is an offset of `interruptCounter` field in wazevo.executionContext
+	ExecutionContextOffsetInterruptCounter Offset = 1184
 )
 
 // ModuleContextOffsetData allows the compilers to get the information about offsets to the fields of wazevo.moduleContextOpaque,

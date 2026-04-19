@@ -30,6 +30,7 @@ type Compiler struct {
 	refFuncSig             ssa.Signature
 	memmoveSig             ssa.Signature
 	ensureTermination      bool
+	interruptCheckInterval uint64
 
 	// Followings are reset by per function.
 
@@ -87,13 +88,14 @@ type (
 var knownSafeBoundsAtTheEndOfBlockNil = wazevoapi.NewNilVarLength[knownSafeBoundWithID]()
 
 // NewFrontendCompiler returns a frontend Compiler.
-func NewFrontendCompiler(m *wasm.Module, ssaBuilder ssa.Builder, offset *wazevoapi.ModuleContextOffsetData, ensureTermination bool, listenerOn bool, sourceInfo bool) *Compiler {
+func NewFrontendCompiler(m *wasm.Module, ssaBuilder ssa.Builder, offset *wazevoapi.ModuleContextOffsetData, ensureTermination bool, interruptCheckInterval uint64, listenerOn bool, sourceInfo bool) *Compiler {
 	c := &Compiler{
 		m:                                 m,
 		ssaBuilder:                        ssaBuilder,
 		br:                                bytes.NewReader(nil),
 		offset:                            offset,
 		ensureTermination:                 ensureTermination,
+		interruptCheckInterval:            interruptCheckInterval,
 		needSourceOffsetInfo:              sourceInfo,
 		varLengthKnownSafeBoundWithIDPool: wazevoapi.NewVarLengthPool[knownSafeBoundWithID](),
 	}

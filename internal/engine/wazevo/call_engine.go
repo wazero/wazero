@@ -90,6 +90,9 @@ type (
 		memoryWait64TrampolineAddress *byte
 		// memoryNotifyTrampolineAddress holds the address of the memory_notify trampoline function.
 		memoryNotifyTrampolineAddress *byte
+		// interruptCounter is incremented on each loop header when interruptCheckInterval is configured.
+		// The exit code check is only performed when (counter & mask) == 0.
+		interruptCounter uint64
 	}
 )
 
