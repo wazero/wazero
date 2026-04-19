@@ -344,6 +344,7 @@ func (c *compiler) Next() (*compilationResult, error) {
 	c.result.Operations = c.result.Operations[:0]
 	c.result.IROperationSourceOffsetsInWasmBinary = c.result.IROperationSourceOffsetsInWasmBinary[:0]
 	c.result.UsesMemory = false
+	c.result.PendingExceptionTable = c.result.PendingExceptionTable[:0]
 	// Clears the existing entries in LabelCallers.
 	for frameID := uint32(0); frameID <= c.currentFrameID; frameID++ {
 		for k := labelKind(0); k < labelKindNum; k++ {
@@ -351,7 +352,6 @@ func (c *compiler) Next() (*compilationResult, error) {
 		}
 	}
 	// Reset the previous states.
-	c.result.PendingExceptionTable = c.result.PendingExceptionTable[:0]
 	c.pc = 0
 	c.currentOpPC = 0
 	c.currentFrameID = 0
