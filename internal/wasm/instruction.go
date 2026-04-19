@@ -28,6 +28,12 @@ const (
 	// OpcodeThrowRef re-throws the exception referenced by an exnref value.
 	OpcodeThrowRef Opcode = 0x0a
 
+	// Legacy exception handling opcodes (not supported; use wasm-opt --translate-to-exnref)
+
+	OpcodeLegacyTry     Opcode = 0x06
+	OpcodeLegacyCatch   Opcode = 0x07
+	OpcodeLegacyRethrow Opcode = 0x09
+
 	// OpcodeEnd terminates a control instruction OpcodeBlock, OpcodeLoop or OpcodeIf.
 	OpcodeEnd Opcode = 0x0b
 
@@ -55,6 +61,11 @@ const (
 	OpcodeDrop        Opcode = 0x1a
 	OpcodeSelect      Opcode = 0x1b
 	OpcodeTypedSelect Opcode = 0x1c
+
+	// Legacy exception handling opcodes (not supported; use wasm-opt --translate-to-exnref)
+
+	OpcodeLegacyDelegate Opcode = 0x18
+	OpcodeLegacyCatchAll Opcode = 0x19
 
 	// Exception handling instructions (toggled with CoreFeaturesExceptionHandling)
 

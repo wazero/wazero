@@ -2112,6 +2112,10 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			// unreachable instruction is stack-polymorphic.
 			valueTypeStack.unreachable()
 		} else if op == OpcodeNop {
+		} else if enabledFeatures.IsEnabled(experimental.CoreFeaturesExceptionHandling) &&
+			(op == OpcodeLegacyTry || op == OpcodeLegacyCatch || op == OpcodeLegacyRethrow ||
+				op == OpcodeLegacyDelegate || op == OpcodeLegacyCatchAll) {
+			return fmt.Errorf("legacy exception handling instruction 0x%x not supported; recompile with wasm-opt --translate-to-exnref", op)
 		} else {
 			return fmt.Errorf("invalid instruction 0x%x", op)
 		}

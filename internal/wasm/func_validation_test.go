@@ -4870,3 +4870,37 @@ func TestModule_funcValidation_Atomic(t *testing.T) {
 		}
 	})
 }
+
+func TestValidation_LegacyExceptionHandlingOpcodes(t *testing.T) {
+	for _, tc := range []struct {
+		opcode byte
+		name   string
+	}{
+		{OpcodeLegacyTry, "try"},
+		{OpcodeLegacyCatch, "catch"},
+		{OpcodeLegacyRethrow, "rethrow"},
+		{OpcodeLegacyDelegate, "delegate"},
+		{OpcodeLegacyCatchAll, "catch_all"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &Module{
+				TypeSection:     []FunctionType{v_v},
+				FunctionSection: []Index{0},
+				CodeSection:     []Code{{Body: []byte{tc.opcode, OpcodeEnd}}},
+			}
+			t.Run("with EH enabled", func(t *testing.T) {
+				err := m.validateFunction(&stacks{}, api.CoreFeaturesV2|experimental.CoreFeaturesExceptionHandling,
+					0, []Index{0}, nil, nil, nil, nil, nil, bytes.NewReader(nil))
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "legacy exception handling instruction")
+				require.Contains(t, err.Error(), "wasm-opt --translate-to-exnref")
+			})
+			t.Run("without EH enabled", func(t *testing.T) {
+				err := m.validateFunction(&stacks{}, api.CoreFeaturesV2,
+					0, []Index{0}, nil, nil, nil, nil, nil, bytes.NewReader(nil))
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "invalid instruction")
+			})
+		})
+	}
+}
