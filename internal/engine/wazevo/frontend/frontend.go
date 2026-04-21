@@ -140,8 +140,9 @@ func (t *localCatchClauseTable) Table() [][]wazevoapi.CatchClauseInstance {
 
 // SharedCatchClauseTable is the thread-safe implementation for parallel compilation.
 type SharedCatchClauseTable struct {
-	mu    sync.Mutex
-	table [][]wazevoapi.CatchClauseInstance
+	mu        sync.Mutex
+	table     [][]wazevoapi.CatchClauseInstance
+	finalized bool
 }
 
 // NewSharedCatchClauseTable creates a new SharedCatchClauseTable.
@@ -150,6 +151,9 @@ func NewSharedCatchClauseTable() *SharedCatchClauseTable {
 }
 
 func (s *SharedCatchClauseTable) Append(clauses []wazevoapi.CatchClauseInstance) int {
+	if s.finalized {
+		panic("already finalized")
+	}
 	s.mu.Lock()
 	id := len(s.table)
 	s.table = append(s.table, clauses)
@@ -158,6 +162,7 @@ func (s *SharedCatchClauseTable) Append(clauses []wazevoapi.CatchClauseInstance)
 }
 
 func (s *SharedCatchClauseTable) Table() [][]wazevoapi.CatchClauseInstance {
+	s.finalized = true
 	return s.table
 }
 
