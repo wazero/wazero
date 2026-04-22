@@ -67,7 +67,7 @@ func TestRuntime_CompileModule(t *testing.T) {
 		{
 			name: "FunctionSection, but not exported",
 			wasm: &wasm.Module{
-				TypeSection:     []wasm.FunctionType{{Params: []api.ValueType{api.ValueTypeI32}}},
+				TypeSection:     []wasm.FunctionType{{Params: []wasm.ValueType{wasm.ValueTypeI32}}},
 				FunctionSection: []wasm.Index{0},
 				CodeSection:     []wasm.Code{{Body: []byte{wasm.OpcodeEnd}}},
 			},
@@ -79,7 +79,7 @@ func TestRuntime_CompileModule(t *testing.T) {
 		{
 			name: "FunctionSection exported",
 			wasm: &wasm.Module{
-				TypeSection:     []wasm.FunctionType{{Params: []api.ValueType{api.ValueTypeI32}}},
+				TypeSection:     []wasm.FunctionType{{Params: []wasm.ValueType{wasm.ValueTypeI32}}},
 				FunctionSection: []wasm.Index{0},
 				CodeSection:     []wasm.Code{{Body: []byte{wasm.OpcodeEnd}}},
 				ExportSection: []wasm.Export{{

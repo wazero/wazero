@@ -38,7 +38,7 @@ import (
 // See https://linux.die.net/man/3/poll
 var pollOneoff = newHostFunc(
 	wasip1.PollOneoffName, pollOneoffFn,
-	[]api.ValueType{i32, i32, i32, i32},
+	[]wasm.ValueType{i32, i32, i32, i32},
 	"in", "out", "nsubscriptions", "result.nevents",
 )
 

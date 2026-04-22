@@ -45,7 +45,7 @@ func decodeCode(r *bytes.Reader, codeSectionStart uint64, ret *wasm.Code) (err e
 		}
 
 		bytesRead += n + 1
-		switch vt := b; vt {
+		switch vt := b; wasm.ValueType(vt) {
 		case wasm.ValueTypeI32, wasm.ValueTypeF32, wasm.ValueTypeI64, wasm.ValueTypeF64,
 			wasm.ValueTypeFuncref, wasm.ValueTypeExternref, wasm.ValueTypeV128,
 			wasm.ValueTypeExnref:
@@ -80,7 +80,7 @@ func decodeCode(r *bytes.Reader, codeSectionStart uint64, ret *wasm.Code) (err e
 		}
 
 		for j := uint32(0); j < num; j++ {
-			localTypes = append(localTypes, b)
+			localTypes = append(localTypes, wasm.ValueType(b))
 		}
 	}
 

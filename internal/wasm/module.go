@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -776,7 +777,7 @@ func (f *FunctionType) CacheNumInUint64() {
 
 // EqualsSignature returns true if the function type has the same parameters and results.
 func (f *FunctionType) EqualsSignature(params []ValueType, results []ValueType) bool {
-	return bytes.Equal(f.Params, params) && bytes.Equal(f.Results, results)
+	return slices.Equal(f.Params, params) && slices.Equal(f.Results, results)
 }
 
 // EqualsType returns true if the function types are structurally equal AND
@@ -1126,18 +1127,18 @@ func SectionIDName(sectionID SectionID) string {
 }
 
 // ValueType is an alias of api.ValueType defined to simplify imports.
-type ValueType = api.ValueType
+type ValueType api.ValueType
 
 const (
-	ValueTypeI32 = api.ValueTypeI32
-	ValueTypeI64 = api.ValueTypeI64
-	ValueTypeF32 = api.ValueTypeF32
-	ValueTypeF64 = api.ValueTypeF64
+	ValueTypeI32 = ValueType(api.ValueTypeI32)
+	ValueTypeI64 = ValueType(api.ValueTypeI64)
+	ValueTypeF32 = ValueType(api.ValueTypeF32)
+	ValueTypeF64 = ValueType(api.ValueTypeF64)
 	// TODO: ValueTypeV128 is not exposed in the api pkg yet.
 	ValueTypeV128 ValueType = 0x7b
 	// TODO: ValueTypeFuncref is not exposed in the api pkg yet.
 	ValueTypeFuncref   ValueType = 0x70
-	ValueTypeExternref           = api.ValueTypeExternref
+	ValueTypeExternref           = ValueType(api.ValueTypeExternref)
 	// ValueTypeExnref is the exception reference type used in exception handling.
 	ValueTypeExnref ValueType = 0x69
 )
@@ -1167,7 +1168,11 @@ func ValueTypeName(t ValueType) string {
 	} else if t == ValueTypeExnref {
 		return "exnref"
 	}
-	return api.ValueTypeName(t)
+	return api.ValueTypeName(api.ValueType(t))
+}
+
+func (v ValueType) Kind() byte {
+	return byte(v)
 }
 
 func isReferenceValueType(vt ValueType) bool {
@@ -1208,8 +1213,9 @@ const (
 
 // ExternTypeName is an alias of api.ExternTypeName defined to simplify imports.
 func ExternTypeName(t ValueType) string {
-	if t == ExternTypeTag {
+	vt := api.ValueType(t)
+	if vt == ExternTypeTag {
 		return ExternTypeTagName
 	}
-	return api.ExternTypeName(t)
+	return api.ExternTypeName(vt)
 }

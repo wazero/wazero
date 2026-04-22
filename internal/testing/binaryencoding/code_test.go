@@ -47,8 +47,8 @@ func TestEncodeCode(t *testing.T) {
 			},
 			expected: append([]byte{
 				0x09,                    // 9 bytes to encode locals and the body
-				0x01,                    // 1 local block
-				0x02, wasm.ValueTypeI32, // local block 1
+				0x01,                          // 1 local block
+				0x02, wasm.ValueTypeI32.Kind(), // local block 1
 			},
 				addLocalZeroLocalOne..., // Body
 			),
@@ -61,10 +61,10 @@ func TestEncodeCode(t *testing.T) {
 			},
 			expected: append([]byte{
 				0x0d,                    // 13 bytes to encode locals and the body
-				0x03,                    // 3 local blocks
-				0x01, wasm.ValueTypeI32, // local block 1
-				0x01, wasm.ValueTypeI64, // local block 2
-				0x01, wasm.ValueTypeI32, // local block 3
+				0x03,                          // 3 local blocks
+				0x01, wasm.ValueTypeI32.Kind(), // local block 1
+				0x01, wasm.ValueTypeI64.Kind(), // local block 2
+				0x01, wasm.ValueTypeI32.Kind(), // local block 3
 			},
 				addLocalZeroLocalTwo..., // Body
 			),

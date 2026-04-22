@@ -9,13 +9,13 @@ var noValType = []byte{0}
 
 // encodedValTypes is a cache of size prefixed binary encoding of known val types.
 var encodedValTypes = map[wasm.ValueType][]byte{
-	wasm.ValueTypeI32:       {1, wasm.ValueTypeI32},
-	wasm.ValueTypeI64:       {1, wasm.ValueTypeI64},
-	wasm.ValueTypeF32:       {1, wasm.ValueTypeF32},
-	wasm.ValueTypeF64:       {1, wasm.ValueTypeF64},
-	wasm.ValueTypeExternref: {1, wasm.ValueTypeExternref},
-	wasm.ValueTypeFuncref:   {1, wasm.ValueTypeFuncref},
-	wasm.ValueTypeV128:      {1, wasm.ValueTypeV128},
+	wasm.ValueTypeI32:       {1, wasm.ValueTypeI32.Kind()},
+	wasm.ValueTypeI64:       {1, wasm.ValueTypeI64.Kind()},
+	wasm.ValueTypeF32:       {1, wasm.ValueTypeF32.Kind()},
+	wasm.ValueTypeF64:       {1, wasm.ValueTypeF64.Kind()},
+	wasm.ValueTypeExternref: {1, wasm.ValueTypeExternref.Kind()},
+	wasm.ValueTypeFuncref:   {1, wasm.ValueTypeFuncref.Kind()},
+	wasm.ValueTypeV128:      {1, wasm.ValueTypeV128.Kind()},
 }
 
 // EncodeValTypes fast paths binary encoding of common value type lengths
@@ -29,13 +29,14 @@ func EncodeValTypes(vt []wasm.ValueType) []byte {
 			return encoded
 		}
 	case 2: // ex $wasi.environ_sizes_get
-		return []byte{2, vt[0], vt[1]}
+		return []byte{2, vt[0].Kind(), vt[1].Kind()}
 	case 4: // ex $wasi.fd_write
-		return []byte{4, vt[0], vt[1], vt[2], vt[3]}
+		return []byte{4, vt[0].Kind(), vt[1].Kind(), vt[2].Kind(), vt[3].Kind()}
 	case 9: // ex $wasi.fd_write
-		return []byte{9, vt[0], vt[1], vt[2], vt[3], vt[4], vt[5], vt[6], vt[7], vt[8]}
+		return []byte{9, vt[0].Kind(), vt[1].Kind(), vt[2].Kind(), vt[3].Kind(), vt[4].Kind(), vt[5].Kind(), vt[6].Kind(), vt[7].Kind(), vt[8].Kind()}
 	}
 	// Slow path others until someone complains with a valid signature
 	count := leb128.EncodeUint32(uint32(len(vt)))
-	return append(count, vt...)
+	avt := wasm.ToApiValueType(vt)
+	return append(count, avt...)
 }

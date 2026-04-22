@@ -141,9 +141,9 @@ func encodeModule(m *wasm.Module) []byte {
 		for _, ft := range m.TypeSection {
 			s = append(s, 0x60) // func type
 			s = appendUleb128(s, uint32(len(ft.Params)))
-			s = append(s, ft.Params...)
+			s = append(s, wasm.ToApiValueType(ft.Params)...)
 			s = appendUleb128(s, uint32(len(ft.Results)))
-			s = append(s, ft.Results...)
+			s = append(s, wasm.ToApiValueType(ft.Results)...)
 		}
 		return s
 	})

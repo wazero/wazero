@@ -20,7 +20,7 @@ func TestEncodeGlobal(t *testing.T) {
 				Init: wasm.NewConstantExpressionFromI32(1),
 			},
 			expected: []byte{
-				wasm.ValueTypeI32, 0x00, // 0 == const
+				wasm.ValueTypeI32.Kind(), 0x00, // 0 == const
 				wasm.OpcodeI32Const, 0x01, wasm.OpcodeEnd,
 			},
 		},
@@ -31,7 +31,7 @@ func TestEncodeGlobal(t *testing.T) {
 				Init: wasm.NewConstantExpressionFromI32(1),
 			},
 			expected: []byte{
-				wasm.ValueTypeI32, 0x01, // 1 == var
+				wasm.ValueTypeI32.Kind(), 0x01, // 1 == var
 				wasm.OpcodeI32Const, 0x01, wasm.OpcodeEnd,
 			},
 		},

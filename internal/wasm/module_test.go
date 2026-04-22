@@ -295,12 +295,12 @@ func TestValidateConstExpression(t *testing.T) {
 			require.EqualError(t, err, "ref.func index out of range [5] with length 1")
 		})
 		t.Run("ref.null", func(t *testing.T) {
-			expr := NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeFuncref})
+			expr := NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeFuncref.Kind()})
 			err := validateConstExpression(nil, 0,
 				&expr,
 				ValueTypeFuncref)
 			require.NoError(t, err)
-			expr = NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref})
+			expr = NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref.Kind()})
 			err = validateConstExpression(nil, 0,
 				&expr,
 				ValueTypeExternref)
@@ -799,11 +799,11 @@ func TestModule_buildGlobals(t *testing.T) {
 			},
 			{
 				Type: GlobalType{Mutable: false, ValType: ValueTypeExternref},
-				Init: NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref}),
+				Init: NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref.Kind()}),
 			},
 			{
 				Type: GlobalType{Mutable: false, ValType: ValueTypeFuncref},
-				Init: NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeFuncref}),
+				Init: NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeFuncref.Kind()}),
 			},
 			{
 				Type: GlobalType{Mutable: false, ValType: ValueTypeFuncref},
@@ -948,7 +948,7 @@ func TestModule_declaredFunctionIndexes(t *testing.T) {
 						Mode: ElementModeActive,
 						Init: []ConstantExpression{
 							NewConstantExpressionFromOpcode(OpcodeRefFunc, []byte{0}),
-							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref}),
+							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref.Kind()}),
 							NewConstantExpressionFromOpcode(OpcodeRefFunc, []byte{5}),
 						},
 					},
@@ -956,7 +956,7 @@ func TestModule_declaredFunctionIndexes(t *testing.T) {
 						Mode: ElementModeDeclarative,
 						Init: []ConstantExpression{
 							NewConstantExpressionFromOpcode(OpcodeRefFunc, []byte{1}),
-							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref}),
+							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref.Kind()}),
 							NewConstantExpressionFromOpcode(OpcodeRefFunc, []byte{5}),
 						},
 					},
@@ -965,8 +965,8 @@ func TestModule_declaredFunctionIndexes(t *testing.T) {
 						Init: []ConstantExpression{
 							NewConstantExpressionFromOpcode(OpcodeRefFunc, []byte{5}),
 							NewConstantExpressionFromOpcode(OpcodeRefFunc, []byte{2}),
-							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref}),
-							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref}),
+							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref.Kind()}),
+							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref.Kind()}),
 						},
 					},
 				},
@@ -993,7 +993,7 @@ func TestModule_declaredFunctionIndexes(t *testing.T) {
 						Mode: ElementModeActive,
 						Init: []ConstantExpression{
 							NewConstantExpressionFromOpcode(OpcodeRefFunc, []byte{0}),
-							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref}),
+							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref.Kind()}),
 							NewConstantExpressionFromOpcode(OpcodeRefFunc, []byte{5}),
 						},
 					},
@@ -1001,7 +1001,7 @@ func TestModule_declaredFunctionIndexes(t *testing.T) {
 						Mode: ElementModeDeclarative,
 						Init: []ConstantExpression{
 							NewConstantExpressionFromOpcode(OpcodeRefFunc, []byte{1}),
-							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref}),
+							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref.Kind()}),
 							NewConstantExpressionFromOpcode(OpcodeRefFunc, []byte{5}),
 						},
 					},
@@ -1010,8 +1010,8 @@ func TestModule_declaredFunctionIndexes(t *testing.T) {
 						Init: []ConstantExpression{
 							NewConstantExpressionFromOpcode(OpcodeRefFunc, []byte{5}),
 							NewConstantExpressionFromOpcode(OpcodeRefFunc, []byte{2}),
-							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref}),
-							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref}),
+							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref.Kind()}),
+							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref.Kind()}),
 						},
 					},
 				},

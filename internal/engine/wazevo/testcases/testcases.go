@@ -343,7 +343,7 @@ var (
 			wasm.OpcodeLocalGet, 2, // x
 			wasm.OpcodeLocalGet, 3, // y
 			wasm.OpcodeLocalGet, 1, // cond
-			wasm.OpcodeTypedSelect, 1, wasm.ValueTypeI64,
+			wasm.OpcodeTypedSelect, 1, wasm.ValueTypeI64.Kind(),
 
 			// f32 select.
 			wasm.OpcodeLocalGet, 4, // x
@@ -352,7 +352,7 @@ var (
 			wasm.OpcodeLocalGet, 6,
 			wasm.OpcodeLocalGet, 7,
 			wasm.OpcodeF64Gt,
-			wasm.OpcodeTypedSelect, 1, wasm.ValueTypeF32,
+			wasm.OpcodeTypedSelect, 1, wasm.ValueTypeF32.Kind(),
 
 			// f64 select.
 			wasm.OpcodeLocalGet, 6, // x
@@ -361,7 +361,7 @@ var (
 			wasm.OpcodeLocalGet, 4,
 			wasm.OpcodeLocalGet, 5,
 			wasm.OpcodeF32Ne,
-			wasm.OpcodeTypedSelect, 1, wasm.ValueTypeF64,
+			wasm.OpcodeTypedSelect, 1, wasm.ValueTypeF64.Kind(),
 
 			wasm.OpcodeEnd,
 		}, nil),

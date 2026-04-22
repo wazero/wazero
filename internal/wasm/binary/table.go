@@ -12,7 +12,8 @@ import (
 //
 // See https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#binary-table
 func decodeTable(r *bytes.Reader, enabledFeatures api.CoreFeatures, ret *wasm.Table) (err error) {
-	ret.Type, err = r.ReadByte()
+	b, err := r.ReadByte()
+	ret.Type = wasm.ValueType(b)
 	if err != nil {
 		return fmt.Errorf("read leading byte: %v", err)
 	}

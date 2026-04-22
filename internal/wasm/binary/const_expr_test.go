@@ -35,18 +35,18 @@ func TestDecodeConstantExpression(t *testing.T) {
 		{
 			in: []byte{
 				wasm.OpcodeRefNull,
-				wasm.RefTypeFuncref,
+				wasm.RefTypeFuncref.Kind(),
 				wasm.OpcodeEnd,
 			},
-			exp: wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref}),
+			exp: wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeFuncref.Kind()}),
 		},
 		{
 			in: []byte{
 				wasm.OpcodeRefNull,
-				wasm.RefTypeExternref,
+				wasm.RefTypeExternref.Kind(),
 				wasm.OpcodeEnd,
 			},
-			exp: wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeExternref}),
+			exp: wasm.NewConstantExpressionFromOpcode(wasm.OpcodeRefNull, []byte{wasm.RefTypeExternref.Kind()}),
 		},
 		{
 			in: []byte{
@@ -124,7 +124,7 @@ func TestDecodeConstantExpression_errors(t *testing.T) {
 		{
 			in: []byte{
 				wasm.OpcodeRefNull,
-				wasm.RefTypeExternref,
+				wasm.RefTypeExternref.Kind(),
 				wasm.OpcodeEnd,
 			},
 			expectedErr: "ref.null is not supported as feature \"bulk-memory-operations\" is disabled",

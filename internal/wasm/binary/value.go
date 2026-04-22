@@ -23,10 +23,10 @@ func decodeValueTypes(r *bytes.Reader, num uint32) ([]wasm.ValueType, error) {
 			return nil, err
 		}
 		switch b {
-		case wasm.ValueTypeI32, wasm.ValueTypeF32, wasm.ValueTypeI64, wasm.ValueTypeF64,
-			wasm.ValueTypeExternref, wasm.ValueTypeFuncref, wasm.ValueTypeV128,
-			wasm.ValueTypeExnref:
-			ret = append(ret, b)
+		case wasm.ValueTypeI32.Kind(), wasm.ValueTypeF32.Kind(), wasm.ValueTypeI64.Kind(), wasm.ValueTypeF64.Kind(),
+			wasm.ValueTypeExternref.Kind(), wasm.ValueTypeFuncref.Kind(), wasm.ValueTypeV128.Kind(),
+			wasm.ValueTypeExnref.Kind():
+			ret = append(ret, wasm.ValueType(b))
 		case wasm.RefPrefixNullable, wasm.RefPrefixNonNullable:
 			ht, _, err := leb128.DecodeInt33AsInt64(r)
 			if err != nil {

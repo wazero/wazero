@@ -62,7 +62,7 @@ func decodeImport(
 		err = fmt.Errorf("%w: invalid byte for importdesc: %#x", ErrInvalidByte, b)
 	}
 	if err != nil {
-		err = fmt.Errorf("import[%d] %s[%s.%s]: %w", idx, wasm.ExternTypeName(ret.Type), ret.Module, ret.Name, err)
+		err = fmt.Errorf("import[%d] %s[%s.%s]: %w", idx, wasm.ExternTypeName(wasm.ValueType(ret.Type)), ret.Module, ret.Name, err)
 	}
 	return
 }

@@ -293,7 +293,7 @@ func (m *ModuleInstance) getExport(name string, et ExternType) (*Export, error) 
 		return nil, fmt.Errorf("%q is not exported in module %q", name, m.ModuleName)
 	}
 	if exp.Type != et {
-		return nil, fmt.Errorf("export %q in module %q is a %s, not a %s", name, m.ModuleName, ExternTypeName(exp.Type), ExternTypeName(et))
+		return nil, fmt.Errorf("export %q in module %q is a %s, not a %s", name, m.ModuleName, ExternTypeName(ValueType(exp.Type)), ExternTypeName(ValueType(et)))
 	}
 	return exp, nil
 }
@@ -540,7 +540,7 @@ func errorMaxSizeMismatch(i *Import, expected, actual uint32) error {
 }
 
 func errorInvalidImport(i *Import, err error) error {
-	return fmt.Errorf("import %s[%s.%s]: %w", ExternTypeName(i.Type), i.Module, i.Name, err)
+	return fmt.Errorf("import %s[%s.%s]: %w", ExternTypeName(ValueType(i.Type)), i.Module, i.Name, err)
 }
 
 // initialize initializes the value of this global instance given the const expr and imported globals.

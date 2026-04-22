@@ -2273,7 +2273,7 @@ func TestModule_funcValidation_RefTypes(t *testing.T) {
 			name: "ref.null (funcref)",
 			flag: api.CoreFeatureReferenceTypes,
 			body: []byte{
-				OpcodeRefNull, ValueTypeFuncref,
+				OpcodeRefNull, ValueTypeFuncref.Kind(),
 				OpcodeDrop, OpcodeEnd,
 			},
 		},
@@ -2281,7 +2281,7 @@ func TestModule_funcValidation_RefTypes(t *testing.T) {
 			name: "ref.null (externref)",
 			flag: api.CoreFeatureReferenceTypes,
 			body: []byte{
-				OpcodeRefNull, ValueTypeExternref,
+				OpcodeRefNull, ValueTypeExternref.Kind(),
 				OpcodeDrop, OpcodeEnd,
 			},
 		},
@@ -2289,7 +2289,7 @@ func TestModule_funcValidation_RefTypes(t *testing.T) {
 			name: "ref.null - disabled",
 			flag: api.CoreFeaturesV1,
 			body: []byte{
-				OpcodeRefNull, ValueTypeFuncref,
+				OpcodeRefNull, ValueTypeFuncref.Kind(),
 				OpcodeDrop, OpcodeEnd,
 			},
 			expectedErr: "ref.null invalid as feature \"reference-types\" is disabled",
@@ -2298,7 +2298,7 @@ func TestModule_funcValidation_RefTypes(t *testing.T) {
 			name: "ref.is_null",
 			flag: api.CoreFeatureReferenceTypes,
 			body: []byte{
-				OpcodeRefNull, ValueTypeFuncref,
+				OpcodeRefNull, ValueTypeFuncref.Kind(),
 				OpcodeRefIsNull,
 				OpcodeDrop, OpcodeEnd,
 			},
@@ -2373,7 +2373,7 @@ func TestModule_funcValidation_TableGrowSizeFill(t *testing.T) {
 		{
 			name: "table.grow (funcref)",
 			body: []byte{
-				OpcodeRefNull, RefTypeFuncref,
+				OpcodeRefNull, RefTypeFuncref.Kind(),
 				OpcodeI32Const, 1, // number of elements
 				OpcodeMiscPrefix, OpcodeMiscTableGrow,
 				0, // Table Index.
@@ -2385,7 +2385,7 @@ func TestModule_funcValidation_TableGrowSizeFill(t *testing.T) {
 		{
 			name: "table.grow (funcref) - type mismatch",
 			body: []byte{
-				OpcodeRefNull, RefTypeFuncref,
+				OpcodeRefNull, RefTypeFuncref.Kind(),
 				OpcodeI32Const, 1, // number of elements
 				OpcodeMiscPrefix, OpcodeMiscTableGrow,
 				1, // Table of externref type -> mismatch.
@@ -2397,7 +2397,7 @@ func TestModule_funcValidation_TableGrowSizeFill(t *testing.T) {
 		{
 			name: "table.grow (externref)",
 			body: []byte{
-				OpcodeRefNull, RefTypeExternref,
+				OpcodeRefNull, RefTypeExternref.Kind(),
 				OpcodeI32Const, 1, // number of elements
 				OpcodeMiscPrefix, OpcodeMiscTableGrow,
 				1, // Table Index.
@@ -2409,7 +2409,7 @@ func TestModule_funcValidation_TableGrowSizeFill(t *testing.T) {
 		{
 			name: "table.grow (externref) type mismatch",
 			body: []byte{
-				OpcodeRefNull, RefTypeExternref,
+				OpcodeRefNull, RefTypeExternref.Kind(),
 				OpcodeI32Const, 1, // number of elements
 				OpcodeMiscPrefix, OpcodeMiscTableGrow,
 				0, // Table of funcref type -> mismatch.
@@ -2421,7 +2421,7 @@ func TestModule_funcValidation_TableGrowSizeFill(t *testing.T) {
 		{
 			name: "table.grow - table not found",
 			body: []byte{
-				OpcodeRefNull, RefTypeFuncref,
+				OpcodeRefNull, RefTypeFuncref.Kind(),
 				OpcodeI32Const, 1, // number of elements
 				OpcodeMiscPrefix, OpcodeMiscTableGrow,
 				10, // Table Index.
@@ -2454,7 +2454,7 @@ func TestModule_funcValidation_TableGrowSizeFill(t *testing.T) {
 			name: "table.fill (funcref)",
 			body: []byte{
 				OpcodeI32Const, 1, // offset
-				OpcodeRefNull, RefTypeFuncref,
+				OpcodeRefNull, RefTypeFuncref.Kind(),
 				OpcodeI32Const, 1, // number of elements
 				OpcodeMiscPrefix, OpcodeMiscTableFill,
 				0, // Table Index.
@@ -2466,7 +2466,7 @@ func TestModule_funcValidation_TableGrowSizeFill(t *testing.T) {
 			name: "table.fill (funcref) - type mismatch",
 			body: []byte{
 				OpcodeI32Const, 1, // offset
-				OpcodeRefNull, RefTypeFuncref,
+				OpcodeRefNull, RefTypeFuncref.Kind(),
 				OpcodeI32Const, 1, // number of elements
 				OpcodeMiscPrefix, OpcodeMiscTableFill,
 				1, // Table of externref type -> mismatch.
@@ -2479,7 +2479,7 @@ func TestModule_funcValidation_TableGrowSizeFill(t *testing.T) {
 			name: "table.fill (externref)",
 			body: []byte{
 				OpcodeI32Const, 1, // offset
-				OpcodeRefNull, RefTypeExternref,
+				OpcodeRefNull, RefTypeExternref.Kind(),
 				OpcodeI32Const, 1, // number of elements
 				OpcodeMiscPrefix, OpcodeMiscTableFill,
 				1, // Table Index.
@@ -2491,7 +2491,7 @@ func TestModule_funcValidation_TableGrowSizeFill(t *testing.T) {
 			name: "table.fill (externref) - type mismatch",
 			body: []byte{
 				OpcodeI32Const, 1, // offset
-				OpcodeRefNull, RefTypeExternref,
+				OpcodeRefNull, RefTypeExternref.Kind(),
 				OpcodeI32Const, 1, // number of elements
 				OpcodeMiscPrefix, OpcodeMiscTableFill,
 				0, // Table of funcref type -> mismatch.
@@ -2576,7 +2576,7 @@ func TestModule_funcValidation_TableGetSet(t *testing.T) {
 			name: "table.set (funcref)",
 			body: []byte{
 				OpcodeI32Const, 0,
-				OpcodeRefNull, ValueTypeFuncref,
+				OpcodeRefNull, ValueTypeFuncref.Kind(),
 				OpcodeTableSet, 0,
 				OpcodeEnd,
 			},
@@ -2586,7 +2586,7 @@ func TestModule_funcValidation_TableGetSet(t *testing.T) {
 			name: "table.set type mismatch (src=funcref, dst=externref)",
 			body: []byte{
 				OpcodeI32Const, 0,
-				OpcodeRefNull, ValueTypeFuncref,
+				OpcodeRefNull, ValueTypeFuncref.Kind(),
 				OpcodeTableSet, 1,
 				OpcodeEnd,
 			},
@@ -2597,7 +2597,7 @@ func TestModule_funcValidation_TableGetSet(t *testing.T) {
 			name: "table.set (externref)",
 			body: []byte{
 				OpcodeI32Const, 0,
-				OpcodeRefNull, ValueTypeExternref,
+				OpcodeRefNull, ValueTypeExternref.Kind(),
 				OpcodeTableSet, 1,
 				OpcodeEnd,
 			},
@@ -2607,7 +2607,7 @@ func TestModule_funcValidation_TableGetSet(t *testing.T) {
 			name: "table.set type mismatch (src=externref, dst=funcref)",
 			body: []byte{
 				OpcodeI32Const, 0,
-				OpcodeRefNull, ValueTypeExternref,
+				OpcodeRefNull, ValueTypeExternref.Kind(),
 				OpcodeTableSet, 0,
 				OpcodeEnd,
 			},
@@ -2655,7 +2655,7 @@ func TestModule_funcValidation_Select_error(t *testing.T) {
 			name: "typed_select (disabled)",
 			body: []byte{
 				OpcodeI32Const, 0, OpcodeI32Const, 0, OpcodeI32Const, 0,
-				OpcodeTypedSelect, 1, ValueTypeI32, // immediate vector's size must be one
+				OpcodeTypedSelect, 1, ValueTypeI32.Kind(), // immediate vector's size must be one
 				OpcodeDrop,
 				OpcodeEnd,
 			},
