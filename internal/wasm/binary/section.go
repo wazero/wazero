@@ -16,10 +16,38 @@ func decodeTypeSection(enabledFeatures api.CoreFeatures, r *bytes.Reader) ([]was
 		return nil, fmt.Errorf("get size of vector: %w", err)
 	}
 
-	result := make([]wasm.FunctionType, vs)
+	var result []wasm.FunctionType
 	for i := uint32(0); i < vs; i++ {
-		if err = decodeFunctionType(enabledFeatures, r, &result[i]); err != nil {
+		// Peek at the leading byte to check for rec group (0x4e, GC proposal).
+		b, err := r.ReadByte()
+		if err != nil {
 			return nil, fmt.Errorf("read %d-th type: %v", i, err)
+		}
+		if b == 0x4e {
+			// Rec group: contains multiple types.
+			recCount, _, err := leb128.DecodeUint32(r)
+			if err != nil {
+				return nil, fmt.Errorf("read rec group count: %v", err)
+			}
+			for j := uint32(0); j < recCount; j++ {
+				var ft wasm.FunctionType
+				if err = decodeFunctionType(enabledFeatures, r, &ft); err != nil {
+					return nil, fmt.Errorf("read %d-th type in rec group: %v", j, err)
+				}
+				ft.RecGroupSize = int(recCount)
+				ft.RecGroupPosition = int(j)
+				result = append(result, ft)
+			}
+		} else {
+			// Put back the byte and decode as a regular function type.
+			if err := r.UnreadByte(); err != nil {
+				return nil, err
+			}
+			var ft wasm.FunctionType
+			if err = decodeFunctionType(enabledFeatures, r, &ft); err != nil {
+				return nil, fmt.Errorf("read %d-th type: %v", i, err)
+			}
+			result = append(result, ft)
 		}
 	}
 	return result, nil
@@ -33,7 +61,7 @@ func decodeImportSection(
 	enabledFeatures api.CoreFeatures,
 ) (result []wasm.Import,
 	perModule map[string][]*wasm.Import,
-	funcCount, globalCount, memoryCount, tableCount wasm.Index, err error,
+	funcCount, globalCount, memoryCount, tableCount, tagCount wasm.Index, err error,
 ) {
 	vs, _, err := leb128.DecodeUint32(r)
 	if err != nil {
@@ -61,6 +89,9 @@ func decodeImportSection(
 		case wasm.ExternTypeTable:
 			imp.IndexPerType = tableCount
 			tableCount++
+		case wasm.ExternTypeTag:
+			imp.IndexPerType = tagCount
+			tagCount++
 		}
 		perModule[imp.Module] = append(perModule[imp.Module], imp)
 	}
@@ -211,6 +242,31 @@ func decodeDataSection(r *bytes.Reader, enabledFeatures api.CoreFeatures) ([]was
 	for i := uint32(0); i < vs; i++ {
 		if err = decodeDataSegment(r, enabledFeatures, &result[i]); err != nil {
 			return nil, fmt.Errorf("read data segment: %w", err)
+		}
+	}
+	return result, nil
+}
+
+func decodeTagSection(r *bytes.Reader) ([]wasm.Tag, error) {
+	vs, _, err := leb128.DecodeUint32(r)
+	if err != nil {
+		return nil, fmt.Errorf("get size of vector: %w", err)
+	}
+
+	result := make([]wasm.Tag, vs)
+	for i := uint32(0); i < vs; i++ {
+		// Read attribute byte (must be 0x00 per spec).
+		attr, err := r.ReadByte()
+		if err != nil {
+			return nil, fmt.Errorf("read tag[%d] attribute: %w", i, err)
+		}
+		if attr != 0x00 {
+			return nil, fmt.Errorf("tag[%d] has invalid attribute: %#x", i, attr)
+		}
+		// Read type index.
+		result[i].Type, _, err = leb128.DecodeUint32(r)
+		if err != nil {
+			return nil, fmt.Errorf("read tag[%d] type index: %w", i, err)
 		}
 	}
 	return result, nil

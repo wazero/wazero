@@ -47,7 +47,8 @@ func decodeCode(r *bytes.Reader, codeSectionStart uint64, ret *wasm.Code) (err e
 		bytesRead += n + 1
 		switch vt := b; vt {
 		case wasm.ValueTypeI32, wasm.ValueTypeF32, wasm.ValueTypeI64, wasm.ValueTypeF64,
-			wasm.ValueTypeFuncref, wasm.ValueTypeExternref, wasm.ValueTypeV128:
+			wasm.ValueTypeFuncref, wasm.ValueTypeExternref, wasm.ValueTypeV128,
+			wasm.ValueTypeExnref:
 		default:
 			return fmt.Errorf("invalid local type: 0x%x", vt)
 		}

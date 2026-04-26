@@ -128,6 +128,10 @@ spec_version_tail_call := 88e97b0f742f4c3ee01fea683da130f344dd7b02
 spectest_extended_const_dir := $(spectest_base_dir)/extended-const
 spectest_extended_const_testdata_dir := $(spectest_extended_const_dir)/testdata
 
+spectest_exception_handling_dir := $(spectest_base_dir)/exception-handling
+spectest_exception_handling_testdata_dir := $(spectest_exception_handling_dir)/testdata
+spec_version_exception_handling := 13734f8fb871a5dab939070f893adbd90bffe28c
+
 .PHONY: build.spectest
 build.spectest:
 	@$(MAKE) build.spectest.v1
@@ -135,6 +139,7 @@ build.spectest:
 	@$(MAKE) build.spectest.threads
 	@$(MAKE) build.spectest.tail_call
 	@$(MAKE) build.spectest.extended_const
+	@$(MAKE) build.spectest.exception_handling
 
 .PHONY: build.spectest.v1
 build.spectest.v1: # Note: wabt by default uses >1.0 features, so wast2json flags might drift as they include more. See WebAssembly/wabt#1878
@@ -201,6 +206,17 @@ build.spectest.tail_call:
 		&& curl -sSL 'https://api.github.com/repos/WebAssembly/testsuite/contents/proposals/tail-call?ref=$(spec_version_tail_call)' | jq -r '.[]| .download_url' | grep -E ".wast" | xargs -Iurl curl -sJL url -O
 	@cd $(spectest_tail_call_testdata_dir) && for f in `find . -name '*.wast'`; do \
 		wast2json --enable-tail-call --debug-names $$f; \
+	done
+
+.PHONY: build.spectest.exception_handling
+build.spectest.exception_handling:
+	@rm -rf $(spectest_exception_handling_testdata_dir)
+	@mkdir -p $(spectest_exception_handling_testdata_dir)
+	@cd $(spectest_exception_handling_testdata_dir) \
+		&& curl -sSL 'https://api.github.com/repos/WebAssembly/spec/contents/test/core/exceptions?ref=$(spec_version_exception_handling)' \
+		| jq -r '.[]| .download_url' | grep -E ".wast" | xargs -Iurl curl -sJL url -O
+	@cd $(spectest_exception_handling_testdata_dir) && for f in `find . -name '*.wast'`; do \
+		wasm-tools json-from-wast --wasm-dir . -o $$(basename $$f .wast).json $$f || true; \
 	done
 
 .PHONY: test

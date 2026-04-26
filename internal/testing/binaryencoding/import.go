@@ -33,6 +33,9 @@ func EncodeImport(i *wasm.Import) []byte {
 			mutable = 1
 		}
 		data = append(data, g.ValType, mutable)
+	case wasm.ExternTypeTag:
+		data = append(data, 0x00) // attribute byte
+		data = append(data, leb128.EncodeUint32(i.DescTag)...)
 	default:
 		panic(fmt.Errorf("invalid externtype: %s", wasm.ExternTypeName(i.Type)))
 	}

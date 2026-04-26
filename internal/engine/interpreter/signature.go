@@ -268,6 +268,9 @@ func (c *compiler) wasmOpcodeSignature(op wasm.Opcode, index uint32) (*signature
 		return signature_I32_None, nil
 	case wasm.OpcodeElse, wasm.OpcodeEnd, wasm.OpcodeBr:
 		return signature_None_None, nil
+	case wasm.OpcodeThrow, wasm.OpcodeThrowRef, wasm.OpcodeTryTable:
+		// Stack manipulation handled dynamically by the compiler.
+		return signature_None_None, nil
 	case wasm.OpcodeBrIf, wasm.OpcodeBrTable:
 		return signature_I32_None, nil
 	case wasm.OpcodeReturn:
@@ -700,7 +703,8 @@ func wasmValueTypeTounsignedType(vt wasm.ValueType) unsignedType {
 		return unsignedTypeI32
 	case wasm.ValueTypeI64,
 		// From interpreterir layer, ref type values are opaque 64-bit pointers.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref:
+		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
+		wasm.ValueTypeExnref:
 		return unsignedTypeI64
 	case wasm.ValueTypeF32:
 		return unsignedTypeF32
@@ -718,7 +722,8 @@ func wasmValueTypeToUnsignedOutSignature(vt wasm.ValueType) *signature {
 		return signature_None_I32
 	case wasm.ValueTypeI64,
 		// From interpreterir layer, ref type values are opaque 64-bit pointers.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref:
+		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
+		wasm.ValueTypeExnref:
 		return signature_None_I64
 	case wasm.ValueTypeF32:
 		return signature_None_F32
@@ -736,7 +741,8 @@ func wasmValueTypeToUnsignedInSignature(vt wasm.ValueType) *signature {
 		return signature_I32_None
 	case wasm.ValueTypeI64,
 		// From interpreterir layer, ref type values are opaque 64-bit pointers.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref:
+		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
+		wasm.ValueTypeExnref:
 		return signature_I64_None
 	case wasm.ValueTypeF32:
 		return signature_F32_None
@@ -754,7 +760,8 @@ func wasmValueTypeToUnsignedInOutSignature(vt wasm.ValueType) *signature {
 		return signature_I32_I32
 	case wasm.ValueTypeI64,
 		// At interpreterir layer, ref type values are opaque 64-bit pointers.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref:
+		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
+		wasm.ValueTypeExnref:
 		return signature_I64_I64
 	case wasm.ValueTypeF32:
 		return signature_F32_F32

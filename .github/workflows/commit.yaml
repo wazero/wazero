@@ -30,11 +30,14 @@ jobs:
     name: Pre-commit check
     runs-on: ubuntu-24.04
     steps:
-      - name: Install latest wast2json
-        run: |  # Needed for build.spectest. wabt includes wast2json.
+      - name: Install latest wast2json and wasm-tools
+        run: |  # Needed for build.spectest. wabt includes wast2json; wasm-tools is used for exception-handling spectests.
           wabt_version=1.0.39
           wabt_url=https://github.com/WebAssembly/wabt/releases/download/${wabt_version}/wabt-${wabt_version}-linux-x64.tar.gz
           curl -sSL ${wabt_url} | tar --strip-components 2 -C /usr/local/bin -xzf - wabt-${wabt_version}/bin/wast2json
+          wasm_tools_version=1.245.1
+          wasm_tools_url=https://github.com/bytecodealliance/wasm-tools/releases/download/v${wasm_tools_version}/wasm-tools-${wasm_tools_version}-x86_64-linux.tar.gz
+          curl -sSL ${wasm_tools_url} | tar --strip-components 1 -C /usr/local/bin -xzf - wasm-tools-${wasm_tools_version}-x86_64-linux/wasm-tools
 
       - uses: actions/checkout@v6
 

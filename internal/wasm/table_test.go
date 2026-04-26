@@ -373,7 +373,7 @@ func TestModule_validateTable(t *testing.T) {
 		tc := tt
 
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, _, tables, err := tc.input.AllDeclarations()
+			_, _, _, tables, _, err := tc.input.AllDeclarations()
 			require.NoError(t, err)
 
 			err = tc.input.validateTable(api.CoreFeaturesV1, tables, maxTableIndex)
@@ -682,7 +682,7 @@ func TestModule_validateTable_Errors(t *testing.T) {
 		tc := tt
 
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, _, tables, err := tc.input.AllDeclarations()
+			_, _, _, tables, _, err := tc.input.AllDeclarations()
 			require.NoError(t, err)
 			err = tc.input.validateTable(api.CoreFeaturesV1, tables, maxTableIndex)
 			require.EqualError(t, err, tc.expectedErr)

@@ -16,18 +16,42 @@ func decodeValueTypes(r *bytes.Reader, num uint32) ([]wasm.ValueType, error) {
 		return nil, nil
 	}
 
-	ret := make([]wasm.ValueType, num)
-	_, err := io.ReadFull(r, ret)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, v := range ret {
-		switch v {
+	ret := make([]wasm.ValueType, 0, num)
+	for i := uint32(0); i < num; i++ {
+		b, err := r.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+		switch b {
 		case wasm.ValueTypeI32, wasm.ValueTypeF32, wasm.ValueTypeI64, wasm.ValueTypeF64,
-			wasm.ValueTypeExternref, wasm.ValueTypeFuncref, wasm.ValueTypeV128:
+			wasm.ValueTypeExternref, wasm.ValueTypeFuncref, wasm.ValueTypeV128,
+			wasm.ValueTypeExnref:
+			ret = append(ret, b)
+		case wasm.RefPrefixNullable, wasm.RefPrefixNonNullable:
+			ht, _, err := leb128.DecodeInt33AsInt64(r)
+			if err != nil {
+				return nil, fmt.Errorf("read ref heap type: %w", err)
+			}
+			// The following nullable refs are an alternative representation of the corresponding ref types:
+			// - (ref null exn) is equivalent to exnref
+			// - (ref null func) is equivalent to funcref
+			// - (ref null extern) is equivalent to externref
+			// See https://webassembly.github.io/gc/core/syntax/types.html#reference-types
+			// Current limitation: we desugar NON-NULLABLE types to NULLABLE types internally.
+			// This technically breaks type-checking in some cases, but we will fix this
+			// when we introduce proper ref types.
+			switch ht {
+			case wasm.HeapTypeExn:
+				ret = append(ret, wasm.ValueTypeExnref)
+			case wasm.HeapTypeFunc:
+				ret = append(ret, wasm.ValueTypeFuncref)
+			case wasm.HeapTypeExtern:
+				ret = append(ret, wasm.ValueTypeExternref)
+			default: // concrete type index — treat as nullable funcref
+				ret = append(ret, wasm.ValueTypeFuncref)
+			}
 		default:
-			return nil, fmt.Errorf("invalid value type: %d", v)
+			return nil, fmt.Errorf("invalid value type: %d", b)
 		}
 	}
 	return ret, nil
