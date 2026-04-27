@@ -99,7 +99,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			} else {
 				instName = InstructionName(op)
 			}
-			fmt.Printf("handling %s, stack=%s, blocks: %v\n", instName, valueTypeStack.stack, controlBlockStack)
+			fmt.Printf("handling %s, stack=%v, blocks: %v\n", instName, valueTypeStack.stack, controlBlockStack)
 		}
 
 		if len(controlBlockStack.stack) == 0 {

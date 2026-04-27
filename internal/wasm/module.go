@@ -1126,22 +1126,61 @@ func SectionIDName(sectionID SectionID) string {
 	return "unknown"
 }
 
-// ValueType is an alias of api.ValueType defined to simplify imports.
-type ValueType api.ValueType
+// ValueType represents a WebAssembly value type as a uint64.
+//
+// Layout:
+//
+//	bits  0-7:  kind byte (backward-compatible with api.ValueType)
+//	bits  8-15: flags (nullability, concrete ref)
+//	bits 32-63: type index (for concrete refs like (ref $3))
+type ValueType uint64
 
 const (
-	ValueTypeI32 = ValueType(api.ValueTypeI32)
-	ValueTypeI64 = ValueType(api.ValueTypeI64)
-	ValueTypeF32 = ValueType(api.ValueTypeF32)
-	ValueTypeF64 = ValueType(api.ValueTypeF64)
-	// TODO: ValueTypeV128 is not exposed in the api pkg yet.
-	ValueTypeV128 ValueType = 0x7b
-	// TODO: ValueTypeFuncref is not exposed in the api pkg yet.
-	ValueTypeFuncref   ValueType = 0x70
-	ValueTypeExternref           = ValueType(api.ValueTypeExternref)
-	// ValueTypeExnref is the exception reference type used in exception handling.
-	ValueTypeExnref ValueType = 0x69
+	flagNonNullable ValueType = 1 << 8
+	flagConcreteRef ValueType = 1 << 9
 )
+
+const (
+	ValueTypeI32       ValueType = 0x7f
+	ValueTypeI64       ValueType = 0x7e
+	ValueTypeF32       ValueType = 0x7d
+	ValueTypeF64       ValueType = 0x7c
+	ValueTypeV128      ValueType = 0x7b
+	ValueTypeFuncref   ValueType = 0x70
+	ValueTypeExternref ValueType = 0x6f
+	ValueTypeExnref    ValueType = 0x69
+)
+
+// IsRef returns true if this is a reference type (including concrete refs).
+func (v ValueType) IsRef() bool {
+	k := v.Kind()
+	return k == ValueTypeFuncref.Kind() || k == ValueTypeExternref.Kind() || k == ValueTypeExnref.Kind() ||
+		v&flagConcreteRef != 0
+}
+
+// IsNullable returns true if this reference type is nullable.
+func (v ValueType) IsNullable() bool { return v&flagNonNullable == 0 }
+
+// IsConcreteRef returns true if this is a concrete reference type with a type index.
+func (v ValueType) IsConcreteRef() bool { return v&flagConcreteRef != 0 }
+
+// TypeIndex returns the concrete type index (bits 32-63).
+func (v ValueType) TypeIndex() uint32 { return uint32(v >> 32) }
+
+// AsNonNullable returns a copy with the non-nullable flag set.
+func (v ValueType) AsNonNullable() ValueType { return v | flagNonNullable }
+
+// AsNullable returns a copy with the non-nullable flag cleared.
+func (v ValueType) AsNullable() ValueType { return v &^ flagNonNullable }
+
+// ConcreteRef creates a concrete reference type with the given type index and nullability.
+func ConcreteRef(typeIndex uint32, nullable bool) ValueType {
+	v := ValueTypeFuncref | flagConcreteRef | ValueType(typeIndex)<<32
+	if !nullable {
+		v |= flagNonNullable
+	}
+	return v
+}
 
 const (
 	// RefPrefixNullable is the binary encoding prefix for nullable reference types (ref null <heaptype>).
@@ -1159,16 +1198,42 @@ const (
 	HeapTypeExn int64 = -23
 )
 
-// ValueTypeName is an alias of api.ValueTypeName defined to simplify imports.
+// ValueTypeName returns the name of a ValueType.
 func ValueTypeName(t ValueType) string {
-	if t == ValueTypeFuncref {
-		return "funcref"
-	} else if t == ValueTypeV128 {
+	if t.IsConcreteRef() {
+		if t.IsNullable() {
+			return fmt.Sprintf("(ref null %d)", t.TypeIndex())
+		}
+		return fmt.Sprintf("(ref %d)", t.TypeIndex())
+	}
+	switch t.AsNullable() {
+	case ValueTypeI32:
+		return "i32"
+	case ValueTypeI64:
+		return "i64"
+	case ValueTypeF32:
+		return "f32"
+	case ValueTypeF64:
+		return "f64"
+	case ValueTypeV128:
 		return "v128"
-	} else if t == ValueTypeExnref {
+	case ValueTypeFuncref:
+		if !t.IsNullable() {
+			return "(ref func)"
+		}
+		return "funcref"
+	case ValueTypeExternref:
+		if !t.IsNullable() {
+			return "(ref extern)"
+		}
+		return "externref"
+	case ValueTypeExnref:
+		if !t.IsNullable() {
+			return "(ref exn)"
+		}
 		return "exnref"
 	}
-	return api.ValueTypeName(api.ValueType(t))
+	return "unknown"
 }
 
 func (v ValueType) Kind() byte {
@@ -1176,23 +1241,35 @@ func (v ValueType) Kind() byte {
 }
 
 func isReferenceValueType(vt ValueType) bool {
-	return vt == ValueTypeExternref || vt == ValueTypeFuncref || vt == ValueTypeExnref
+	return vt.IsRef()
 }
 
 // isRefSubtypeOf returns true if actual is assignment-compatible with expected.
-// Currently, non-nullable ref types are desugared to nullable at decode time,
-// so this reduces to equality. When non-nullable ref types are properly supported,
-// this function should allow non-nullable to match nullable and vice versa.
 func isRefSubtypeOf(actual, expected ValueType) bool {
-	return actual == expected
+	if actual == expected {
+		return true
+	}
+	if actual.AsNullable() == expected.AsNullable() && expected.IsNullable() {
+		return true
+	}
+	if actual.IsConcreteRef() && expected.AsNullable() == ValueTypeFuncref && expected.IsNullable() {
+		return true
+	}
+	return false
 }
 
 // isStrictRefSubtypeOf returns true if actual is a strict subtype of expected.
-// Currently, non-nullable ref types are desugared to nullable at decode time,
-// so this reduces to equality. When non-nullable ref types are properly supported,
-// non-nullable should be a subtype of nullable, but NOT vice versa.
 func isStrictRefSubtypeOf(actual, expected ValueType) bool {
-	return actual == expected
+	if actual == expected {
+		return true
+	}
+	if actual.AsNullable() == expected.AsNullable() && expected.IsNullable() {
+		return true
+	}
+	if actual.IsConcreteRef() && expected.AsNullable() == ValueTypeFuncref && expected.IsNullable() {
+		return true
+	}
+	return false
 }
 
 // ExternType is an alias of api.ExternType defined to simplify imports.
@@ -1212,10 +1289,9 @@ const (
 )
 
 // ExternTypeName is an alias of api.ExternTypeName defined to simplify imports.
-func ExternTypeName(t ValueType) string {
-	vt := api.ValueType(t)
-	if vt == ExternTypeTag {
+func ExternTypeName(t ExternType) string {
+	if t == ExternTypeTag {
 		return ExternTypeTagName
 	}
-	return api.ExternTypeName(vt)
+	return api.ExternTypeName(t)
 }
