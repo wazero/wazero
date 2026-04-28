@@ -616,7 +616,7 @@ func fdPrestatGetFn(_ context.Context, mod api.Module, params []uint64) experime
 
 	// Upper 32-bits are zero because...
 	// * Zero-value 8-bit tag, and 3-byte zero-value padding
-	prestat := uint64(len(name) << 32)
+	prestat := uint64(len(name)) << 32
 	if !mod.Memory().WriteUint64Le(resultPrestat, prestat) {
 		return experimentalsys.EFAULT
 	}
