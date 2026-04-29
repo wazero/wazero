@@ -952,6 +952,13 @@ func TestE2E(t *testing.T) {
 				{params: []uint64{1}, expResults: []uint64{99}}, // tail-call path: return_call $target → 99
 			},
 		},
+		{
+			name: "large_method_body_many_args", m: testcases.LargeMethodBodyWithManyArgs.Module,
+			calls: []callCase{{
+				params:     []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				expResults: []uint64{9},
+			}},
+		},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {

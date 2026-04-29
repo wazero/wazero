@@ -1,8 +1,10 @@
 package testcases
 
 import (
+	"bytes"
 	"math"
 
+	"github.com/tetratelabs/wazero/internal/leb128"
 	"github.com/tetratelabs/wazero/internal/wasm"
 )
 
@@ -3086,6 +3088,41 @@ var TryTableCatchWithReturnCall = TestCase{
 			}},
 		},
 		ExportSection: []wasm.Export{{Name: ExportedFunctionName, Type: wasm.ExternTypeFunc, Index: 1}},
+	},
+}
+
+var LargeMethodBodyWithManyArgs = TestCase{
+	Name: "large_method_body_with_many_args",
+	Module: &wasm.Module{
+		TypeSection:     []wasm.FunctionType{{Params: []wasm.ValueType{i32, i32, i32, i32, i32, i32, i32, i32, i32}, Results: []wasm.ValueType{i32}}},
+		ExportSection:   []wasm.Export{{Name: ExportedFunctionName, Type: wasm.ExternTypeFunc, Index: 0}},
+		MemorySection:   &wasm.Memory{Min: 1},
+		FunctionSection: []wasm.Index{0},
+		CodeSection: []wasm.Code{{
+			Body: func() []byte {
+				var body bytes.Buffer
+				body.WriteByte(wasm.OpcodeLocalGet)
+				body.Write(leb128.EncodeUint32(8))
+				body.WriteByte(wasm.OpcodeIf)
+				body.WriteByte(blockSignature_vv)
+
+				for i := 0; i < 14000; i++ { // 14000 is an arbitrary number large enough to ensure that arm64 needs to introduce conditional branch trampolines
+					body.WriteByte(wasm.OpcodeI32Const)
+					body.Write(leb128.EncodeInt32(int32((i * 4) & 0xfffc))) // arbitrary constant that depends on the loop index
+					body.WriteByte(wasm.OpcodeLocalGet)
+					body.Write(leb128.EncodeUint32(8))
+					body.WriteByte(wasm.OpcodeI32Store)
+					body.WriteByte(2) // align (log2)
+					body.WriteByte(0) // offset
+				}
+				body.WriteByte(wasm.OpcodeEnd) // end if
+				body.WriteByte(wasm.OpcodeLocalGet)
+				body.Write(leb128.EncodeUint32(8))
+				body.WriteByte(wasm.OpcodeEnd) // end function
+
+				return body.Bytes()
+			}(),
+		}},
 	},
 }
 
