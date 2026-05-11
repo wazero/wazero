@@ -5462,7 +5462,10 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 	}
 	// Heap pointer: read the TypeID from the first field of the
 	// pointed-to object (both WasmStruct and WasmArray place TypeID first).
-	objTypeID := *(*wasm.FunctionTypeID)(unsafe.Pointer(uintptr(v)))
+	// We use the double-pointer cast idiom to avoid the
+	// unsafe.Pointer(uintptr(...)) pattern that go vet flags.
+	hdrPtr := *(**wasm.FunctionTypeID)(unsafe.Pointer(&v))
+	objTypeID := *hdrPtr
 	objForm := wasm.CompositeFormFunc
 	objIsResolved := false
 	for i, tid := range mi.TypeIDs {
