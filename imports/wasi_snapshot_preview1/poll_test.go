@@ -537,6 +537,60 @@ func Test_pollOneoff_Zero(t *testing.T) {
 	require.Equal(t, uint32(1), nevents)
 }
 
+// Test_pollOneoff_NonStdinPollable verifies that poll_oneoff correctly polls
+// non-stdin fds that implement Pollable (e.g. custom fs.FS mounts).
+func Test_pollOneoff_NonStdinPollable(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a file so we can open it and get an fd.
+	require.NoError(t, os.WriteFile(tmpDir+"/test.txt", []byte("data"), 0o600))
+
+	cfg := wazero.NewModuleConfig().WithFSConfig(
+		wazero.NewFSConfig().WithDirMount(tmpDir, "/"),
+	)
+	mod, r, log := requireProxyModule(t, cfg)
+	defer r.Close(testCtx)
+	defer log.Reset()
+
+	fsc := mod.(*wasm.ModuleInstance).Sys.FS()
+
+	// Open a file to get an fd, then replace it with our pollable.
+	preopen, ok := fsc.LookupFile(sys.FdPreopen)
+	require.True(t, ok)
+	fd, errno := fsc.OpenFile(preopen.FS, "test.txt", experimentalsys.O_RDONLY, 0)
+	require.EqualErrno(t, 0, errno)
+
+	entry, ok := fsc.LookupFile(fd)
+	require.True(t, ok)
+	entry.File = &pollStdinFile{StdinFile: sys.StdinFile{Reader: strings.NewReader("data")}, ready: true}
+
+	maskMemory(t, mod, 1024)
+
+	out := uint32(128)
+	resultNevents := uint32(512)
+
+	// Subscribe to fd read on our custom pollable fd.
+	mod.Memory().Write(0, fdReadSubFd(byte(fd)))
+
+	requireErrnoResult(t, wasip1.ErrnoSuccess, mod, wasip1.PollOneoffName,
+		uint64(0), uint64(out), uint64(1), uint64(resultNevents))
+
+	require.Equal(t, `
+==> wasi_snapshot_preview1.poll_oneoff(in=0,out=128,nsubscriptions=1)
+<== (nevents=1,errno=ESUCCESS)
+`, "\n"+log.String())
+
+	// Verify the event was written with success.
+	outMem, ok := mod.Memory().Read(out, 32)
+	require.True(t, ok)
+	require.Equal(t, byte(wasip1.ErrnoSuccess), outMem[8])
+	require.Equal(t, byte(wasip1.EventTypeFdRead), outMem[10])
+
+	nevents, ok := mod.Memory().ReadUint32Le(resultNevents)
+	require.True(t, ok)
+	require.Equal(t, uint32(1), nevents)
+}
+
 func concat(bytes ...[]byte) []byte {
 	var res []byte
 	for i := range bytes {
