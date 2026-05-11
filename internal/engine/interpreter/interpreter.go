@@ -4841,6 +4841,25 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			ce.pushValue(uint64(a.Len()))
 			frame.pc++
 
+		case operationKindRefTest:
+			v := ce.popValue()
+			matches := refMatches(v, op.B1, op.B3, op.U2 != 0, uint32(op.U1), f.moduleInstance)
+			if matches {
+				ce.pushValue(1)
+			} else {
+				ce.pushValue(0)
+			}
+			frame.pc++
+
+		case operationKindRefCast:
+			v := ce.popValue()
+			matches := refMatches(v, op.B1, op.B3, op.U2 != 0, uint32(op.U1), f.moduleInstance)
+			if !matches {
+				panic(wasmruntime.ErrRuntimeInvalidConversionToInteger)
+			}
+			ce.pushValue(v)
+			frame.pc++
+
 		case operationKindArrayNewFixed:
 			typeIdx := uint32(op.U1)
 			count := int(op.U2)
@@ -5289,4 +5308,69 @@ func decodeFieldValueRead(f wasm.FieldType, stored any, readKind operationKind) 
 		return math.Float64bits(stored.(float64))
 	}
 	panic(fmt.Sprintf("unsupported struct/array field type %#x", f.ValueType))
+}
+
+// refMatches reports whether the operand-stack uint64 ref value matches
+// the target heap type identified by (kindByte, nullable, isConcrete,
+// typeIdx). Used by ref.test / ref.cast / br_on_cast(_fail).
+//
+// Discrimination strategy without a parallel ref stack:
+//   1. v == 0           -> null reference; matches iff target is nullable.
+//   2. v & 0b11 == 0b01 -> tagged i31; matches i31/eq/any.
+//   3. otherwise        -> heap pointer. Read TypeID from the first
+//                          field of the pointed-to object. Look up the
+//                          form via the module's TypeSection.
+//
+// For concrete targets, this minimal implementation accepts only exact
+// TypeID equality; a strict subtype check via Cohen display can come
+// later.
+func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint32, mi *wasm.ModuleInstance) bool {
+	if v == 0 {
+		return nullable
+	}
+	if wasm.IsTaggedI31(uintptr(v)) {
+		if isConcrete {
+			return false
+		}
+		switch kindByte {
+		case wasm.ValueTypeI31ref.Kind(),
+			wasm.ValueTypeEqref.Kind(),
+			wasm.ValueTypeAnyref.Kind():
+			return true
+		}
+		return false
+	}
+	// Heap pointer: read the TypeID from the first field of the
+	// pointed-to object (both WasmStruct and WasmArray place TypeID first).
+	objTypeID := *(*wasm.FunctionTypeID)(unsafe.Pointer(uintptr(v)))
+	objForm := wasm.CompositeFormFunc
+	objIsResolved := false
+	for i, tid := range mi.TypeIDs {
+		if tid == objTypeID {
+			objForm = mi.Source.TypeSection[i].Form
+			objIsResolved = true
+			break
+		}
+	}
+	if isConcrete {
+		if int(typeIdx) >= len(mi.TypeIDs) {
+			return false
+		}
+		return objTypeID == mi.TypeIDs[typeIdx]
+	}
+	if !objIsResolved {
+		// Unknown TypeID; conservatively reject for abstract dispatch.
+		return false
+	}
+	switch kindByte {
+	case wasm.ValueTypeAnyref.Kind(), wasm.ValueTypeEqref.Kind():
+		return objForm == wasm.CompositeFormStruct || objForm == wasm.CompositeFormArray
+	case wasm.ValueTypeStructref.Kind():
+		return objForm == wasm.CompositeFormStruct
+	case wasm.ValueTypeArrayref.Kind():
+		return objForm == wasm.CompositeFormArray
+	case wasm.ValueTypeFuncref.Kind():
+		return objForm == wasm.CompositeFormFunc
+	}
+	return false
 }

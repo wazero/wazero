@@ -507,6 +507,10 @@ func (o operationKind) String() (ret string) {
 		ret = "operationKindArrayFill"
 	case operationKindArrayCopy:
 		ret = "operationKindArrayCopy"
+	case operationKindRefTest:
+		ret = "operationKindRefTest"
+	case operationKindRefCast:
+		ret = "operationKindRefCast"
 	default:
 		panic(fmt.Errorf("unknown operation %d", o))
 	}
@@ -908,6 +912,17 @@ const (
 	// index, U2 = src type index.
 	operationKindArrayCopy
 
+	// operationKindRefTest is the Kind for ref.test / ref.test null.
+	//   B1 = target heap-type kind byte (e.g. 0x70 funcref, 0x6C i31ref)
+	//   B3 = nullable target (true if `null` variant)
+	//   U1 = target concrete type index (only meaningful when B1 is
+	//        ValueTypeFuncref byte and the target is a concrete type)
+	//   U2 = 1 if target is concrete, 0 otherwise
+	operationKindRefTest
+	// operationKindRefCast is the Kind for ref.cast / ref.cast null. Same
+	// immediates as RefTest.
+	operationKindRefCast
+
 	// operationKindEnd is always placed at the bottom of this iota definition to be used in the test.
 	operationKindEnd
 )
@@ -1273,6 +1288,8 @@ func (o unionOperation) String() string {
 		return fmt.Sprintf("%s typeIdx=%d", o.Kind, o.U1)
 	case operationKindArrayCopy:
 		return fmt.Sprintf("%s dstTypeIdx=%d srcTypeIdx=%d", o.Kind, o.U1, o.U2)
+	case operationKindRefTest, operationKindRefCast:
+		return fmt.Sprintf("%s heapKind=%#x nullable=%v concrete=%v typeIdx=%d", o.Kind, o.B1, o.B3, o.U2 != 0, o.U1)
 
 	default:
 		panic(fmt.Sprintf("TODO: %v", o.Kind))
@@ -3182,4 +3199,24 @@ func newOperationCallRef(typeIdx uint32) unionOperation {
 
 func newOperationReturnCallRef(typeIdx uint32) unionOperation {
 	return unionOperation{Kind: operationKindReturnCallRef, U1: uint64(typeIdx)}
+}
+
+// newOperationRefTest constructs the operation for ref.test / ref.test null.
+// heapKind is the spec shorthand byte (e.g. 0x6C i31ref). isConcrete=true
+// indicates U1 holds a module-local type index.
+func newOperationRefTest(heapKind byte, nullable, isConcrete bool, typeIdx uint32) unionOperation {
+	op := unionOperation{Kind: operationKindRefTest, B1: heapKind, B3: nullable, U1: uint64(typeIdx)}
+	if isConcrete {
+		op.U2 = 1
+	}
+	return op
+}
+
+// newOperationRefCast constructs the operation for ref.cast / ref.cast null.
+func newOperationRefCast(heapKind byte, nullable, isConcrete bool, typeIdx uint32) unionOperation {
+	op := unionOperation{Kind: operationKindRefCast, B1: heapKind, B3: nullable, U1: uint64(typeIdx)}
+	if isConcrete {
+		op.U2 = 1
+	}
+	return op
 }

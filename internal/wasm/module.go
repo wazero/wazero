@@ -1529,6 +1529,47 @@ func IsAbstractByteSubtypeOf(actual, expected byte) bool {
 	return false
 }
 
+// HeapTypeKindFromBinary maps a signed s33 LEB heap-type encoding (as
+// produced by the binary decoder after a 0x63/0x64 ref prefix byte) to
+// (kindByte, typeIdx, isConcrete, ok). Non-negative encodings denote a
+// concrete type index; negative encodings denote an abstract heap type.
+//
+// kindByte uses the spec shorthand bytes (0x70 func, 0x6F extern, etc.).
+// For concrete refs, kindByte is set to ValueTypeFuncref as a
+// placeholder; the concrete typeIdx is the meaningful payload.
+func HeapTypeKindFromBinary(ht int64) (kindByte byte, typeIdx uint32, isConcrete bool, ok bool) {
+	if ht >= 0 {
+		return byte(ValueTypeFuncref), uint32(ht), true, true
+	}
+	switch ht {
+	case -13:
+		return byte(ValueTypeNoFuncref), 0, false, true
+	case -12:
+		return byte(ValueTypeNoExnref), 0, false, true
+	case -14:
+		return byte(ValueTypeNoExternref), 0, false, true
+	case -15:
+		return byte(ValueTypeNullref), 0, false, true
+	case -16:
+		return byte(ValueTypeFuncref), 0, false, true
+	case -17:
+		return byte(ValueTypeExternref), 0, false, true
+	case -18:
+		return byte(ValueTypeAnyref), 0, false, true
+	case -19:
+		return byte(ValueTypeEqref), 0, false, true
+	case -20:
+		return byte(ValueTypeI31ref), 0, false, true
+	case -21:
+		return byte(ValueTypeStructref), 0, false, true
+	case -22:
+		return byte(ValueTypeArrayref), 0, false, true
+	case -23:
+		return byte(ValueTypeExnref), 0, false, true
+	}
+	return 0, 0, false, false
+}
+
 func isReferenceValueType(vt ValueType) bool {
 	return vt.IsRef()
 }

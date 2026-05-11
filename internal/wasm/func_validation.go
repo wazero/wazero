@@ -2461,6 +2461,28 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popReferenceType(); err != nil {
 					return fmt.Errorf("array.copy: cannot pop dst ref: %v", err)
 				}
+			case OpcodeGCRefTest, OpcodeGCRefTestNull, OpcodeGCRefCast, OpcodeGCRefCastNull:
+				ht, n, err := leb128.LoadInt64(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read ref.test heap type: %v", err)
+				}
+				pc += n
+				_, typeIdx, isConcrete, ok := HeapTypeKindFromBinary(ht)
+				if !ok {
+					return fmt.Errorf("invalid heap type for %s: %d", GCInstructionName(sub), ht)
+				}
+				if isConcrete && typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("ref.test concrete type index %d out of range", typeIdx)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("%s: cannot pop ref: %v", GCInstructionName(sub), err)
+				}
+				if sub == OpcodeGCRefTest || sub == OpcodeGCRefTestNull {
+					valueTypeStack.push(ValueTypeI32)
+				} else {
+					// ref.cast pushes a ref back; loose tracking with anyref.
+					valueTypeStack.push(ValueTypeAnyref)
+				}
 			default:
 				if name := GCInstructionName(sub); name != "" {
 					return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter", name, sub)

@@ -1906,6 +1906,33 @@ operatorSwitch:
 			}
 		case wasm.OpcodeGCArrayLen:
 			c.emit(newOperationArrayLen())
+		case wasm.OpcodeGCRefTest, wasm.OpcodeGCRefTestNull,
+			wasm.OpcodeGCRefCast, wasm.OpcodeGCRefCastNull:
+			c.pc++
+			ht, n, err := leb128.LoadInt64(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read ref.test heap type: %v", err)
+			}
+			c.pc += n - 1
+			kindByte, typeIdx, isConcrete, ok := wasm.HeapTypeKindFromBinary(ht)
+			if !ok {
+				return fmt.Errorf("invalid heap type for ref.test/cast: %d", ht)
+			}
+			nullable := index == wasm.OpcodeGCRefTestNull || index == wasm.OpcodeGCRefCastNull
+			if !c.unreachableState.on {
+				c.stackPop()
+				switch index {
+				case wasm.OpcodeGCRefTest, wasm.OpcodeGCRefTestNull:
+					c.stackPush(unsignedTypeI32)
+				case wasm.OpcodeGCRefCast, wasm.OpcodeGCRefCastNull:
+					c.stackPush(unsignedTypeI64)
+				}
+			}
+			if index == wasm.OpcodeGCRefTest || index == wasm.OpcodeGCRefTestNull {
+				c.emit(newOperationRefTest(kindByte, nullable, isConcrete, typeIdx))
+			} else {
+				c.emit(newOperationRefCast(kindByte, nullable, isConcrete, typeIdx))
+			}
 		case wasm.OpcodeGCArrayNewFixed:
 			c.pc++
 			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])

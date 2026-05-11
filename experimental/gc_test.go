@@ -628,3 +628,151 @@ func TestGC_CallRef(t *testing.T) {
 		require.Equal(t, int32(42), api.DecodeI32(res[0]))
 	})
 }
+func TestGC_RefTestAndCast(t *testing.T) {
+	ctx := context.Background()
+
+	// Test plan:
+	//   testI31OnI31(i32) -> i32:
+	//     ref.i31(x) ; ref.test (ref i31)         ->  1
+	//   testStructOnI31(i32) -> i32:
+	//     ref.i31(x) ; ref.test (ref struct)      ->  0
+	//   testStructOnStruct(i32) -> i32:
+	//     struct.new $T (i32_arg) ; ref.test (ref struct)  ->  1
+	//   testConcreteOnStruct(i32) -> i32:
+	//     struct.new $T (i32_arg) ; ref.test (ref $T)      ->  1
+	//   testNullOnStructNullable() -> i32:
+	//     ref.null struct ; ref.test (ref null struct)     ->  1
+	//   testNullOnStruct() -> i32:
+	//     ref.null struct ; ref.test (ref struct)          ->  0
+
+	// Heap-type bytes for the ref.test immediates:
+	//   struct = 0x6B in nullable shorthand. As a signed s33 it's -21 = LEB encoding 0x6B.
+	//   i31    = 0x6C = -20.
+	//   array  = 0x6A = -22.
+	// Concrete type index N encodes as a non-negative LEB.
+
+	// Helper builds: each test function body.
+
+	testI31OnI31 := []byte{
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefI31),
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefTest), 0x6C, // (ref i31)
+		wasm.OpcodeEnd,
+	}
+	testStructOnI31 := []byte{
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefI31),
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefTest), 0x6B, // (ref struct)
+		wasm.OpcodeEnd,
+	}
+	testStructOnStruct := []byte{
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCStructNew), 0x00, // type 0
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefTest), 0x6B, // (ref struct)
+		wasm.OpcodeEnd,
+	}
+	testConcreteOnStruct := []byte{
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCStructNew), 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefTest), 0x00, // (ref 0) — concrete struct type 0
+		wasm.OpcodeEnd,
+	}
+	testNullOnStructNullable := []byte{
+		wasm.OpcodeRefNull, 0x6B, // ref.null struct
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefTestNull), 0x6B, // (ref null struct)
+		wasm.OpcodeEnd,
+	}
+	testNullOnStruct := []byte{
+		wasm.OpcodeRefNull, 0x6B,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefTest), 0x6B, // non-nullable
+		wasm.OpcodeEnd,
+	}
+	// Cast variant: testCastSucceeds(i32) -> i32:
+	//   struct.new $T (x); ref.cast (ref struct); struct.get $T 0
+	testCastSucceeds := []byte{
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCStructNew), 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefCast), 0x6B, // (ref struct)
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCStructGet), 0x00, 0x00,
+		wasm.OpcodeEnd,
+	}
+	// testCastFails(i32) -> i32: ref.i31(x); ref.cast (ref struct); ... traps before reading
+	testCastFails := []byte{
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefI31),
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefCast), 0x6B,
+		// Unreachable after the trap, but the validator needs an i32 on stack.
+		wasm.OpcodeDrop,
+		wasm.OpcodeI32Const, 0x00,
+		wasm.OpcodeEnd,
+	}
+
+	mod := &wasm.Module{
+		TypeSection: []wasm.FunctionType{
+			// 0: struct{i32}
+			{Form: wasm.CompositeFormStruct, Fields: []wasm.FieldType{{ValueType: wasm.ValueTypeI32}}},
+			// 1: func (i32) -> i32
+			{Form: wasm.CompositeFormFunc, Params: []wasm.ValueType{wasm.ValueTypeI32}, Results: []wasm.ValueType{wasm.ValueTypeI32}},
+			// 2: func () -> i32
+			{Form: wasm.CompositeFormFunc, Results: []wasm.ValueType{wasm.ValueTypeI32}},
+		},
+		FunctionSection: []wasm.Index{1, 1, 1, 1, 2, 2, 1, 1},
+		CodeSection: []wasm.Code{
+			{Body: testI31OnI31},
+			{Body: testStructOnI31},
+			{Body: testStructOnStruct},
+			{Body: testConcreteOnStruct},
+			{Body: testNullOnStructNullable},
+			{Body: testNullOnStruct},
+			{Body: testCastSucceeds},
+			{Body: testCastFails},
+		},
+		ExportSection: []wasm.Export{
+			{Name: "testI31OnI31", Type: wasm.ExternTypeFunc, Index: 0},
+			{Name: "testStructOnI31", Type: wasm.ExternTypeFunc, Index: 1},
+			{Name: "testStructOnStruct", Type: wasm.ExternTypeFunc, Index: 2},
+			{Name: "testConcreteOnStruct", Type: wasm.ExternTypeFunc, Index: 3},
+			{Name: "testNullOnStructNullable", Type: wasm.ExternTypeFunc, Index: 4},
+			{Name: "testNullOnStruct", Type: wasm.ExternTypeFunc, Index: 5},
+			{Name: "testCastSucceeds", Type: wasm.ExternTypeFunc, Index: 6},
+			{Name: "testCastFails", Type: wasm.ExternTypeFunc, Index: 7},
+		},
+	}
+	bin := binaryencoding.EncodeModule(mod)
+
+	cfg := wazero.NewRuntimeConfigInterpreter().
+		WithCoreFeatures(api.CoreFeaturesV2 | experimental.CoreFeaturesGC)
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	instance, err := r.Instantiate(ctx, bin)
+	require.NoError(t, err)
+
+	cases := []struct {
+		name   string
+		fn     string
+		in     []uint64
+		expect int32
+		trap   bool
+	}{
+		{"i31 is i31", "testI31OnI31", []uint64{42}, 1, false},
+		{"i31 is not struct", "testStructOnI31", []uint64{42}, 0, false},
+		{"struct is struct (abstract)", "testStructOnStruct", []uint64{42}, 1, false},
+		{"struct is concrete $0", "testConcreteOnStruct", []uint64{42}, 1, false},
+		{"null matches (ref null struct)", "testNullOnStructNullable", nil, 1, false},
+		{"null does NOT match (ref struct)", "testNullOnStruct", nil, 0, false},
+		{"ref.cast on struct passes through", "testCastSucceeds", []uint64{99}, 99, false},
+		{"ref.cast on i31 to struct traps", "testCastFails", []uint64{7}, 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := instance.ExportedFunction(tc.fn).Call(ctx, tc.in...)
+			if tc.trap {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, api.DecodeI32(res[0]))
+		})
+	}
+}

@@ -305,6 +305,10 @@ func (c *compiler) wasmOpcodeSignature(op wasm.Opcode, index uint32) (*signature
 		case wasm.OpcodeGCArrayLen:
 			// pop array ref (uint64), push i32 length.
 			return signature_I64_I32, nil
+		case wasm.OpcodeGCRefTest, wasm.OpcodeGCRefTestNull:
+			return signature_I64_I32, nil
+		case wasm.OpcodeGCRefCast, wasm.OpcodeGCRefCastNull:
+			return signature_I64_I64, nil
 		default:
 			return nil, fmt.Errorf("unsupported GC sub-opcode in interpreterir: 0x%x", index)
 		}
