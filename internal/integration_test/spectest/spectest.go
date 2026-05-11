@@ -447,7 +447,7 @@ func RunCase(t *testing.T, testDataFS embed.FS, f string, ctx context.Context, c
 								skipIndices[i] = true
 							}
 						}
-						matched, valuesMsg := valuesEq(results, exps, fn.Definition().ResultTypes(), laneTypes, skipIndices)
+						matched, valuesMsg := valuesEq(results, exps, wasm.FromApiValueType(fn.Definition().ResultTypes()), laneTypes, skipIndices)
 						require.True(t, matched, msg+"\n"+valuesMsg)
 					case "get":
 						_, exps := c.getAssertReturnArgsExps()

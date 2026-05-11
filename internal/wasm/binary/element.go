@@ -60,9 +60,10 @@ func decodeElementConstExprVector(r *bytes.Reader, elemType wasm.RefType, enable
 }
 
 func decodeElementRefType(r *bytes.Reader) (ret wasm.RefType, err error) {
-	ret, err = r.ReadByte()
-	if err != nil {
-		err = fmt.Errorf("read element ref type: %w", err)
+	b, e := r.ReadByte()
+	ret = wasm.ValueType(b)
+	if e != nil {
+		err = fmt.Errorf("read element ref type: %w", e)
 		return
 	}
 	if ret != wasm.RefTypeFuncref && ret != wasm.RefTypeExternref {

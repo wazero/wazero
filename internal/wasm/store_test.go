@@ -602,11 +602,11 @@ func TestGlobalInstance_initialize(t *testing.T) {
 		}{
 			{
 				name: "ref.null (externref)",
-				expr: NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeExternref}),
+				expr: NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeExternref.Kind()}),
 			},
 			{
 				name: "ref.null (funcref)",
-				expr: NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeFuncref}),
+				expr: NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeFuncref.Kind()}),
 			},
 		}
 
@@ -614,7 +614,7 @@ func TestGlobalInstance_initialize(t *testing.T) {
 			tc := tt
 			t.Run(tc.name, func(t *testing.T) {
 				g := GlobalInstance{}
-				g.Type.ValType = tc.expr.Data[0]
+				g.Type.ValType = ValueType(tc.expr.Data[0])
 				g.initialize(nil, &tc.expr, nil)
 				require.Equal(t, uint64(0), g.Val)
 			})
@@ -713,7 +713,7 @@ func Test_resolveImports(t *testing.T) {
 				Source: &Module{
 					FunctionSection: []Index{0, 0, 1, 0, 0},
 					TypeSection: []FunctionType{
-						{Params: []ValueType{ExternTypeFunc}},
+						{Params: []ValueType{ValueType(ExternTypeFunc)}},
 						{Params: []ValueType{i32}, Results: []ValueType{ValueTypeV128}},
 					},
 				},
@@ -722,7 +722,7 @@ func Test_resolveImports(t *testing.T) {
 			module := &Module{
 				TypeSection: []FunctionType{
 					{Params: []ValueType{i32}, Results: []ValueType{ValueTypeV128}},
-					{Params: []ValueType{ExternTypeFunc}},
+					{Params: []ValueType{ValueType(ExternTypeFunc)}},
 				},
 				ImportFunctionCount: 2,
 				ImportPerModule: map[string][]*Import{
@@ -1020,7 +1020,7 @@ func TestModuleInstance_applyElements(t *testing.T) {
 		m.applyElements([]ElementSegment{
 			{Mode: ElementModeActive, OffsetExpr: NewConstantExpressionFromI32(5), Init: []ConstantExpression{
 				NewConstantExpressionFromOpcode(OpcodeRefFunc, leb128.EncodeInt32(0)),
-				NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeFuncref}),
+				NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeFuncref.Kind()}),
 				NewConstantExpressionFromOpcode(OpcodeRefFunc, leb128.EncodeInt32(2)),
 			}},
 		})

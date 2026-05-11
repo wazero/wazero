@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -776,7 +777,7 @@ func (f *FunctionType) CacheNumInUint64() {
 
 // EqualsSignature returns true if the function type has the same parameters and results.
 func (f *FunctionType) EqualsSignature(params []ValueType, results []ValueType) bool {
-	return bytes.Equal(f.Params, params) && bytes.Equal(f.Results, results)
+	return slices.Equal(f.Params, params) && slices.Equal(f.Results, results)
 }
 
 // EqualsType returns true if the function types are structurally equal AND
@@ -1125,21 +1126,24 @@ func SectionIDName(sectionID SectionID) string {
 	return "unknown"
 }
 
-// ValueType is an alias of api.ValueType defined to simplify imports.
-type ValueType = api.ValueType
+// ValueType represents a WebAssembly value type as a uint64.
+//
+// Layout:
+//
+//	bits  0-7:  kind byte (backward-compatible with api.ValueType)
+//	bits  8-15: flags (nullability, concrete ref)
+//	bits 32-63: type index (for concrete refs like (ref $3))
+type ValueType uint64
 
 const (
-	ValueTypeI32 = api.ValueTypeI32
-	ValueTypeI64 = api.ValueTypeI64
-	ValueTypeF32 = api.ValueTypeF32
-	ValueTypeF64 = api.ValueTypeF64
-	// TODO: ValueTypeV128 is not exposed in the api pkg yet.
-	ValueTypeV128 ValueType = 0x7b
-	// TODO: ValueTypeFuncref is not exposed in the api pkg yet.
+	ValueTypeI32       ValueType = 0x7f
+	ValueTypeI64       ValueType = 0x7e
+	ValueTypeF32       ValueType = 0x7d
+	ValueTypeF64       ValueType = 0x7c
+	ValueTypeV128      ValueType = 0x7b
 	ValueTypeFuncref   ValueType = 0x70
-	ValueTypeExternref           = api.ValueTypeExternref
-	// ValueTypeExnref is the exception reference type used in exception handling.
-	ValueTypeExnref ValueType = 0x69
+	ValueTypeExternref ValueType = 0x6f
+	ValueTypeExnref    ValueType = 0x69
 )
 
 const (
@@ -1167,7 +1171,11 @@ func ValueTypeName(t ValueType) string {
 	} else if t == ValueTypeExnref {
 		return "exnref"
 	}
-	return api.ValueTypeName(t)
+	return api.ValueTypeName(api.ValueType(t))
+}
+
+func (v ValueType) Kind() byte {
+	return byte(v)
 }
 
 func isReferenceValueType(vt ValueType) bool {
@@ -1207,7 +1215,7 @@ const (
 )
 
 // ExternTypeName is an alias of api.ExternTypeName defined to simplify imports.
-func ExternTypeName(t ValueType) string {
+func ExternTypeName(t ExternType) string {
 	if t == ExternTypeTag {
 		return ExternTypeTagName
 	}

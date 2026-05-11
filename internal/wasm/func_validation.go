@@ -99,7 +99,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			} else {
 				instName = InstructionName(op)
 			}
-			fmt.Printf("handling %s, stack=%s, blocks: %v\n", instName, valueTypeStack.stack, controlBlockStack)
+			fmt.Printf("handling %s, stack=%v, blocks: %v\n", instName, valueTypeStack.stack, controlBlockStack)
 		}
 
 		if len(controlBlockStack.stack) == 0 {
@@ -997,7 +997,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			switch op {
 			case OpcodeRefNull:
 				pc++
-				switch reftype := body[pc]; reftype {
+				switch reftype := body[pc]; ValueType(reftype) {
 				case ValueTypeExternref:
 					valueTypeStack.push(ValueTypeExternref)
 				case ValueTypeFuncref:
@@ -1041,7 +1041,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 
 			refType := tables[tableIndex].Type
 			if op == OpcodeTableGet {
-				if err := valueTypeStack.popAndVerifyType(api.ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return fmt.Errorf("cannot pop the operand for table.get: %v", err)
 				}
 				valueTypeStack.push(refType)
@@ -1049,7 +1049,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(refType); err != nil {
 					return fmt.Errorf("cannot pop the operand for table.set: %v", err)
 				}
-				if err := valueTypeStack.popAndVerifyType(api.ValueTypeI32); err != nil {
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return fmt.Errorf("cannot pop the operand for table.set: %v", err)
 				}
 			}
@@ -2028,7 +2028,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			if ifMissingElse {
 				// If this is the end of block without else, the number of block's results and params must be same.
 				// Otherwise, the value stack would result in the inconsistent state at runtime.
-				if !bytes.Equal(bl.blockType.Results, bl.blockType.Params) {
+				if !slices.Equal(bl.blockType.Results, bl.blockType.Params) {
 					return typeCountError(false, OpcodeElseName, bl.blockType.Params, bl.blockType.Results)
 				}
 				// -1 skips else, to handle if block without else properly.
@@ -2091,9 +2091,9 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					return fmt.Errorf("too many type immediates for %s", InstructionName(op))
 				}
 				pc++
-				tp := body[pc]
+				tp := ValueType(body[pc])
 				if tp != ValueTypeI32 && tp != ValueTypeI64 && tp != ValueTypeF32 && tp != ValueTypeF64 &&
-					tp != api.ValueTypeExternref && tp != ValueTypeFuncref && tp != ValueTypeV128 {
+					tp != ValueTypeExternref && tp != ValueTypeFuncref && tp != ValueTypeV128 {
 					return fmt.Errorf("invalid type %s for %s", ValueTypeName(tp), OpcodeTypedSelectName)
 				}
 			} else if isReferenceValueType(v1) || isReferenceValueType(v2) {

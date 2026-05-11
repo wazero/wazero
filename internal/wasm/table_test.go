@@ -743,9 +743,9 @@ func TestModule_buildTables(t *testing.T) {
 				TableSection: []Table{{Min: 10, Type: RefTypeExternref}},
 				ElementSection: []ElementSegment{
 					{OffsetExpr: NewConstantExpressionFromI32(5), Init: []ConstantExpression{
-						NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{byte(RefTypeExternref)}),
-						NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{byte(RefTypeExternref)}),
-						NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{byte(RefTypeExternref)}),
+						NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeExternref.Kind()}),
+						NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeExternref.Kind()}),
+						NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeExternref.Kind()}),
 					}}, // three null refs.
 				},
 			},
@@ -886,7 +886,7 @@ func TestModule_buildTables(t *testing.T) {
 				ElementSection: []ElementSegment{
 					{
 						OffsetExpr: NewConstantExpressionFromOpcode(OpcodeGlobalGet, []byte{0x0}),
-						Init:       []ConstantExpression{NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{byte(RefTypeExternref)}), NewConstantExpressionFromOpcode(OpcodeRefFunc, leb128.EncodeInt32(2))},
+						Init:       []ConstantExpression{NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{RefTypeExternref.Kind()}), NewConstantExpressionFromOpcode(OpcodeRefFunc, leb128.EncodeInt32(2))},
 						TableIndex: 1,
 					},
 					{

@@ -55,7 +55,8 @@ func decodeConstantExpression(r *bytes.Reader, enabledFeatures api.CoreFeatures,
 			if err := enabledFeatures.RequireEnabled(api.CoreFeatureBulkMemoryOperations); err != nil {
 				return fmt.Errorf("ref.null is not supported as %w", err)
 			}
-			reftype, err := r.ReadByte()
+			b, err := r.ReadByte()
+			reftype := wasm.ValueType(b)
 			if err != nil {
 				return fmt.Errorf("read reference type for ref.null: %w", err)
 			} else if reftype != wasm.RefTypeFuncref && reftype != wasm.RefTypeExternref {

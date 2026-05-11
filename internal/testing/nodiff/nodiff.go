@@ -214,9 +214,9 @@ func ensureDummyImports(r wazero.Runtime, origin *wasm.Module, requireNoError fu
 							0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 						})
 					case wasm.ValueTypeExternref:
-						body.Write([]byte{wasm.OpcodeRefNull, wasm.RefTypeExternref})
+						body.Write([]byte{wasm.OpcodeRefNull, wasm.RefTypeExternref.Kind()})
 					case wasm.ValueTypeFuncref:
-						body.Write([]byte{wasm.OpcodeRefNull, wasm.RefTypeFuncref})
+						body.Write([]byte{wasm.OpcodeRefNull, wasm.RefTypeFuncref.Kind()})
 					}
 				}
 				body.WriteByte(wasm.OpcodeEnd)
@@ -243,10 +243,10 @@ func ensureDummyImports(r wazero.Runtime, origin *wasm.Module, requireNoError fu
 					data = []byte{wasm.OpcodeVecV128Const, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 				case wasm.ValueTypeExternref:
 					opcode = wasm.OpcodeRefNull
-					data = []byte{wasm.RefTypeExternref}
+					data = []byte{wasm.RefTypeExternref.Kind()}
 				case wasm.ValueTypeFuncref:
 					opcode = wasm.OpcodeRefNull
-					data = []byte{wasm.RefTypeFuncref}
+					data = []byte{wasm.RefTypeFuncref.Kind()}
 				}
 				m.GlobalSection = append(m.GlobalSection, wasm.Global{
 					Type: imp.DescGlobal, Init: wasm.NewConstantExpressionFromOpcode(opcode, data),

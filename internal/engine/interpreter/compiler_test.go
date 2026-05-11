@@ -740,7 +740,7 @@ func TestCompile_Refs(t *testing.T) {
 		{
 			name: "ref.null (externref)",
 			body: []byte{
-				wasm.OpcodeRefNull, wasm.ValueTypeExternref,
+				wasm.OpcodeRefNull, wasm.ValueTypeExternref.Kind(),
 				wasm.OpcodeDrop,
 				wasm.OpcodeEnd,
 			},
@@ -753,7 +753,7 @@ func TestCompile_Refs(t *testing.T) {
 		{
 			name: "ref.null (funcref)",
 			body: []byte{
-				wasm.OpcodeRefNull, wasm.ValueTypeFuncref,
+				wasm.OpcodeRefNull, wasm.ValueTypeFuncref.Kind(),
 				wasm.OpcodeDrop,
 				wasm.OpcodeEnd,
 			},
@@ -781,7 +781,7 @@ func TestCompile_Refs(t *testing.T) {
 		{
 			name: "ref.is_null (externref)",
 			body: []byte{
-				wasm.OpcodeRefNull, wasm.ValueTypeExternref,
+				wasm.OpcodeRefNull, wasm.ValueTypeExternref.Kind(),
 				wasm.OpcodeRefIsNull,
 				wasm.OpcodeDrop,
 				wasm.OpcodeEnd,
@@ -838,7 +838,7 @@ func TestCompile_TableGetOrSet(t *testing.T) {
 			name: "table.set (externref)",
 			body: []byte{
 				wasm.OpcodeI32Const, 10,
-				wasm.OpcodeRefNull, wasm.ValueTypeExternref,
+				wasm.OpcodeRefNull, wasm.ValueTypeExternref.Kind(),
 				wasm.OpcodeTableSet, 0,
 				wasm.OpcodeEnd,
 			},
@@ -894,7 +894,7 @@ func TestCompile_TableGrowFillSize(t *testing.T) {
 		{
 			name: "table.grow",
 			body: []byte{
-				wasm.OpcodeRefNull, wasm.RefTypeFuncref,
+				wasm.OpcodeRefNull, wasm.RefTypeFuncref.Kind(),
 				wasm.OpcodeI32Const, 1,
 				wasm.OpcodeMiscPrefix, wasm.OpcodeMiscTableGrow, 1,
 				wasm.OpcodeEnd,
@@ -911,7 +911,7 @@ func TestCompile_TableGrowFillSize(t *testing.T) {
 			name: "table.fill",
 			body: []byte{
 				wasm.OpcodeI32Const, 10,
-				wasm.OpcodeRefNull, wasm.RefTypeFuncref,
+				wasm.OpcodeRefNull, wasm.RefTypeFuncref.Kind(),
 				wasm.OpcodeI32Const, 1,
 				wasm.OpcodeMiscPrefix, wasm.OpcodeMiscTableFill, 1,
 				wasm.OpcodeEnd,
@@ -2817,7 +2817,7 @@ func TestCompile_select_vectors(t *testing.T) {
 					wasm.OpcodeVecPrefix,
 					wasm.OpcodeVecV128Const, 3, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0,
 					wasm.OpcodeI32Const, 0,
-					wasm.OpcodeTypedSelect, 0x1, wasm.ValueTypeV128,
+					wasm.OpcodeTypedSelect, 0x1, wasm.ValueTypeV128.Kind(),
 					wasm.OpcodeDrop,
 					wasm.OpcodeEnd,
 				}}},
