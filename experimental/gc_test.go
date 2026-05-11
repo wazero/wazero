@@ -491,3 +491,90 @@ func TestGC_Struct(t *testing.T) {
 		require.Equal(t, int32(0), api.DecodeI32(res[0]))
 	})
 }
+func TestGC_Array(t *testing.T) {
+	ctx := context.Background()
+
+	// makeAndLen(i32, i32) -> i32: array.new $T (elem, len); array.len
+	makeAndLen := []byte{
+		wasm.OpcodeLocalGet, 0x00, // element value
+		wasm.OpcodeLocalGet, 0x01, // length
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCArrayNew), 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCArrayLen),
+		wasm.OpcodeEnd,
+	}
+	// makeAndRead(i32, i32, i32) -> i32:
+	//   array.new $T (elem, len); array.get $T idx
+	makeAndRead := []byte{
+		wasm.OpcodeLocalGet, 0x00, // element value
+		wasm.OpcodeLocalGet, 0x01, // length
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCArrayNew), 0x00,
+		wasm.OpcodeLocalGet, 0x02, // index
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCArrayGet), 0x00,
+		wasm.OpcodeEnd,
+	}
+	// defaultLen(i32) -> i32: array.new_default $T (len); array.len
+	defaultLen := []byte{
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCArrayNewDefault), 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCArrayLen),
+		wasm.OpcodeEnd,
+	}
+
+	mod := &wasm.Module{
+		TypeSection: []wasm.FunctionType{
+			// Type 0: array (mut i32)
+			{Form: wasm.CompositeFormArray, ArrayField: wasm.FieldType{ValueType: wasm.ValueTypeI32, Mutable: true}},
+			// Type 1: func (i32, i32) -> i32
+			{Form: wasm.CompositeFormFunc, Params: []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32}, Results: []wasm.ValueType{wasm.ValueTypeI32}},
+			// Type 2: func (i32, i32, i32) -> i32
+			{Form: wasm.CompositeFormFunc, Params: []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32, wasm.ValueTypeI32}, Results: []wasm.ValueType{wasm.ValueTypeI32}},
+			// Type 3: func (i32) -> i32
+			{Form: wasm.CompositeFormFunc, Params: []wasm.ValueType{wasm.ValueTypeI32}, Results: []wasm.ValueType{wasm.ValueTypeI32}},
+		},
+		FunctionSection: []wasm.Index{1, 2, 3},
+		CodeSection: []wasm.Code{
+			{Body: makeAndLen},
+			{Body: makeAndRead},
+			{Body: defaultLen},
+		},
+		ExportSection: []wasm.Export{
+			{Name: "makeAndLen", Type: wasm.ExternTypeFunc, Index: 0},
+			{Name: "makeAndRead", Type: wasm.ExternTypeFunc, Index: 1},
+			{Name: "defaultLen", Type: wasm.ExternTypeFunc, Index: 2},
+		},
+	}
+	bin := binaryencoding.EncodeModule(mod)
+
+	cfg := wazero.NewRuntimeConfigInterpreter().
+		WithCoreFeatures(api.CoreFeaturesV2 | experimental.CoreFeaturesGC)
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	instance, err := r.Instantiate(ctx, bin)
+	require.NoError(t, err)
+
+	t.Run("makeAndLen(7, 5) returns 5", func(t *testing.T) {
+		res, err := instance.ExportedFunction("makeAndLen").Call(ctx, 7, 5)
+		require.NoError(t, err)
+		require.Equal(t, int32(5), api.DecodeI32(res[0]))
+	})
+
+	t.Run("makeAndRead(42, 10, 3) returns 42", func(t *testing.T) {
+		// Every element initialized to 42, so any index returns 42.
+		res, err := instance.ExportedFunction("makeAndRead").Call(ctx, 42, 10, 3)
+		require.NoError(t, err)
+		require.Equal(t, int32(42), api.DecodeI32(res[0]))
+	})
+
+	t.Run("makeAndRead out-of-bounds traps", func(t *testing.T) {
+		// length=2, asking for index 5 must trap.
+		_, err := instance.ExportedFunction("makeAndRead").Call(ctx, 1, 2, 5)
+		require.Error(t, err)
+	})
+
+	t.Run("defaultLen(100) returns 100", func(t *testing.T) {
+		res, err := instance.ExportedFunction("defaultLen").Call(ctx, 100)
+		require.NoError(t, err)
+		require.Equal(t, int32(100), api.DecodeI32(res[0]))
+	})
+}

@@ -2273,6 +2273,97 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popReferenceType(); err != nil {
 					return fmt.Errorf("struct.set: cannot pop struct ref: %v", err)
 				}
+			case OpcodeGCArrayNew, OpcodeGCArrayNewDefault:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.new type index: %v", err)
+				}
+				pc += n
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.new type index %d out of range", typeIdx)
+				}
+				at := &m.TypeSection[typeIdx]
+				if at.Form != CompositeFormArray {
+					return fmt.Errorf("array.new type %d is not an array", typeIdx)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.new: cannot pop length: %v", err)
+				}
+				if sub == OpcodeGCArrayNew {
+					vt, err := fieldOperandType(at.ArrayField)
+					if err != nil {
+						return fmt.Errorf("array.new element: %v", err)
+					}
+					if err := valueTypeStack.popAndVerifyType(vt); err != nil {
+						return fmt.Errorf("array.new: cannot pop element: %v", err)
+					}
+				}
+				valueTypeStack.push(ValueTypeArrayref)
+			case OpcodeGCArrayGet, OpcodeGCArrayGetS, OpcodeGCArrayGetU:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.get type index: %v", err)
+				}
+				pc += n
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.get type index %d out of range", typeIdx)
+				}
+				at := &m.TypeSection[typeIdx]
+				if at.Form != CompositeFormArray {
+					return fmt.Errorf("array.get type %d is not an array", typeIdx)
+				}
+				packed := at.ArrayField.Packed != PackedTypeNone
+				if sub == OpcodeGCArrayGet && packed {
+					return fmt.Errorf("array.get on packed array requires _s or _u")
+				}
+				if (sub == OpcodeGCArrayGetS || sub == OpcodeGCArrayGetU) && !packed {
+					return fmt.Errorf("array.get_s/u on non-packed array")
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.get: cannot pop index: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.get: cannot pop array ref: %v", err)
+				}
+				if packed {
+					valueTypeStack.push(ValueTypeI32)
+				} else {
+					valueTypeStack.push(at.ArrayField.ValueType)
+				}
+			case OpcodeGCArraySet:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.set type index: %v", err)
+				}
+				pc += n
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.set type index %d out of range", typeIdx)
+				}
+				at := &m.TypeSection[typeIdx]
+				if at.Form != CompositeFormArray {
+					return fmt.Errorf("array.set type %d is not an array", typeIdx)
+				}
+				if !at.ArrayField.Mutable {
+					return fmt.Errorf("array.set on immutable array %d", typeIdx)
+				}
+				vt, err := fieldOperandType(at.ArrayField)
+				if err != nil {
+					return fmt.Errorf("array.set element: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(vt); err != nil {
+					return fmt.Errorf("array.set: cannot pop value: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.set: cannot pop index: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.set: cannot pop array ref: %v", err)
+				}
+			case OpcodeGCArrayLen:
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.len: cannot pop array ref: %v", err)
+				}
+				valueTypeStack.push(ValueTypeI32)
 			default:
 				if name := GCInstructionName(sub); name != "" {
 					return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter", name, sub)

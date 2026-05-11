@@ -4717,6 +4717,86 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			}
 			frame.pc++
 
+		case operationKindArrayNew:
+			typeIdx := uint32(op.U1)
+			schema := &f.moduleInstance.Source.TypeSection[typeIdx]
+			length := uint32(ce.popValue())
+			rawElem := ce.popValue()
+			stored := encodeFieldValue(schema.ArrayField, rawElem)
+			elems := make([]any, length)
+			for i := range elems {
+				elems[i] = stored
+			}
+			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
+			ce.keepAlive(a)
+			ce.pushValue(uint64(uintptr(unsafe.Pointer(a))))
+			frame.pc++
+
+		case operationKindArrayNewDefault:
+			typeIdx := uint32(op.U1)
+			schema := &f.moduleInstance.Source.TypeSection[typeIdx]
+			length := uint32(ce.popValue())
+			def := wasm.DefaultFieldValue(schema.ArrayField)
+			elems := make([]any, length)
+			for i := range elems {
+				elems[i] = def
+			}
+			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
+			ce.keepAlive(a)
+			ce.pushValue(uint64(uintptr(unsafe.Pointer(a))))
+			frame.pc++
+
+		case operationKindArrayGet, operationKindArrayGetS, operationKindArrayGetU:
+			typeIdx := uint32(op.U1)
+			idx := uint32(ce.popValue())
+			v := ce.popValue()
+			if v == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			a := *(**wasm.WasmArray)(unsafe.Pointer(&v))
+			if idx >= a.Len() {
+				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
+			}
+			schema := f.moduleInstance.Source.TypeSection[typeIdx].ArrayField
+			var readKind operationKind
+			switch op.Kind {
+			case operationKindArrayGet:
+				readKind = operationKindStructGet
+			case operationKindArrayGetS:
+				readKind = operationKindStructGetS
+			case operationKindArrayGetU:
+				readKind = operationKindStructGetU
+			}
+			ce.pushValue(decodeFieldValueRead(schema, a.Get(idx), readKind))
+			frame.pc++
+
+		case operationKindArraySet:
+			typeIdx := uint32(op.U1)
+			raw := ce.popValue()
+			idx := uint32(ce.popValue())
+			v := ce.popValue()
+			if v == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			a := *(**wasm.WasmArray)(unsafe.Pointer(&v))
+			if idx >= a.Len() {
+				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
+			}
+			schema := f.moduleInstance.Source.TypeSection[typeIdx].ArrayField
+			if err := a.Set(idx, encodeFieldValue(schema, raw)); err != nil {
+				panic(err)
+			}
+			frame.pc++
+
+		case operationKindArrayLen:
+			v := ce.popValue()
+			if v == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			a := *(**wasm.WasmArray)(unsafe.Pointer(&v))
+			ce.pushValue(uint64(a.Len()))
+			frame.pc++
+
 		case operationKindTailCallReturnCall:
 			f := &functions[op.U1]
 			ce.dropForTailCall(frame, f)

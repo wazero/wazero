@@ -1831,6 +1831,58 @@ operatorSwitch:
 				}
 				c.emit(newOperationStructSet(typeIdx, fieldIdx))
 			}
+		case wasm.OpcodeGCArrayNew, wasm.OpcodeGCArrayNewDefault,
+			wasm.OpcodeGCArrayGet, wasm.OpcodeGCArrayGetS, wasm.OpcodeGCArrayGetU,
+			wasm.OpcodeGCArraySet:
+			c.pc++
+			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read GC array type index: %v", err)
+			}
+			c.pc += n - 1
+			at := &c.types[typeIdx]
+			switch index {
+			case wasm.OpcodeGCArrayNew:
+				if !c.unreachableState.on {
+					c.stackPop() // length
+					c.stackPop() // element value
+					c.stackPush(unsignedTypeI64)
+				}
+				c.emit(newOperationArrayNew(typeIdx))
+			case wasm.OpcodeGCArrayNewDefault:
+				if !c.unreachableState.on {
+					c.stackPop() // length
+					c.stackPush(unsignedTypeI64)
+				}
+				c.emit(newOperationArrayNewDefault(typeIdx))
+			case wasm.OpcodeGCArrayGet, wasm.OpcodeGCArrayGetS, wasm.OpcodeGCArrayGetU:
+				if !c.unreachableState.on {
+					c.stackPop() // index
+					c.stackPop() // array ref
+					if at.ArrayField.Packed != wasm.PackedTypeNone {
+						c.stackPush(unsignedTypeI32)
+					} else {
+						c.stackPush(wasmValueTypeTounsignedType(at.ArrayField.ValueType))
+					}
+				}
+				switch index {
+				case wasm.OpcodeGCArrayGet:
+					c.emit(newOperationArrayGet(typeIdx))
+				case wasm.OpcodeGCArrayGetS:
+					c.emit(newOperationArrayGetS(typeIdx))
+				case wasm.OpcodeGCArrayGetU:
+					c.emit(newOperationArrayGetU(typeIdx))
+				}
+			case wasm.OpcodeGCArraySet:
+				if !c.unreachableState.on {
+					c.stackPop() // value
+					c.stackPop() // index
+					c.stackPop() // array ref
+				}
+				c.emit(newOperationArraySet(typeIdx))
+			}
+		case wasm.OpcodeGCArrayLen:
+			c.emit(newOperationArrayLen())
 		default:
 			return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter",
 				wasm.GCInstructionName(index), index)

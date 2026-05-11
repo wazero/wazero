@@ -483,6 +483,20 @@ func (o operationKind) String() (ret string) {
 		ret = "operationKindStructGetU"
 	case operationKindStructSet:
 		ret = "operationKindStructSet"
+	case operationKindArrayNew:
+		ret = "operationKindArrayNew"
+	case operationKindArrayNewDefault:
+		ret = "operationKindArrayNewDefault"
+	case operationKindArrayGet:
+		ret = "operationKindArrayGet"
+	case operationKindArrayGetS:
+		ret = "operationKindArrayGetS"
+	case operationKindArrayGetU:
+		ret = "operationKindArrayGetU"
+	case operationKindArraySet:
+		ret = "operationKindArraySet"
+	case operationKindArrayLen:
+		ret = "operationKindArrayLen"
 	default:
 		panic(fmt.Errorf("unknown operation %d", o))
 	}
@@ -861,6 +875,15 @@ const (
 	// operationKindStructSet is the Kind for struct.set: U1=typeIdx, U2=fieldIdx.
 	operationKindStructSet
 
+	// Array operation kinds. U1 = module-local type index.
+	operationKindArrayNew
+	operationKindArrayNewDefault
+	operationKindArrayGet
+	operationKindArrayGetS
+	operationKindArrayGetU
+	operationKindArraySet
+	operationKindArrayLen
+
 	// operationKindEnd is always placed at the bottom of this iota definition to be used in the test.
 	operationKindEnd
 )
@@ -1212,6 +1235,12 @@ func (o unionOperation) String() string {
 	case operationKindStructGet, operationKindStructGetS, operationKindStructGetU,
 		operationKindStructSet:
 		return fmt.Sprintf("%s typeIdx=%d fieldIdx=%d", o.Kind, o.U1, o.U2)
+	case operationKindArrayNew, operationKindArrayNewDefault,
+		operationKindArrayGet, operationKindArrayGetS, operationKindArrayGetU,
+		operationKindArraySet:
+		return fmt.Sprintf("%s typeIdx=%d", o.Kind, o.U1)
+	case operationKindArrayLen:
+		return o.Kind.String()
 
 	default:
 		panic(fmt.Sprintf("TODO: %v", o.Kind))
@@ -3071,4 +3100,34 @@ func newOperationStructGetU(typeIdx, fieldIdx uint32) unionOperation {
 // newOperationStructSet constructs the operation for struct.set.
 func newOperationStructSet(typeIdx, fieldIdx uint32) unionOperation {
 	return unionOperation{Kind: operationKindStructSet, U1: uint64(typeIdx), U2: uint64(fieldIdx)}
+}
+
+// Array operation constructors.
+
+func newOperationArrayNew(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayNew, U1: uint64(typeIdx)}
+}
+
+func newOperationArrayNewDefault(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayNewDefault, U1: uint64(typeIdx)}
+}
+
+func newOperationArrayGet(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayGet, U1: uint64(typeIdx)}
+}
+
+func newOperationArrayGetS(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayGetS, U1: uint64(typeIdx)}
+}
+
+func newOperationArrayGetU(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayGetU, U1: uint64(typeIdx)}
+}
+
+func newOperationArraySet(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArraySet, U1: uint64(typeIdx)}
+}
+
+func newOperationArrayLen() unionOperation {
+	return unionOperation{Kind: operationKindArrayLen}
 }
