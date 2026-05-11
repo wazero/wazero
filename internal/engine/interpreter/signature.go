@@ -290,6 +290,12 @@ func (c *compiler) wasmOpcodeSignature(op wasm.Opcode, index uint32) (*signature
 			return signature_I64_I32, nil
 		case wasm.OpcodeGCAnyConvertExtern, wasm.OpcodeGCExternConvertAny:
 			return signature_I64_I64, nil
+		case wasm.OpcodeGCStructNew, wasm.OpcodeGCStructNewDefault,
+			wasm.OpcodeGCStructGet, wasm.OpcodeGCStructGetS, wasm.OpcodeGCStructGetU,
+			wasm.OpcodeGCStructSet:
+			// Stack manipulation handled dynamically by the compiler
+			// (depends on the struct's field schema).
+			return signature_None_None, nil
 		default:
 			return nil, fmt.Errorf("unsupported GC sub-opcode in interpreterir: 0x%x", index)
 		}

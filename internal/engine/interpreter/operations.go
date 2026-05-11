@@ -471,6 +471,18 @@ func (o operationKind) String() (ret string) {
 		ret = "operationKindBrOnNull"
 	case operationKindBrOnNonNull:
 		ret = "operationKindBrOnNonNull"
+	case operationKindStructNew:
+		ret = "operationKindStructNew"
+	case operationKindStructNewDefault:
+		ret = "operationKindStructNewDefault"
+	case operationKindStructGet:
+		ret = "operationKindStructGet"
+	case operationKindStructGetS:
+		ret = "operationKindStructGetS"
+	case operationKindStructGetU:
+		ret = "operationKindStructGetU"
+	case operationKindStructSet:
+		ret = "operationKindStructSet"
 	default:
 		panic(fmt.Errorf("unknown operation %d", o))
 	}
@@ -836,6 +848,19 @@ const (
 	// we fall through.
 	operationKindBrOnNonNull
 
+	// operationKindStructNew is the Kind for struct.new: U1=typeIdx, U2=fieldCount.
+	operationKindStructNew
+	// operationKindStructNewDefault is the Kind for struct.new_default: U1=typeIdx, U2=fieldCount.
+	operationKindStructNewDefault
+	// operationKindStructGet is the Kind for struct.get: U1=typeIdx, U2=fieldIdx.
+	operationKindStructGet
+	// operationKindStructGetS is the Kind for struct.get_s on packed fields.
+	operationKindStructGetS
+	// operationKindStructGetU is the Kind for struct.get_u on packed fields.
+	operationKindStructGetU
+	// operationKindStructSet is the Kind for struct.set: U1=typeIdx, U2=fieldIdx.
+	operationKindStructSet
+
 	// operationKindEnd is always placed at the bottom of this iota definition to be used in the test.
 	operationKindEnd
 )
@@ -1182,6 +1207,11 @@ func (o unionOperation) String() string {
 		return o.Kind.String()
 	case operationKindBrOnNull, operationKindBrOnNonNull:
 		return fmt.Sprintf("%s thenLabel=%d elseLabel=%d drop=%#x", o.Kind, o.U1, o.U2, o.U3)
+	case operationKindStructNew, operationKindStructNewDefault:
+		return fmt.Sprintf("%s typeIdx=%d fieldCount=%d", o.Kind, o.U1, o.U2)
+	case operationKindStructGet, operationKindStructGetS, operationKindStructGetU,
+		operationKindStructSet:
+		return fmt.Sprintf("%s typeIdx=%d fieldIdx=%d", o.Kind, o.U1, o.U2)
 
 	default:
 		panic(fmt.Sprintf("TODO: %v", o.Kind))
@@ -3011,4 +3041,34 @@ func newOperationBrOnNonNull(thenTarget, elseTarget label, thenDrop inclusiveRan
 		U2:   uint64(elseTarget),
 		U3:   thenDrop.AsU64(),
 	}
+}
+
+// newOperationStructNew constructs the operation for struct.new.
+func newOperationStructNew(typeIdx, fieldCount uint32) unionOperation {
+	return unionOperation{Kind: operationKindStructNew, U1: uint64(typeIdx), U2: uint64(fieldCount)}
+}
+
+// newOperationStructNewDefault constructs the operation for struct.new_default.
+func newOperationStructNewDefault(typeIdx, fieldCount uint32) unionOperation {
+	return unionOperation{Kind: operationKindStructNewDefault, U1: uint64(typeIdx), U2: uint64(fieldCount)}
+}
+
+// newOperationStructGet constructs the operation for struct.get.
+func newOperationStructGet(typeIdx, fieldIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindStructGet, U1: uint64(typeIdx), U2: uint64(fieldIdx)}
+}
+
+// newOperationStructGetS constructs the operation for struct.get_s on a packed field.
+func newOperationStructGetS(typeIdx, fieldIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindStructGetS, U1: uint64(typeIdx), U2: uint64(fieldIdx)}
+}
+
+// newOperationStructGetU constructs the operation for struct.get_u on a packed field.
+func newOperationStructGetU(typeIdx, fieldIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindStructGetU, U1: uint64(typeIdx), U2: uint64(fieldIdx)}
+}
+
+// newOperationStructSet constructs the operation for struct.set.
+func newOperationStructSet(typeIdx, fieldIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindStructSet, U1: uint64(typeIdx), U2: uint64(fieldIdx)}
 }

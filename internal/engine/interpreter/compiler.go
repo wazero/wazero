@@ -1769,6 +1769,68 @@ operatorSwitch:
 			c.emit(newOperationAnyConvertExtern())
 		case wasm.OpcodeGCExternConvertAny:
 			c.emit(newOperationExternConvertAny())
+		case wasm.OpcodeGCStructNew, wasm.OpcodeGCStructNewDefault,
+			wasm.OpcodeGCStructGet, wasm.OpcodeGCStructGetS, wasm.OpcodeGCStructGetU,
+			wasm.OpcodeGCStructSet:
+			c.pc++
+			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read GC struct type index: %v", err)
+			}
+			c.pc += n - 1
+			st := &c.types[typeIdx]
+			fieldCount := uint32(len(st.Fields))
+
+			switch index {
+			case wasm.OpcodeGCStructNew:
+				if !c.unreachableState.on {
+					for i := uint32(0); i < fieldCount; i++ {
+						c.stackPop()
+					}
+					c.stackPush(unsignedTypeI64)
+				}
+				c.emit(newOperationStructNew(typeIdx, fieldCount))
+			case wasm.OpcodeGCStructNewDefault:
+				if !c.unreachableState.on {
+					c.stackPush(unsignedTypeI64)
+				}
+				c.emit(newOperationStructNewDefault(typeIdx, fieldCount))
+			case wasm.OpcodeGCStructGet, wasm.OpcodeGCStructGetS, wasm.OpcodeGCStructGetU:
+				c.pc++
+				fieldIdx, fn, err := leb128.LoadUint32(c.body[c.pc:])
+				if err != nil {
+					return fmt.Errorf("read struct.get field index: %v", err)
+				}
+				c.pc += fn - 1
+				if !c.unreachableState.on {
+					c.stackPop()
+					if st.Fields[fieldIdx].Packed != wasm.PackedTypeNone {
+						c.stackPush(unsignedTypeI32)
+					} else {
+						c.stackPush(wasmValueTypeTounsignedType(st.Fields[fieldIdx].ValueType))
+					}
+				}
+				switch index {
+				case wasm.OpcodeGCStructGet:
+					c.emit(newOperationStructGet(typeIdx, fieldIdx))
+				case wasm.OpcodeGCStructGetS:
+					c.emit(newOperationStructGetS(typeIdx, fieldIdx))
+				case wasm.OpcodeGCStructGetU:
+					c.emit(newOperationStructGetU(typeIdx, fieldIdx))
+				}
+			case wasm.OpcodeGCStructSet:
+				c.pc++
+				fieldIdx, fn, err := leb128.LoadUint32(c.body[c.pc:])
+				if err != nil {
+					return fmt.Errorf("read struct.set field index: %v", err)
+				}
+				c.pc += fn - 1
+				if !c.unreachableState.on {
+					c.stackPop()
+					c.stackPop()
+				}
+				c.emit(newOperationStructSet(typeIdx, fieldIdx))
+			}
 		default:
 			return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter",
 				wasm.GCInstructionName(index), index)

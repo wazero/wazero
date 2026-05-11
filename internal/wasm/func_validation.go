@@ -2176,6 +2176,103 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					return fmt.Errorf("cannot pop the operand for extern.convert_any: %v", err)
 				}
 				valueTypeStack.push(ValueTypeExternref)
+			case OpcodeGCStructNew, OpcodeGCStructNewDefault:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read struct.new type index: %v", err)
+				}
+				pc += n
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("struct.new type index %d out of range", typeIdx)
+				}
+				st := &m.TypeSection[typeIdx]
+				if st.Form != CompositeFormStruct {
+					return fmt.Errorf("struct.new type %d is not a struct", typeIdx)
+				}
+				if sub == OpcodeGCStructNew {
+					for i := len(st.Fields) - 1; i >= 0; i-- {
+						vt, err := fieldOperandType(st.Fields[i])
+						if err != nil {
+							return fmt.Errorf("struct.new field %d: %v", i, err)
+						}
+						if err := valueTypeStack.popAndVerifyType(vt); err != nil {
+							return fmt.Errorf("struct.new: cannot pop field[%d]: %v", i, err)
+						}
+					}
+				}
+				valueTypeStack.push(ValueTypeStructref)
+			case OpcodeGCStructGet, OpcodeGCStructGetS, OpcodeGCStructGetU:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read struct.get type index: %v", err)
+				}
+				pc += n
+				fieldIdx, n2, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read struct.get field index: %v", err)
+				}
+				pc += n2
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("struct.get type index %d out of range", typeIdx)
+				}
+				st := &m.TypeSection[typeIdx]
+				if st.Form != CompositeFormStruct {
+					return fmt.Errorf("struct.get type %d is not a struct", typeIdx)
+				}
+				if fieldIdx >= uint32(len(st.Fields)) {
+					return fmt.Errorf("struct.get field index %d out of range for type %d", fieldIdx, typeIdx)
+				}
+				field := st.Fields[fieldIdx]
+				packed := field.Packed != PackedTypeNone
+				if sub == OpcodeGCStructGet && packed {
+					return fmt.Errorf("struct.get on packed field requires _s or _u")
+				}
+				if (sub == OpcodeGCStructGetS || sub == OpcodeGCStructGetU) && !packed {
+					return fmt.Errorf("struct.get_s/u on non-packed field")
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("struct.get: cannot pop struct ref: %v", err)
+				}
+				if packed {
+					valueTypeStack.push(ValueTypeI32)
+				} else {
+					valueTypeStack.push(field.ValueType)
+				}
+			case OpcodeGCStructSet:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read struct.set type index: %v", err)
+				}
+				pc += n
+				fieldIdx, n2, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read struct.set field index: %v", err)
+				}
+				pc += n2
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("struct.set type index %d out of range", typeIdx)
+				}
+				st := &m.TypeSection[typeIdx]
+				if st.Form != CompositeFormStruct {
+					return fmt.Errorf("struct.set type %d is not a struct", typeIdx)
+				}
+				if fieldIdx >= uint32(len(st.Fields)) {
+					return fmt.Errorf("struct.set field index %d out of range for type %d", fieldIdx, typeIdx)
+				}
+				field := st.Fields[fieldIdx]
+				if !field.Mutable {
+					return fmt.Errorf("struct.set on immutable field %d of type %d", fieldIdx, typeIdx)
+				}
+				vt, err := fieldOperandType(field)
+				if err != nil {
+					return fmt.Errorf("struct.set field %d: %v", fieldIdx, err)
+				}
+				if err := valueTypeStack.popAndVerifyType(vt); err != nil {
+					return fmt.Errorf("struct.set: cannot pop value: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("struct.set: cannot pop struct ref: %v", err)
+				}
 			default:
 				if name := GCInstructionName(sub); name != "" {
 					return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter", name, sub)
@@ -2791,6 +2888,24 @@ var (
 	blockType_v_externref = &FunctionType{Results: []ValueType{ValueTypeExternref}, ResultNumInUint64: 1}
 	blockType_v_exnref    = &FunctionType{Results: []ValueType{ValueTypeExnref}, ResultNumInUint64: 1}
 )
+
+// fieldOperandType returns the value-type byte that the wasm operand
+// stack carries for a struct/array field's storage type. Packed fields
+// (i8, i16) take their value in the unpacked i32 representation per the
+// spec; numeric and vector fields take their declared type.
+func fieldOperandType(f FieldType) (ValueType, error) {
+	if f.Packed != PackedTypeNone {
+		return ValueTypeI32, nil
+	}
+	switch f.ValueType {
+	case ValueTypeI32, ValueTypeI64, ValueTypeF32, ValueTypeF64, ValueTypeV128:
+		return f.ValueType, nil
+	}
+	if isReferenceValueType(f.ValueType) {
+		return 0, fmt.Errorf("ref-typed struct/array fields are not yet supported by the interpreter")
+	}
+	return 0, fmt.Errorf("unsupported struct/array field type %#x", f.ValueType)
+}
 
 // SplitCallStack returns the input stack resliced to the count of params and
 // results, or errors if it isn't long enough for either.

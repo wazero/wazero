@@ -48,7 +48,11 @@ func decodeCode(r *bytes.Reader, codeSectionStart uint64, ret *wasm.Code) (err e
 		switch vt := b; wasm.ValueType(vt) {
 		case wasm.ValueTypeI32, wasm.ValueTypeF32, wasm.ValueTypeI64, wasm.ValueTypeF64,
 			wasm.ValueTypeFuncref, wasm.ValueTypeExternref, wasm.ValueTypeV128,
-			wasm.ValueTypeExnref:
+			wasm.ValueTypeExnref,
+			// wasm-gc nullable abstract heap-type shorthand bytes.
+			wasm.ValueTypeAnyref, wasm.ValueTypeEqref, wasm.ValueTypeI31ref,
+			wasm.ValueTypeStructref, wasm.ValueTypeArrayref, wasm.ValueTypeNullref,
+			wasm.ValueTypeNoFuncref, wasm.ValueTypeNoExternref, wasm.ValueTypeNoExnref:
 		default:
 			return fmt.Errorf("invalid local type: 0x%x", vt)
 		}

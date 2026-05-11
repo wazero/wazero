@@ -4662,6 +4662,61 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				frame.pc = op.U2
 			}
 
+		case operationKindStructNew:
+			typeIdx := uint32(op.U1)
+			fieldCount := int(op.U2)
+			schema := &f.moduleInstance.Source.TypeSection[typeIdx]
+			fields := make([]any, fieldCount)
+			for i := fieldCount - 1; i >= 0; i-- {
+				raw := ce.popValue()
+				fields[i] = encodeFieldValue(schema.Fields[i], raw)
+			}
+			s := wasm.NewWasmStructWith(f.moduleInstance.TypeIDs[typeIdx], fields)
+			ce.keepAlive(s)
+			ce.pushValue(uint64(uintptr(unsafe.Pointer(s))))
+			frame.pc++
+
+		case operationKindStructNewDefault:
+			typeIdx := uint32(op.U1)
+			fieldCount := int(op.U2)
+			schema := &f.moduleInstance.Source.TypeSection[typeIdx]
+			fields := make([]any, fieldCount)
+			for i := 0; i < fieldCount; i++ {
+				fields[i] = wasm.DefaultFieldValue(schema.Fields[i])
+			}
+			s := wasm.NewWasmStructWith(f.moduleInstance.TypeIDs[typeIdx], fields)
+			ce.keepAlive(s)
+			ce.pushValue(uint64(uintptr(unsafe.Pointer(s))))
+			frame.pc++
+
+		case operationKindStructGet, operationKindStructGetS, operationKindStructGetU:
+			typeIdx := uint32(op.U1)
+			fieldIdx := int(op.U2)
+			v := ce.popValue()
+			if v == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			s := *(**wasm.WasmStruct)(unsafe.Pointer(&v))
+			fieldSchema := f.moduleInstance.Source.TypeSection[typeIdx].Fields[fieldIdx]
+			raw := decodeFieldValueRead(fieldSchema, s.Get(fieldIdx), op.Kind)
+			ce.pushValue(raw)
+			frame.pc++
+
+		case operationKindStructSet:
+			typeIdx := uint32(op.U1)
+			fieldIdx := int(op.U2)
+			raw := ce.popValue()
+			v := ce.popValue()
+			if v == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			s := *(**wasm.WasmStruct)(unsafe.Pointer(&v))
+			fieldSchema := f.moduleInstance.Source.TypeSection[typeIdx].Fields[fieldIdx]
+			if err := s.Set(fieldIdx, encodeFieldValue(fieldSchema, raw)); err != nil {
+				panic(err)
+			}
+			frame.pc++
+
 		case operationKindTailCallReturnCall:
 			f := &functions[op.U1]
 			ce.dropForTailCall(frame, f)
@@ -4990,4 +5045,58 @@ func v128Dot(x1Hi, x1Lo, x2Hi, x2Lo uint64) (uint64, uint64) {
 	r7 := int32(int16(x1Hi>>32)) * int32(int16(x2Hi>>32))
 	r8 := int32(int16(x1Hi>>48)) * int32(int16(x2Hi>>48))
 	return uint64(uint32(r1+r2)) | (uint64(uint32(r3+r4)) << 32), uint64(uint32(r5+r6)) | (uint64(uint32(r7+r8)) << 32)
+}
+
+// encodeFieldValue converts an operand-stack uint64 to the Go-typed value
+// that gets stored in WasmStruct.Fields / WasmArray.Elements according to
+// the field's declared storage type.
+func encodeFieldValue(f wasm.FieldType, raw uint64) any {
+	if f.Packed == wasm.PackedTypeI8 {
+		return wasm.NarrowI8(int32(uint32(raw)))
+	}
+	if f.Packed == wasm.PackedTypeI16 {
+		return wasm.NarrowI16(int32(uint32(raw)))
+	}
+	switch f.ValueType {
+	case wasm.ValueTypeI32:
+		return int32(uint32(raw))
+	case wasm.ValueTypeI64:
+		return int64(raw)
+	case wasm.ValueTypeF32:
+		return math.Float32frombits(uint32(raw))
+	case wasm.ValueTypeF64:
+		return math.Float64frombits(raw)
+	}
+	panic(fmt.Sprintf("unsupported struct/array field type %#x", f.ValueType))
+}
+
+// decodeFieldValueRead reads a stored field value and converts it to the
+// operand-stack uint64 representation, applying sign or zero extension
+// for packed fields based on the read variant.
+func decodeFieldValueRead(f wasm.FieldType, stored any, readKind operationKind) uint64 {
+	if f.Packed == wasm.PackedTypeI8 {
+		v := stored.(uint8)
+		if readKind == operationKindStructGetS {
+			return uint64(uint32(wasm.SignExtendI8(v)))
+		}
+		return uint64(wasm.ZeroExtendI8(v))
+	}
+	if f.Packed == wasm.PackedTypeI16 {
+		v := stored.(uint16)
+		if readKind == operationKindStructGetS {
+			return uint64(uint32(wasm.SignExtendI16(v)))
+		}
+		return uint64(wasm.ZeroExtendI16(v))
+	}
+	switch f.ValueType {
+	case wasm.ValueTypeI32:
+		return uint64(uint32(stored.(int32)))
+	case wasm.ValueTypeI64:
+		return uint64(stored.(int64))
+	case wasm.ValueTypeF32:
+		return uint64(math.Float32bits(stored.(float32)))
+	case wasm.ValueTypeF64:
+		return math.Float64bits(stored.(float64))
+	}
+	panic(fmt.Sprintf("unsupported struct/array field type %#x", f.ValueType))
 }
