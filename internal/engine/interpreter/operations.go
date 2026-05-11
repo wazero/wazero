@@ -515,6 +515,14 @@ func (o operationKind) String() (ret string) {
 		ret = "operationKindBrOnCast"
 	case operationKindBrOnCastFail:
 		ret = "operationKindBrOnCastFail"
+	case operationKindArrayNewData:
+		ret = "operationKindArrayNewData"
+	case operationKindArrayNewElem:
+		ret = "operationKindArrayNewElem"
+	case operationKindArrayInitData:
+		ret = "operationKindArrayInitData"
+	case operationKindArrayInitElem:
+		ret = "operationKindArrayInitElem"
 	default:
 		panic(fmt.Errorf("unknown operation %d", o))
 	}
@@ -938,6 +946,12 @@ const (
 	// operationKindBrOnCastFail: inverse — branches when the cast fails.
 	operationKindBrOnCastFail
 
+	// Array data/element-segment ops. U1 = array type index, U2 = segment index.
+	operationKindArrayNewData
+	operationKindArrayNewElem
+	operationKindArrayInitData
+	operationKindArrayInitElem
+
 	// operationKindEnd is always placed at the bottom of this iota definition to be used in the test.
 	operationKindEnd
 )
@@ -1308,6 +1322,9 @@ func (o unionOperation) String() string {
 	case operationKindBrOnCast, operationKindBrOnCastFail:
 		return fmt.Sprintf("%s thenLabel=%d elseLabel=%d drop=%#x heapKind=%#x nullable=%v",
 			o.Kind, o.U1, o.U2, o.U3, o.B1, o.B3)
+	case operationKindArrayNewData, operationKindArrayNewElem,
+		operationKindArrayInitData, operationKindArrayInitElem:
+		return fmt.Sprintf("%s typeIdx=%d segIdx=%d", o.Kind, o.U1, o.U2)
 
 	default:
 		panic(fmt.Sprintf("TODO: %v", o.Kind))
@@ -3275,4 +3292,17 @@ func newOperationBrOnCastFail(thenTarget, elseTarget label, thenDrop inclusiveRa
 		op.Us[1] = 1
 	}
 	return op
+}
+
+func newOperationArrayNewData(typeIdx, segIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayNewData, U1: uint64(typeIdx), U2: uint64(segIdx)}
+}
+func newOperationArrayNewElem(typeIdx, segIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayNewElem, U1: uint64(typeIdx), U2: uint64(segIdx)}
+}
+func newOperationArrayInitData(typeIdx, segIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayInitData, U1: uint64(typeIdx), U2: uint64(segIdx)}
+}
+func newOperationArrayInitElem(typeIdx, segIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayInitElem, U1: uint64(typeIdx), U2: uint64(segIdx)}
 }

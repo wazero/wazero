@@ -2027,6 +2027,51 @@ operatorSwitch:
 				c.stackPop() // dst ref
 			}
 			c.emit(newOperationArrayCopy(dstIdx, srcIdx))
+		case wasm.OpcodeGCArrayNewData, wasm.OpcodeGCArrayNewElem:
+			c.pc++
+			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.new_data/elem type index: %v", err)
+			}
+			c.pc += n
+			segIdx, n2, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.new_data/elem seg index: %v", err)
+			}
+			c.pc += n2 - 1
+			if !c.unreachableState.on {
+				c.stackPop() // count
+				c.stackPop() // src offset
+				c.stackPush(unsignedTypeI64)
+			}
+			if index == wasm.OpcodeGCArrayNewData {
+				c.emit(newOperationArrayNewData(typeIdx, segIdx))
+			} else {
+				c.emit(newOperationArrayNewElem(typeIdx, segIdx))
+			}
+		case wasm.OpcodeGCArrayInitData, wasm.OpcodeGCArrayInitElem:
+			c.pc++
+			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.init_data/elem type index: %v", err)
+			}
+			c.pc += n
+			segIdx, n2, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.init_data/elem seg index: %v", err)
+			}
+			c.pc += n2 - 1
+			if !c.unreachableState.on {
+				c.stackPop() // count
+				c.stackPop() // src offset
+				c.stackPop() // dst offset
+				c.stackPop() // array ref
+			}
+			if index == wasm.OpcodeGCArrayInitData {
+				c.emit(newOperationArrayInitData(typeIdx, segIdx))
+			} else {
+				c.emit(newOperationArrayInitElem(typeIdx, segIdx))
+			}
 		default:
 			return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter",
 				wasm.GCInstructionName(index), index)

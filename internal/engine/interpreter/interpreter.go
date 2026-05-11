@@ -4951,6 +4951,101 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			}
 			frame.pc++
 
+		case operationKindArrayNewData:
+			typeIdx := uint32(op.U1)
+			segIdx := uint32(op.U2)
+			count := uint32(ce.popValue())
+			srcOff := uint32(ce.popValue())
+			schema := f.moduleInstance.Source.TypeSection[typeIdx].ArrayField
+			data := f.moduleInstance.DataInstances[segIdx]
+			elemSize, ok := arrayDataElemSize(schema)
+			if !ok {
+				panic(fmt.Errorf("array.new_data on unsupported element type"))
+			}
+			totalBytes := uint64(count) * uint64(elemSize)
+			if uint64(srcOff)+totalBytes > uint64(len(data)) {
+				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
+			}
+			elems := make([]any, count)
+			for i := uint32(0); i < count; i++ {
+				off := srcOff + i*elemSize
+				elems[i] = readDataElement(schema, data, off)
+			}
+			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
+			ce.keepAlive(a)
+			ce.pushValue(uint64(uintptr(unsafe.Pointer(a))))
+			frame.pc++
+
+		case operationKindArrayNewElem:
+			typeIdx := uint32(op.U1)
+			segIdx := uint32(op.U2)
+			count := uint32(ce.popValue())
+			srcOff := uint32(ce.popValue())
+			elem := f.moduleInstance.ElementInstances[segIdx]
+			if uint64(srcOff)+uint64(count) > uint64(len(elem)) {
+				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
+			}
+			elems := make([]any, count)
+			for i := uint32(0); i < count; i++ {
+				elems[i] = uint64(elem[srcOff+i])
+			}
+			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
+			ce.keepAlive(a)
+			ce.pushValue(uint64(uintptr(unsafe.Pointer(a))))
+			frame.pc++
+
+		case operationKindArrayInitData:
+			typeIdx := uint32(op.U1)
+			segIdx := uint32(op.U2)
+			count := uint32(ce.popValue())
+			srcOff := uint32(ce.popValue())
+			dstOff := uint32(ce.popValue())
+			arrV := ce.popValue()
+			if arrV == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			a := *(**wasm.WasmArray)(unsafe.Pointer(&arrV))
+			schema := f.moduleInstance.Source.TypeSection[typeIdx].ArrayField
+			data := f.moduleInstance.DataInstances[segIdx]
+			elemSize, ok := arrayDataElemSize(schema)
+			if !ok {
+				panic(fmt.Errorf("array.init_data on unsupported element type"))
+			}
+			if uint64(dstOff)+uint64(count) > uint64(a.Len()) ||
+				uint64(srcOff)+uint64(count)*uint64(elemSize) > uint64(len(data)) {
+				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
+			}
+			for i := uint32(0); i < count; i++ {
+				off := srcOff + i*elemSize
+				v := readDataElement(schema, data, off)
+				if err := a.Set(dstOff+i, v); err != nil {
+					panic(err)
+				}
+			}
+			frame.pc++
+
+		case operationKindArrayInitElem:
+			segIdx := uint32(op.U2)
+			count := uint32(ce.popValue())
+			srcOff := uint32(ce.popValue())
+			dstOff := uint32(ce.popValue())
+			arrV := ce.popValue()
+			if arrV == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			a := *(**wasm.WasmArray)(unsafe.Pointer(&arrV))
+			elem := f.moduleInstance.ElementInstances[segIdx]
+			if uint64(dstOff)+uint64(count) > uint64(a.Len()) ||
+				uint64(srcOff)+uint64(count) > uint64(len(elem)) {
+				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
+			}
+			for i := uint32(0); i < count; i++ {
+				if err := a.Set(dstOff+i, uint64(elem[srcOff+i])); err != nil {
+					panic(err)
+				}
+			}
+			frame.pc++
+
 		case operationKindTailCallReturnCall:
 			f := &functions[op.U1]
 			ce.dropForTailCall(frame, f)
@@ -5398,4 +5493,46 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 		return objForm == wasm.CompositeFormFunc
 	}
 	return false
+}
+
+// arrayDataElemSize returns the byte size of one array element when read
+// from a data segment.
+func arrayDataElemSize(f wasm.FieldType) (uint32, bool) {
+	if f.Packed == wasm.PackedTypeI8 {
+		return 1, true
+	}
+	if f.Packed == wasm.PackedTypeI16 {
+		return 2, true
+	}
+	switch f.ValueType {
+	case wasm.ValueTypeI32, wasm.ValueTypeF32:
+		return 4, true
+	case wasm.ValueTypeI64, wasm.ValueTypeF64:
+		return 8, true
+	case wasm.ValueTypeV128:
+		return 16, true
+	}
+	return 0, false
+}
+
+// readDataElement decodes a single array element from `data` starting at
+// `off`, returning the Go-typed value the WasmArray.Elements slice stores.
+func readDataElement(f wasm.FieldType, data []byte, off uint32) any {
+	if f.Packed == wasm.PackedTypeI8 {
+		return uint8(data[off])
+	}
+	if f.Packed == wasm.PackedTypeI16 {
+		return binary.LittleEndian.Uint16(data[off:])
+	}
+	switch f.ValueType {
+	case wasm.ValueTypeI32:
+		return int32(binary.LittleEndian.Uint32(data[off:]))
+	case wasm.ValueTypeI64:
+		return int64(binary.LittleEndian.Uint64(data[off:]))
+	case wasm.ValueTypeF32:
+		return math.Float32frombits(binary.LittleEndian.Uint32(data[off:]))
+	case wasm.ValueTypeF64:
+		return math.Float64frombits(binary.LittleEndian.Uint64(data[off:]))
+	}
+	panic(fmt.Sprintf("unsupported element type for array.new_data: %#x", f.ValueType))
 }

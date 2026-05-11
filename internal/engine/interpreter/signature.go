@@ -299,7 +299,9 @@ func (c *compiler) wasmOpcodeSignature(op wasm.Opcode, index uint32) (*signature
 			wasm.OpcodeGCArrayNew, wasm.OpcodeGCArrayNewDefault,
 			wasm.OpcodeGCArrayGet, wasm.OpcodeGCArrayGetS, wasm.OpcodeGCArrayGetU,
 			wasm.OpcodeGCArraySet,
-			wasm.OpcodeGCArrayNewFixed, wasm.OpcodeGCArrayFill, wasm.OpcodeGCArrayCopy:
+			wasm.OpcodeGCArrayNewFixed, wasm.OpcodeGCArrayFill, wasm.OpcodeGCArrayCopy,
+			wasm.OpcodeGCArrayNewData, wasm.OpcodeGCArrayNewElem,
+			wasm.OpcodeGCArrayInitData, wasm.OpcodeGCArrayInitElem:
 			// Stack manipulation handled dynamically by the compiler.
 			return signature_None_None, nil
 		case wasm.OpcodeGCArrayLen:
