@@ -268,6 +268,38 @@ func (m *Module) typeOfFunction(funcIdx Index) *FunctionType {
 	return &m.TypeSection[typeIdx]
 }
 
+// typeIndexOfFunction returns the TypeSection index for the given function
+// space index, or (0, false) if the index does not resolve to a function.
+func (m *Module) typeIndexOfFunction(funcIdx Index) (Index, bool) {
+	typeSectionLength, importedFunctionCount := uint32(len(m.TypeSection)), m.ImportFunctionCount
+	if funcIdx < importedFunctionCount {
+		cur := Index(0)
+		for i := range m.ImportSection {
+			imp := &m.ImportSection[i]
+			if imp.Type != ExternTypeFunc {
+				continue
+			}
+			if funcIdx == cur {
+				if imp.DescFunc >= typeSectionLength {
+					return 0, false
+				}
+				return imp.DescFunc, true
+			}
+			cur++
+		}
+		return 0, false
+	}
+	funcSectionIdx := funcIdx - m.ImportFunctionCount
+	if funcSectionIdx >= uint32(len(m.FunctionSection)) {
+		return 0, false
+	}
+	typeIdx := m.FunctionSection[funcSectionIdx]
+	if typeIdx >= typeSectionLength {
+		return 0, false
+	}
+	return typeIdx, true
+}
+
 func (m *Module) Validate(enabledFeatures api.CoreFeatures) error {
 	for i := range m.TypeSection {
 		tp := &m.TypeSection[i]

@@ -32,33 +32,61 @@ func decodeValueTypes(r *bytes.Reader, num uint32) ([]wasm.ValueType, error) {
 			wasm.ValueTypeNoFuncref.Kind(), wasm.ValueTypeNoExternref.Kind(), wasm.ValueTypeNoExnref.Kind():
 			ret = append(ret, wasm.ValueType(b))
 		case wasm.RefPrefixNullable, wasm.RefPrefixNonNullable:
+			nullable := b == wasm.RefPrefixNullable
 			ht, _, err := leb128.DecodeInt33AsInt64(r)
 			if err != nil {
 				return nil, fmt.Errorf("read ref heap type: %w", err)
 			}
-			// The following nullable refs are an alternative representation of the corresponding ref types:
-			// - (ref null exn) is equivalent to exnref
-			// - (ref null func) is equivalent to funcref
-			// - (ref null extern) is equivalent to externref
-			// See https://webassembly.github.io/gc/core/syntax/types.html#reference-types
-			// Current limitation: we desugar NON-NULLABLE types to NULLABLE types internally.
-			// This technically breaks type-checking in some cases, but we will fix this
-			// when we introduce proper ref types.
-			switch ht {
-			case wasm.HeapTypeExn:
-				ret = append(ret, wasm.ValueTypeExnref)
-			case wasm.HeapTypeFunc:
-				ret = append(ret, wasm.ValueTypeFuncref)
-			case wasm.HeapTypeExtern:
-				ret = append(ret, wasm.ValueTypeExternref)
-			default: // concrete type index — treat as nullable funcref
-				ret = append(ret, wasm.ValueTypeFuncref)
+			vt, ok := decodeHeapType(ht, nullable)
+			if !ok {
+				return nil, fmt.Errorf("invalid heap type: %d", ht)
 			}
+			ret = append(ret, vt)
 		default:
 			return nil, fmt.Errorf("invalid value type: %d", b)
 		}
 	}
 	return ret, nil
+}
+
+// decodeHeapType maps an s33-encoded heap type to its ValueType encoding,
+// applying the supplied nullability. Non-negative values are concrete
+// type indices; negative values are abstract heap-type bytes.
+func decodeHeapType(ht int64, nullable bool) (wasm.ValueType, bool) {
+	if ht >= 0 {
+		return wasm.ConcreteRef(uint32(ht), nullable), true
+	}
+	// Abstract heap-type byte values per the wasm-3.0 binary format.
+	var kindByte byte
+	switch ht {
+	case wasm.HeapTypeFunc:
+		kindByte = wasm.ValueTypeFuncref.Kind()
+	case wasm.HeapTypeExtern:
+		kindByte = wasm.ValueTypeExternref.Kind()
+	case wasm.HeapTypeExn:
+		kindByte = wasm.ValueTypeExnref.Kind()
+	case -13:
+		kindByte = wasm.ValueTypeNoFuncref.Kind()
+	case -14:
+		kindByte = wasm.ValueTypeNoExternref.Kind()
+	case -12:
+		kindByte = wasm.ValueTypeNoExnref.Kind()
+	case -15:
+		kindByte = wasm.ValueTypeNullref.Kind()
+	case -18:
+		kindByte = wasm.ValueTypeAnyref.Kind()
+	case -19:
+		kindByte = wasm.ValueTypeEqref.Kind()
+	case -20:
+		kindByte = wasm.ValueTypeI31ref.Kind()
+	case -21:
+		kindByte = wasm.ValueTypeStructref.Kind()
+	case -22:
+		kindByte = wasm.ValueTypeArrayref.Kind()
+	default:
+		return 0, false
+	}
+	return wasm.AbstractRef(kindByte, nullable), true
 }
 
 // decodeUTF8 decodes a size prefixed string from the reader, returning it and the count of bytes read.

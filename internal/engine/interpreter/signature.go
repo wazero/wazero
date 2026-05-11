@@ -698,13 +698,13 @@ func (f *funcTypeToIRSignatures) get(typeIndex wasm.Index, indirect bool) *signa
 }
 
 func wasmValueTypeTounsignedType(vt wasm.ValueType) unsignedType {
+	if vt.IsRef() {
+		return unsignedTypeI64
+	}
 	switch vt {
 	case wasm.ValueTypeI32:
 		return unsignedTypeI32
-	case wasm.ValueTypeI64,
-		// From interpreterir layer, ref type values are opaque 64-bit pointers.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
-		wasm.ValueTypeExnref:
+	case wasm.ValueTypeI64:
 		return unsignedTypeI64
 	case wasm.ValueTypeF32:
 		return unsignedTypeF32
@@ -717,13 +717,13 @@ func wasmValueTypeTounsignedType(vt wasm.ValueType) unsignedType {
 }
 
 func wasmValueTypeToUnsignedOutSignature(vt wasm.ValueType) *signature {
+	if vt.IsRef() {
+		return signature_None_I64
+	}
 	switch vt {
 	case wasm.ValueTypeI32:
 		return signature_None_I32
-	case wasm.ValueTypeI64,
-		// From interpreterir layer, ref type values are opaque 64-bit pointers.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
-		wasm.ValueTypeExnref:
+	case wasm.ValueTypeI64:
 		return signature_None_I64
 	case wasm.ValueTypeF32:
 		return signature_None_F32
@@ -736,13 +736,13 @@ func wasmValueTypeToUnsignedOutSignature(vt wasm.ValueType) *signature {
 }
 
 func wasmValueTypeToUnsignedInSignature(vt wasm.ValueType) *signature {
+	if vt.IsRef() {
+		return signature_I64_None
+	}
 	switch vt {
 	case wasm.ValueTypeI32:
 		return signature_I32_None
-	case wasm.ValueTypeI64,
-		// From interpreterir layer, ref type values are opaque 64-bit pointers.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
-		wasm.ValueTypeExnref:
+	case wasm.ValueTypeI64:
 		return signature_I64_None
 	case wasm.ValueTypeF32:
 		return signature_F32_None
@@ -755,13 +755,13 @@ func wasmValueTypeToUnsignedInSignature(vt wasm.ValueType) *signature {
 }
 
 func wasmValueTypeToUnsignedInOutSignature(vt wasm.ValueType) *signature {
+	if vt.IsRef() {
+		return signature_I64_I64
+	}
 	switch vt {
 	case wasm.ValueTypeI32:
 		return signature_I32_I32
-	case wasm.ValueTypeI64,
-		// At interpreterir layer, ref type values are opaque 64-bit pointers.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
-		wasm.ValueTypeExnref:
+	case wasm.ValueTypeI64:
 		return signature_I64_I64
 	case wasm.ValueTypeF32:
 		return signature_F32_F32

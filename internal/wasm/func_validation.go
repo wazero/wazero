@@ -624,7 +624,8 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					var catchTypes []ValueType
 					catchTypes = append(catchTypes, tagType.Params...)
 					if catchKind == CatchKindCatchRef {
-						catchTypes = append(catchTypes, ValueTypeExnref)
+						// catch_ref delivers a non-null exception.
+						catchTypes = append(catchTypes, ValueTypeExnref.AsNonNullable())
 					}
 					if len(catchTypes) != len(expectedTypes) {
 						return fmt.Errorf("catch clause type mismatch: catch delivers %d values but label expects %d", len(catchTypes), len(expectedTypes))
@@ -653,14 +654,15 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					}
 					var catchTypes []ValueType
 					if catchKind == CatchKindCatchAllRef {
-						catchTypes = append(catchTypes, ValueTypeExnref)
+						// catch_all_ref delivers a non-null exception.
+						catchTypes = append(catchTypes, ValueTypeExnref.AsNonNullable())
 					}
 					if len(catchTypes) != len(expectedTypes) {
 						return fmt.Errorf("catch_all clause type mismatch: catch delivers %d values but label expects %d", len(catchTypes), len(expectedTypes))
 					}
 					for j := range catchTypes {
-						if catchTypes[j] != expectedTypes[j] {
-							return fmt.Errorf("catch_all clause type mismatch at index %d", j)
+						if !isStrictRefSubtypeOf(catchTypes[j], expectedTypes[j]) {
+							return fmt.Errorf("catch_all clause type mismatch at index %d: %v is not a subtype of %v", j, catchTypes[j], expectedTypes[j])
 						}
 					}
 				default:
@@ -1023,8 +1025,17 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					return fmt.Errorf("undeclared function index %d for ref.func", index)
 				}
 				pc += num - 1
-				// ref.func always produces a non-null reference.
-				valueTypeStack.push(ValueTypeFuncref)
+				// ref.func produces a non-null reference. If we can
+				// resolve the function's type index in the module's
+				// TypeSection, encode the concrete-ref so a downstream
+				// `(ref $t)` consumer can match it precisely. Otherwise
+				// fall back to plain funcref (e.g. host functions whose
+				// type index isn't visible here).
+				if typeIdx, ok := m.typeIndexOfFunction(index); ok {
+					valueTypeStack.push(ConcreteRef(typeIdx, false))
+				} else {
+					valueTypeStack.push(ValueTypeFuncref)
+				}
 			}
 		} else if op == OpcodeTableGet || op == OpcodeTableSet {
 			if err := enabledFeatures.RequireEnabled(api.CoreFeatureReferenceTypes); err != nil {
@@ -2487,15 +2498,40 @@ func DecodeBlockType(types []FunctionType, r *bytes.Reader, enabledFeatures api.
 			return nil, 0, fmt.Errorf("read ref heap type in block: %w", err)
 		}
 		num += htNum
-		switch ht {
-		case -23: // exn
-			ret = blockType_v_exnref
-		case -16: // func
-			ret = blockType_v_funcref
-		case -17: // extern
-			ret = blockType_v_externref
-		default: // concrete type index — treat as nullable funcref
-			ret = blockType_v_funcref
+		if ht >= 0 {
+			// Concrete type index. Construct a fresh FunctionType with
+			// the typed concrete-ref result.
+			vt := ConcreteRef(uint32(ht), true)
+			ret = &FunctionType{Results: []ValueType{vt}, ResultNumInUint64: 1}
+		} else {
+			switch ht {
+			case -23: // exn
+				ret = blockType_v_exnref
+			case -16: // func
+				ret = blockType_v_funcref
+			case -17: // extern
+				ret = blockType_v_externref
+			case -12: // noexn
+				ret = &FunctionType{Results: []ValueType{ValueTypeNoExnref}, ResultNumInUint64: 1}
+			case -13: // nofunc
+				ret = &FunctionType{Results: []ValueType{ValueTypeNoFuncref}, ResultNumInUint64: 1}
+			case -14: // noextern
+				ret = &FunctionType{Results: []ValueType{ValueTypeNoExternref}, ResultNumInUint64: 1}
+			case -15: // none
+				ret = &FunctionType{Results: []ValueType{ValueTypeNullref}, ResultNumInUint64: 1}
+			case -18: // any
+				ret = &FunctionType{Results: []ValueType{ValueTypeAnyref}, ResultNumInUint64: 1}
+			case -19: // eq
+				ret = &FunctionType{Results: []ValueType{ValueTypeEqref}, ResultNumInUint64: 1}
+			case -20: // i31
+				ret = &FunctionType{Results: []ValueType{ValueTypeI31ref}, ResultNumInUint64: 1}
+			case -21: // struct
+				ret = &FunctionType{Results: []ValueType{ValueTypeStructref}, ResultNumInUint64: 1}
+			case -22: // array
+				ret = &FunctionType{Results: []ValueType{ValueTypeArrayref}, ResultNumInUint64: 1}
+			default:
+				return nil, 0, fmt.Errorf("invalid heap type in block: %d", ht)
+			}
 		}
 	case -28: // 0x64 = ref (non-nullable) — GC proposal
 		ht, htNum, err := leb128.DecodeInt33AsInt64(r)
@@ -2503,11 +2539,40 @@ func DecodeBlockType(types []FunctionType, r *bytes.Reader, enabledFeatures api.
 			return nil, 0, fmt.Errorf("read ref heap type in block: %w", err)
 		}
 		num += htNum
-		switch ht {
-		case -23: // exn
-			ret = blockType_v_exnref // TODO: non-null exnref
-		default:
-			ret = blockType_v_funcref
+		if ht >= 0 {
+			vt := ConcreteRef(uint32(ht), false)
+			ret = &FunctionType{Results: []ValueType{vt}, ResultNumInUint64: 1}
+		} else {
+			var kindByte byte
+			switch ht {
+			case -23:
+				kindByte = ValueTypeExnref.Kind()
+			case -16:
+				kindByte = ValueTypeFuncref.Kind()
+			case -17:
+				kindByte = ValueTypeExternref.Kind()
+			case -12:
+				kindByte = ValueTypeNoExnref.Kind()
+			case -13:
+				kindByte = ValueTypeNoFuncref.Kind()
+			case -14:
+				kindByte = ValueTypeNoExternref.Kind()
+			case -15:
+				kindByte = ValueTypeNullref.Kind()
+			case -18:
+				kindByte = ValueTypeAnyref.Kind()
+			case -19:
+				kindByte = ValueTypeEqref.Kind()
+			case -20:
+				kindByte = ValueTypeI31ref.Kind()
+			case -21:
+				kindByte = ValueTypeStructref.Kind()
+			case -22:
+				kindByte = ValueTypeArrayref.Kind()
+			default:
+				return nil, 0, fmt.Errorf("invalid heap type in block: %d", ht)
+			}
+			ret = &FunctionType{Results: []ValueType{AbstractRef(kindByte, false)}, ResultNumInUint64: 1}
 		}
 	default:
 		if err = enabledFeatures.RequireEnabled(api.CoreFeatureMultiValue); err != nil {
