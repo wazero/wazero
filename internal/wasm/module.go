@@ -1144,6 +1144,28 @@ const (
 	ValueTypeFuncref   ValueType = 0x70
 	ValueTypeExternref ValueType = 0x6f
 	ValueTypeExnref    ValueType = 0x69
+
+	// Wasm-3.0 / GC abstract heap-type shorthand bytes. These share the
+	// kind-byte space with the older funcref/externref constants. The
+	// values match the spec encoding (binary section 5.3.1).
+	ValueTypeAnyref    ValueType = 0x6E // (ref null any)
+	ValueTypeEqref     ValueType = 0x6D // (ref null eq)
+	ValueTypeI31ref    ValueType = 0x6C // (ref null i31)
+	ValueTypeStructref ValueType = 0x6B // (ref null struct)
+	ValueTypeArrayref  ValueType = 0x6A // (ref null array)
+	// Bottom abstract types.
+	ValueTypeNullref     ValueType = 0x71 // (ref null none)
+	ValueTypeNoFuncref   ValueType = 0x73 // (ref null nofunc)
+	ValueTypeNoExternref ValueType = 0x72 // (ref null noextern)
+	ValueTypeNoExnref    ValueType = 0x74 // (ref null noexn)
+)
+
+// Bit flags for the wider ValueType uint64 layout. See the layout
+// comment above. The kind byte sits in the low byte; the flags are in
+// bits 8-15; the concrete type index is in bits 32-63.
+const (
+	flagNonNullable ValueType = 1 << 8
+	flagConcreteRef ValueType = 1 << 9
 )
 
 const (
@@ -1163,13 +1185,84 @@ const (
 )
 
 // ValueTypeName is an alias of api.ValueTypeName defined to simplify imports.
+// ValueTypeName returns the spec-text name of a ValueType. For
+// concrete refs it renders as `(ref null N)` / `(ref N)` and for
+// non-nullable abstract refs it renders as `(ref kind)`.
 func ValueTypeName(t ValueType) string {
-	if t == ValueTypeFuncref {
-		return "funcref"
-	} else if t == ValueTypeV128 {
+	if t.IsConcreteRef() {
+		if t.IsNullable() {
+			return fmt.Sprintf("(ref null %d)", t.TypeIndex())
+		}
+		return fmt.Sprintf("(ref %d)", t.TypeIndex())
+	}
+	nullableName := func(kind ValueType) string {
+		switch kind {
+		case ValueTypeFuncref:
+			return "funcref"
+		case ValueTypeExternref:
+			return "externref"
+		case ValueTypeAnyref:
+			return "anyref"
+		case ValueTypeEqref:
+			return "eqref"
+		case ValueTypeI31ref:
+			return "i31ref"
+		case ValueTypeStructref:
+			return "structref"
+		case ValueTypeArrayref:
+			return "arrayref"
+		case ValueTypeExnref:
+			return "exnref"
+		case ValueTypeNullref:
+			return "nullref"
+		case ValueTypeNoFuncref:
+			return "nofuncref"
+		case ValueTypeNoExternref:
+			return "noexternref"
+		case ValueTypeNoExnref:
+			return "noexnref"
+		}
+		return ""
+	}
+	if t.IsRef() {
+		nullable := t.IsNullable()
+		bareName := nullableName(t.AsNullable())
+		if bareName == "" {
+			return "unknown"
+		}
+		if nullable {
+			return bareName
+		}
+		// (ref kind) non-nullable form.
+		switch t.AsNullable() {
+		case ValueTypeFuncref:
+			return "(ref func)"
+		case ValueTypeExternref:
+			return "(ref extern)"
+		case ValueTypeAnyref:
+			return "(ref any)"
+		case ValueTypeEqref:
+			return "(ref eq)"
+		case ValueTypeI31ref:
+			return "(ref i31)"
+		case ValueTypeStructref:
+			return "(ref struct)"
+		case ValueTypeArrayref:
+			return "(ref array)"
+		case ValueTypeExnref:
+			return "(ref exn)"
+		case ValueTypeNullref:
+			return "(ref none)"
+		case ValueTypeNoFuncref:
+			return "(ref nofunc)"
+		case ValueTypeNoExternref:
+			return "(ref noextern)"
+		case ValueTypeNoExnref:
+			return "(ref noexn)"
+		}
+	}
+	if t == ValueTypeV128 {
 		return "v128"
-	} else if t == ValueTypeExnref {
-		return "exnref"
 	}
 	return api.ValueTypeName(api.ValueType(t))
 }
@@ -1178,24 +1271,160 @@ func (v ValueType) Kind() byte {
 	return byte(v)
 }
 
+// IsNullable reports whether v is a nullable reference type. For
+// non-reference types, the result is meaningless (but defaults to
+// true since the flag is clear).
+func (v ValueType) IsNullable() bool { return v&flagNonNullable == 0 }
+
+// IsConcreteRef reports whether v is a concrete reference to a
+// type-section index (set via ConcreteRef).
+func (v ValueType) IsConcreteRef() bool { return v&flagConcreteRef != 0 }
+
+// TypeIndex returns the concrete type-section index (bits 32-63).
+// Meaningful only when IsConcreteRef() is true.
+func (v ValueType) TypeIndex() uint32 { return uint32(v >> 32) }
+
+// AsNonNullable returns a copy of v with the non-nullable flag set.
+func (v ValueType) AsNonNullable() ValueType { return v | flagNonNullable }
+
+// AsNullable returns a copy of v with the non-nullable flag cleared.
+func (v ValueType) AsNullable() ValueType { return v &^ flagNonNullable }
+
+// IsRef reports whether v denotes a reference type — either an abstract
+// heap-type shorthand byte (0x69..0x74) or a concrete-ref encoding.
+func (v ValueType) IsRef() bool {
+	if v.IsConcreteRef() {
+		return true
+	}
+	switch v.Kind() {
+	case byte(ValueTypeFuncref), byte(ValueTypeExternref), byte(ValueTypeExnref),
+		byte(ValueTypeAnyref), byte(ValueTypeEqref), byte(ValueTypeI31ref),
+		byte(ValueTypeStructref), byte(ValueTypeArrayref),
+		byte(ValueTypeNullref), byte(ValueTypeNoFuncref),
+		byte(ValueTypeNoExternref), byte(ValueTypeNoExnref):
+		return true
+	}
+	return false
+}
+
+// IsAbstract reports whether v is a non-concrete reference type
+// (i.e. an abstract heap-type shorthand byte).
+func (v ValueType) IsAbstract() bool {
+	return v.IsRef() && !v.IsConcreteRef()
+}
+
+// ConcreteRef builds a concrete reference value type. The byte stays
+// at ValueTypeFuncref as a placeholder; the concrete typeIdx and
+// nullability are stored in the flag bits.
+func ConcreteRef(typeIdx uint32, nullable bool) ValueType {
+	v := ValueTypeFuncref | flagConcreteRef | ValueType(typeIdx)<<32
+	if !nullable {
+		v |= flagNonNullable
+	}
+	return v
+}
+
+// AbstractRef builds an abstract reference value type from its
+// shorthand byte and nullability flag.
+func AbstractRef(kindByte byte, nullable bool) ValueType {
+	v := ValueType(kindByte)
+	if !nullable {
+		v |= flagNonNullable
+	}
+	return v
+}
+
+// IsAbstractByteSubtypeOf implements the wasm-gc abstract heap-type
+// subtype hierarchy on raw shorthand bytes:
+//
+//	nofunc <: func
+//	noextern <: extern
+//	noexn <: exn
+//	none <: i31 / struct / array
+//	i31 / struct / array <: eq <: any
+//
+// Returns true iff a value typed actual (without considering
+// nullability) can be used where a value typed expected is required.
+func IsAbstractByteSubtypeOf(actual, expected byte) bool {
+	if actual == expected {
+		return true
+	}
+	// Bottoms.
+	if actual == byte(ValueTypeNoFuncref) && expected == byte(ValueTypeFuncref) {
+		return true
+	}
+	if actual == byte(ValueTypeNoExternref) && expected == byte(ValueTypeExternref) {
+		return true
+	}
+	if actual == byte(ValueTypeNoExnref) && expected == byte(ValueTypeExnref) {
+		return true
+	}
+	if actual == byte(ValueTypeNullref) {
+		switch expected {
+		case byte(ValueTypeI31ref), byte(ValueTypeStructref), byte(ValueTypeArrayref),
+			byte(ValueTypeEqref), byte(ValueTypeAnyref):
+			return true
+		}
+	}
+	// any-hierarchy: i31 / struct / array <: eq <: any.
+	switch actual {
+	case byte(ValueTypeI31ref), byte(ValueTypeStructref), byte(ValueTypeArrayref):
+		return expected == byte(ValueTypeEqref) || expected == byte(ValueTypeAnyref)
+	case byte(ValueTypeEqref):
+		return expected == byte(ValueTypeAnyref)
+	}
+	return false
+}
+
 func isReferenceValueType(vt ValueType) bool {
-	return vt == ValueTypeExternref || vt == ValueTypeFuncref || vt == ValueTypeExnref
+	return vt.IsRef()
 }
 
 // isRefSubtypeOf returns true if actual is assignment-compatible with expected.
 // Currently, non-nullable ref types are desugared to nullable at decode time,
 // so this reduces to equality. When non-nullable ref types are properly supported,
 // this function should allow non-nullable to match nullable and vice versa.
+// isRefSubtypeOf returns true if actual is assignment-compatible with
+// expected. Wasm-3.0 subtype relation: a non-nullable ref matches a
+// nullable ref of the same heap kind, but not vice versa. For concrete
+// refs we accept structural equality only; richer concrete-vs-concrete
+// subtype checks (via Store.IsSubtype) are wired through the validator
+// callers that have access to the module's Store.
 func isRefSubtypeOf(actual, expected ValueType) bool {
-	return actual == expected
+	if actual == expected {
+		return true
+	}
+	if !actual.IsRef() || !expected.IsRef() {
+		return false
+	}
+	// Nullability: a non-nullable ref can flow into a nullable slot,
+	// but not vice versa.
+	if !expected.IsNullable() && actual.IsNullable() {
+		return false
+	}
+	// Concrete (ref $i) and abstract refs: a concrete ref can flow
+	// into an abstract slot in the appropriate hierarchy.
+	if actual.IsConcreteRef() && expected.IsAbstract() {
+		// Without the module's type section here, we can't classify
+		// the concrete type's form. Validator callers that need this
+		// must use IsValueTypeSubtypeOf with a *Module instead.
+		return expected.Kind() == byte(ValueTypeFuncref) ||
+			expected.Kind() == byte(ValueTypeAnyref)
+	}
+	if actual.IsConcreteRef() && expected.IsConcreteRef() {
+		return actual.TypeIndex() == expected.TypeIndex()
+	}
+	if actual.IsAbstract() && expected.IsAbstract() {
+		return IsAbstractByteSubtypeOf(actual.Kind(), expected.Kind())
+	}
+	return false
 }
 
-// isStrictRefSubtypeOf returns true if actual is a strict subtype of expected.
-// Currently, non-nullable ref types are desugared to nullable at decode time,
-// so this reduces to equality. When non-nullable ref types are properly supported,
-// non-nullable should be a subtype of nullable, but NOT vice versa.
+// isStrictRefSubtypeOf is retained for backwards compatibility with
+// callers that previously distinguished strict from lax matching.
+// Currently identical to isRefSubtypeOf.
 func isStrictRefSubtypeOf(actual, expected ValueType) bool {
-	return actual == expected
+	return isRefSubtypeOf(actual, expected)
 }
 
 // ExternType is an alias of api.ExternType defined to simplify imports.
