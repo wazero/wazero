@@ -1724,6 +1724,22 @@ operatorSwitch:
 		c.emit(
 			newOperationEqz(unsignedInt64),
 		)
+	case wasm.OpcodeRefEq:
+		c.emit(newOperationRefEq())
+	case wasm.OpcodeGCPrefix:
+		// applyToStack already consumed the LEB sub-opcode and stored it
+		// in `index`; c.pc points at the last byte of the LEB encoding.
+		switch index {
+		case wasm.OpcodeGCRefI31:
+			c.emit(newOperationRefI31())
+		case wasm.OpcodeGCI31GetS:
+			c.emit(newOperationI31GetS())
+		case wasm.OpcodeGCI31GetU:
+			c.emit(newOperationI31GetU())
+		default:
+			return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter",
+				wasm.GCInstructionName(index), index)
+		}
 	case wasm.OpcodeTableGet:
 		c.pc++
 		tableIndex, num, err := leb128.LoadUint32(c.body[c.pc:])
@@ -3593,7 +3609,11 @@ func (c *compiler) applyToStack(opcode wasm.Opcode) (index uint32, err error) {
 		wasm.OpcodeTailCallReturnCall,
 		wasm.OpcodeTailCallReturnCallIndirect,
 		// exception handling - throw reads tag index
-		wasm.OpcodeThrow:
+		wasm.OpcodeThrow,
+		// wasm-gc: the 0xfb prefix is followed by a uint32 LEB
+		// sub-opcode; we pass that sub-opcode as the index so the
+		// signature dispatch picks the right pop/push pattern.
+		wasm.OpcodeGCPrefix:
 		// Assumes that we are at the opcode now so skip it before read immediates.
 		v, num, err := leb128.LoadUint32(c.body[c.pc+1:])
 		if err != nil {

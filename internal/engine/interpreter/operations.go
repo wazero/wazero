@@ -453,6 +453,14 @@ func (o operationKind) String() (ret string) {
 		ret = "operationKindThrow"
 	case operationKindThrowRef:
 		ret = "operationKindThrowRef"
+	case operationKindRefI31:
+		ret = "operationKindRefI31"
+	case operationKindI31GetS:
+		ret = "operationKindI31GetS"
+	case operationKindI31GetU:
+		ret = "operationKindI31GetU"
+	case operationKindRefEq:
+		ret = "operationKindRefEq"
 	default:
 		panic(fmt.Errorf("unknown operation %d", o))
 	}
@@ -785,6 +793,15 @@ const (
 	operationKindThrow
 	// operationKindThrowRef is the Kind for throw_ref instruction.
 	operationKindThrowRef
+
+	// operationKindRefI31 is the Kind for ref.i31: pop i32, push *I31Ref.
+	operationKindRefI31
+	// operationKindI31GetS is the Kind for i31.get_s: pop *I31Ref, push sign-extended i32.
+	operationKindI31GetS
+	// operationKindI31GetU is the Kind for i31.get_u: pop *I31Ref, push zero-extended i32.
+	operationKindI31GetU
+	// operationKindRefEq is the Kind for ref.eq: pop two refs, push i32 (1 if equal else 0).
+	operationKindRefEq
 
 	// operationKindEnd is always placed at the bottom of this iota definition to be used in the test.
 	operationKindEnd
@@ -1125,6 +1142,9 @@ func (o unionOperation) String() string {
 		return fmt.Sprintf("%s %d", o.Kind, o.U1)
 
 	case operationKindThrowRef:
+		return o.Kind.String()
+
+	case operationKindRefI31, operationKindI31GetS, operationKindI31GetU, operationKindRefEq:
 		return o.Kind.String()
 
 	default:
@@ -2900,4 +2920,24 @@ type pendingCatchClause struct {
 	tagIndex         uint32
 	targetLabel      label // unresolved label, resolved in lowerIR
 	targetStackDepth int   // = targetFrame.originalStackLenWithoutParamUint64
+}
+
+// newOperationRefI31 constructs the operation for ref.i31.
+func newOperationRefI31() unionOperation {
+	return unionOperation{Kind: operationKindRefI31}
+}
+
+// newOperationI31GetS constructs the operation for i31.get_s.
+func newOperationI31GetS() unionOperation {
+	return unionOperation{Kind: operationKindI31GetS}
+}
+
+// newOperationI31GetU constructs the operation for i31.get_u.
+func newOperationI31GetU() unionOperation {
+	return unionOperation{Kind: operationKindI31GetU}
+}
+
+// newOperationRefEq constructs the operation for ref.eq.
+func newOperationRefEq() unionOperation {
+	return unionOperation{Kind: operationKindRefEq}
 }

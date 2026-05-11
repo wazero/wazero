@@ -182,6 +182,21 @@ type callEngine struct {
 
 	// stackiterator for Listeners to walk frames and stack.
 	stackIterator stackIterator
+
+	// gcKeepAlive holds Go pointers to wasm-gc heap objects (I31Ref,
+	// WasmStruct, WasmArray) that have been allocated during this call.
+	// The operand-stack slot for a GC ref carries a
+	// uintptr(unsafe.Pointer(...)) cast — Go's GC cannot trace those
+	// uintptrs, so without this keepalive list the pointed-to objects
+	// would be eligible for collection while still live on the operand
+	// stack.
+	gcKeepAlive []any
+}
+
+// keepAlive records v on the gcKeepAlive list so Go's GC traces it for
+// the lifetime of the call.
+func (ce *callEngine) keepAlive(v any) {
+	ce.gcKeepAlive = append(ce.gcKeepAlive, v)
 }
 
 // matchCatchClause checks whether a single catch clause matches the given exception.
@@ -4556,6 +4571,56 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				continue
 			}
 			panic(&thrownException{exception: exn})
+
+		case operationKindRefI31:
+			raw := ce.popValue()
+			// ref.i31 narrows the low 31 bits and produces a non-null i31ref.
+			// The tagged-uintptr representation lets ref.eq distinguish i31
+			// slots from heap-pointer slots at runtime.
+			ce.pushValue(uint64(wasm.PackI31(uint32(raw))))
+			frame.pc++
+
+		case operationKindI31GetS:
+			v := ce.popValue()
+			if v == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			if wasm.IsTaggedI31(uintptr(v)) {
+				ce.pushValue(uint64(uint32(wasm.UnpackI31Signed(uintptr(v)))))
+			} else {
+				i31 := *(**wasm.I31Ref)(unsafe.Pointer(&v))
+				ce.pushValue(uint64(uint32(i31.SignedI32())))
+			}
+			frame.pc++
+
+		case operationKindI31GetU:
+			v := ce.popValue()
+			if v == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			if wasm.IsTaggedI31(uintptr(v)) {
+				ce.pushValue(uint64(wasm.UnpackI31Unsigned(uintptr(v))))
+			} else {
+				i31 := *(**wasm.I31Ref)(unsafe.Pointer(&v))
+				ce.pushValue(uint64(i31.UnsignedI32()))
+			}
+			frame.pc++
+
+		case operationKindRefEq:
+			// ref.eq: bit-equality on the operand-stack slots. The
+			// tagged-uintptr i31 encoding ensures that two i31 refs
+			// holding the same numeric value also share the same
+			// bit pattern, so the bit comparison delivers
+			// value-equality for i31 pairs and pointer-equality for
+			// heap-pointer pairs simultaneously.
+			b := ce.popValue()
+			a := ce.popValue()
+			if a == b {
+				ce.pushValue(1)
+			} else {
+				ce.pushValue(0)
+			}
+			frame.pc++
 
 		case operationKindTailCallReturnCall:
 			f := &functions[op.U1]

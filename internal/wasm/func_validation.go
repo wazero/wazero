@@ -2124,22 +2124,43 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			valueTypeStack.unreachable()
 		} else if op == OpcodeNop {
 		} else if op == OpcodeGCPrefix {
-			// WebAssembly GC instructions (struct.*, array.*, ref.test, ref.cast,
-			// br_on_cast, i31.*, etc.) are recognized but not yet validated or
-			// executed by the interpreter. Produce an actionable error rather
-			// than the cryptic "invalid instruction 0xfb".
+			// WebAssembly GC sub-opcodes are encoded as a uint32 LEB after
+			// the 0xfb prefix. Validate the supported ones; the rest still
+			// surface as an actionable error.
 			if pc+1 >= uint64(len(body)) {
 				return fmt.Errorf("truncated GC instruction at pc=%#x", pc)
 			}
-			sub, _, lebErr := leb128.LoadUint32(body[pc+1:])
+			sub, subN, lebErr := leb128.LoadUint32(body[pc+1:])
 			if lebErr != nil {
 				return fmt.Errorf("cannot read GC sub-opcode at pc=%#x: %v", pc, lebErr)
 			}
-			if name := GCInstructionName(sub); name != "" {
-				return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter", name, sub)
+			pc += subN
+			switch sub {
+			case OpcodeGCRefI31:
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("cannot pop the operand for ref.i31: %v", err)
+				}
+				valueTypeStack.push(ValueTypeI31ref)
+			case OpcodeGCI31GetS, OpcodeGCI31GetU:
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI31ref); err != nil {
+					return fmt.Errorf("cannot pop the operand for %s: %v", GCInstructionName(sub), err)
+				}
+				valueTypeStack.push(ValueTypeI32)
+			default:
+				if name := GCInstructionName(sub); name != "" {
+					return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter", name, sub)
+				}
+				return fmt.Errorf("unknown GC sub-opcode 0xfb 0x%x", sub)
 			}
-			return fmt.Errorf("unknown GC sub-opcode 0xfb 0x%x", sub)
-		} else if op == OpcodeRefEq || op == OpcodeRefAsNonNull ||
+		} else if op == OpcodeRefEq {
+			if err := valueTypeStack.popReferenceType(); err != nil {
+				return fmt.Errorf("cannot pop the second operand for ref.eq: %v", err)
+			}
+			if err := valueTypeStack.popReferenceType(); err != nil {
+				return fmt.Errorf("cannot pop the first operand for ref.eq: %v", err)
+			}
+			valueTypeStack.push(ValueTypeI32)
+		} else if op == OpcodeRefAsNonNull ||
 			op == OpcodeBrOnNull || op == OpcodeBrOnNonNull ||
 			op == OpcodeCallRef || op == OpcodeReturnCallRef {
 			// Typed function-reference opcodes (gated on CoreFeaturesGC).
@@ -2302,6 +2323,24 @@ func (s *valueTypeStack) popAndVerifyType(expected ValueType) error {
 	}
 	if have != expected && have != valueTypeUnknown && expected != valueTypeUnknown && !isRefSubtypeOf(have, expected) {
 		return fmt.Errorf("type mismatch: expected %s, but was %s", ValueTypeName(expected), ValueTypeName(have))
+	}
+	return nil
+}
+
+// popReferenceType pops a value from the stack and verifies it is some
+// reference type (funcref / externref / exnref / i31ref / anyref / etc.,
+// or valueTypeUnknown). Used by polymorphic ref-typed instructions like
+// ref.eq where the operands can be any pair of refs.
+func (s *valueTypeStack) popReferenceType() error {
+	have, _, ok := s.tryPop()
+	if !ok {
+		return fmt.Errorf("reference type missing")
+	}
+	if have == valueTypeUnknown {
+		return nil
+	}
+	if !isReferenceValueType(have) {
+		return fmt.Errorf("type mismatch: expected reference type, but was %s", ValueTypeName(have))
 	}
 	return nil
 }
