@@ -2123,6 +2123,27 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			// unreachable instruction is stack-polymorphic.
 			valueTypeStack.unreachable()
 		} else if op == OpcodeNop {
+		} else if op == OpcodeGCPrefix {
+			// WebAssembly GC instructions (struct.*, array.*, ref.test, ref.cast,
+			// br_on_cast, i31.*, etc.) are recognized but not yet validated or
+			// executed by the interpreter. Produce an actionable error rather
+			// than the cryptic "invalid instruction 0xfb".
+			if pc+1 >= uint64(len(body)) {
+				return fmt.Errorf("truncated GC instruction at pc=%#x", pc)
+			}
+			sub, _, lebErr := leb128.LoadUint32(body[pc+1:])
+			if lebErr != nil {
+				return fmt.Errorf("cannot read GC sub-opcode at pc=%#x: %v", pc, lebErr)
+			}
+			if name := GCInstructionName(sub); name != "" {
+				return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter", name, sub)
+			}
+			return fmt.Errorf("unknown GC sub-opcode 0xfb 0x%x", sub)
+		} else if op == OpcodeRefEq || op == OpcodeRefAsNonNull ||
+			op == OpcodeBrOnNull || op == OpcodeBrOnNonNull ||
+			op == OpcodeCallRef || op == OpcodeReturnCallRef {
+			// Typed function-reference opcodes (gated on CoreFeaturesGC).
+			return fmt.Errorf("typed function-reference instruction %s (0x%x) is not yet supported by the interpreter", InstructionName(op), op)
 		} else if enabledFeatures.IsEnabled(experimental.CoreFeaturesExceptionHandling) &&
 			(op == OpcodeLegacyTry || op == OpcodeLegacyCatch || op == OpcodeLegacyRethrow ||
 				op == OpcodeLegacyDelegate || op == OpcodeLegacyCatchAll) {

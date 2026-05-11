@@ -274,6 +274,25 @@ const (
 	// Currently, this is only supported in the constant expression in element segments.
 	OpcodeRefFunc = 0xd2
 
+	// Below are typed function references (now part of wasm-gc / Wasm 3.0).
+	// Toggled with experimental.CoreFeaturesGC.
+
+	// OpcodeRefEq pops two reference values and pushes 1 if they are equal, 0 otherwise.
+	OpcodeRefEq Opcode = 0xd3
+	// OpcodeRefAsNonNull pops a reference; traps if null, otherwise pushes the same reference as non-nullable.
+	OpcodeRefAsNonNull Opcode = 0xd4
+	// OpcodeBrOnNull pops a reference and branches to the labelidx immediate if it is null;
+	// otherwise pushes the (non-null) reference back and falls through.
+	OpcodeBrOnNull Opcode = 0xd5
+	// OpcodeBrOnNonNull pops a reference and branches to the labelidx immediate if it is
+	// non-null (passing the reference along to the target); otherwise falls through.
+	OpcodeBrOnNonNull Opcode = 0xd6
+
+	// OpcodeCallRef calls a function reference. Immediate: type index.
+	OpcodeCallRef Opcode = 0x14
+	// OpcodeReturnCallRef tail-calls a function reference. Immediate: type index.
+	OpcodeReturnCallRef Opcode = 0x15
+
 	// Below are toggled with CoreFeatureSignExtensionOps
 
 	// OpcodeI32Extend8S extends a signed 8-bit integer to a 32-bit integer.
@@ -308,6 +327,11 @@ const (
 	// OpcodeAtomicPrefix is the prefix of all atomic instructions introduced in
 	// CoreFeatureThreads.
 	OpcodeAtomicPrefix Opcode = 0xfe
+
+	// OpcodeGCPrefix is the prefix of all WebAssembly GC instructions.
+	// Toggled with experimental.CoreFeaturesGC.
+	// The sub-opcode is encoded as a uint32 LEB128 (not a single byte).
+	OpcodeGCPrefix Opcode = 0xfb
 )
 
 // OpcodeMisc represents opcodes of the miscellaneous operations.
@@ -811,6 +835,57 @@ const (
 	OpcodeTailCallReturnCallIndirect OpcodeTailCall = 0x13
 )
 
+// OpcodeGC represents the sub-opcode of an instruction prefixed by
+// OpcodeGCPrefix (0xfb). These are the WebAssembly GC instructions,
+// toggled with experimental.CoreFeaturesGC.
+//
+// Sub-opcodes are encoded as uint32 LEB128 in the binary format. The
+// underlying type is uint32 (not byte) to reflect the spec, even though
+// all currently defined sub-opcodes (0x00-0x1E) fit in a single byte.
+type OpcodeGC = uint32
+
+const (
+	OpcodeGCStructNew         OpcodeGC = 0x00
+	OpcodeGCStructNewDefault  OpcodeGC = 0x01
+	OpcodeGCStructGet         OpcodeGC = 0x02
+	OpcodeGCStructGetS        OpcodeGC = 0x03
+	OpcodeGCStructGetU        OpcodeGC = 0x04
+	OpcodeGCStructSet         OpcodeGC = 0x05
+	OpcodeGCArrayNew          OpcodeGC = 0x06
+	OpcodeGCArrayNewDefault   OpcodeGC = 0x07
+	OpcodeGCArrayNewFixed     OpcodeGC = 0x08
+	OpcodeGCArrayNewData      OpcodeGC = 0x09
+	OpcodeGCArrayNewElem      OpcodeGC = 0x0a
+	OpcodeGCArrayGet          OpcodeGC = 0x0b
+	OpcodeGCArrayGetS         OpcodeGC = 0x0c
+	OpcodeGCArrayGetU         OpcodeGC = 0x0d
+	OpcodeGCArraySet          OpcodeGC = 0x0e
+	OpcodeGCArrayLen          OpcodeGC = 0x0f
+	OpcodeGCArrayFill         OpcodeGC = 0x10
+	OpcodeGCArrayCopy         OpcodeGC = 0x11
+	OpcodeGCArrayInitData     OpcodeGC = 0x12
+	OpcodeGCArrayInitElem     OpcodeGC = 0x13
+	OpcodeGCRefTest           OpcodeGC = 0x14 // (ref ht)
+	OpcodeGCRefTestNull       OpcodeGC = 0x15 // (ref null ht)
+	OpcodeGCRefCast           OpcodeGC = 0x16 // (ref ht)
+	OpcodeGCRefCastNull       OpcodeGC = 0x17 // (ref null ht)
+	OpcodeGCBrOnCast          OpcodeGC = 0x18
+	OpcodeGCBrOnCastFail      OpcodeGC = 0x19
+	OpcodeGCAnyConvertExtern  OpcodeGC = 0x1a
+	OpcodeGCExternConvertAny  OpcodeGC = 0x1b
+	OpcodeGCRefI31            OpcodeGC = 0x1c
+	OpcodeGCI31GetS           OpcodeGC = 0x1d
+	OpcodeGCI31GetU           OpcodeGC = 0x1e
+)
+
+// BrOnCast flag bits, the u8 immediate to br_on_cast and br_on_cast_fail.
+const (
+	// BrOnCastFlagSrcNullable indicates the source heap-type is nullable.
+	BrOnCastFlagSrcNullable byte = 0x01
+	// BrOnCastFlagDstNullable indicates the target heap-type is nullable.
+	BrOnCastFlagDstNullable byte = 0x02
+)
+
 const (
 	OpcodeUnreachableName       = "unreachable"
 	OpcodeNopName               = "nop"
@@ -989,6 +1064,14 @@ const (
 	OpcodeRefNullName   = "ref.null"
 	OpcodeRefIsNullName = "ref.is_null"
 	OpcodeRefFuncName   = "ref.func"
+
+	// Typed function references (wasm-gc).
+	OpcodeRefEqName         = "ref.eq"
+	OpcodeRefAsNonNullName  = "ref.as_non_null"
+	OpcodeBrOnNullName      = "br_on_null"
+	OpcodeBrOnNonNullName   = "br_on_non_null"
+	OpcodeCallRefName       = "call_ref"
+	OpcodeReturnCallRefName = "return_call_ref"
 
 	OpcodeTableGetName = "table.get"
 	OpcodeTableSetName = "table.set"
@@ -1187,6 +1270,13 @@ var instructionNames = [256]string{
 	OpcodeRefNull:   OpcodeRefNullName,
 	OpcodeRefIsNull: OpcodeRefIsNullName,
 	OpcodeRefFunc:   OpcodeRefFuncName,
+
+	OpcodeRefEq:         OpcodeRefEqName,
+	OpcodeRefAsNonNull:  OpcodeRefAsNonNullName,
+	OpcodeBrOnNull:      OpcodeBrOnNullName,
+	OpcodeBrOnNonNull:   OpcodeBrOnNonNullName,
+	OpcodeCallRef:       OpcodeCallRefName,
+	OpcodeReturnCallRef: OpcodeReturnCallRefName,
 
 	OpcodeTableGet: OpcodeTableGetName,
 	OpcodeTableSet: OpcodeTableSetName,
@@ -1915,6 +2005,82 @@ var tailCallInstructionName = map[OpcodeTailCall]string{
 // TailCallInstructionName returns the instruction name corresponding to the tail call Opcode.
 func TailCallInstructionName(oc OpcodeTailCall) (ret string) {
 	return tailCallInstructionName[oc]
+}
+
+const (
+	OpcodeGCStructNewName        = "struct.new"
+	OpcodeGCStructNewDefaultName = "struct.new_default"
+	OpcodeGCStructGetName        = "struct.get"
+	OpcodeGCStructGetSName       = "struct.get_s"
+	OpcodeGCStructGetUName       = "struct.get_u"
+	OpcodeGCStructSetName        = "struct.set"
+	OpcodeGCArrayNewName         = "array.new"
+	OpcodeGCArrayNewDefaultName  = "array.new_default"
+	OpcodeGCArrayNewFixedName    = "array.new_fixed"
+	OpcodeGCArrayNewDataName     = "array.new_data"
+	OpcodeGCArrayNewElemName     = "array.new_elem"
+	OpcodeGCArrayGetName         = "array.get"
+	OpcodeGCArrayGetSName        = "array.get_s"
+	OpcodeGCArrayGetUName        = "array.get_u"
+	OpcodeGCArraySetName         = "array.set"
+	OpcodeGCArrayLenName         = "array.len"
+	OpcodeGCArrayFillName        = "array.fill"
+	OpcodeGCArrayCopyName        = "array.copy"
+	OpcodeGCArrayInitDataName    = "array.init_data"
+	OpcodeGCArrayInitElemName    = "array.init_elem"
+	OpcodeGCRefTestName          = "ref.test"
+	OpcodeGCRefTestNullName      = "ref.test null"
+	OpcodeGCRefCastName          = "ref.cast"
+	OpcodeGCRefCastNullName      = "ref.cast null"
+	OpcodeGCBrOnCastName         = "br_on_cast"
+	OpcodeGCBrOnCastFailName     = "br_on_cast_fail"
+	OpcodeGCAnyConvertExternName = "any.convert_extern"
+	OpcodeGCExternConvertAnyName = "extern.convert_any"
+	OpcodeGCRefI31Name           = "ref.i31"
+	OpcodeGCI31GetSName          = "i31.get_s"
+	OpcodeGCI31GetUName          = "i31.get_u"
+)
+
+var gcInstructionName = map[OpcodeGC]string{
+	OpcodeGCStructNew:        OpcodeGCStructNewName,
+	OpcodeGCStructNewDefault: OpcodeGCStructNewDefaultName,
+	OpcodeGCStructGet:        OpcodeGCStructGetName,
+	OpcodeGCStructGetS:       OpcodeGCStructGetSName,
+	OpcodeGCStructGetU:       OpcodeGCStructGetUName,
+	OpcodeGCStructSet:        OpcodeGCStructSetName,
+	OpcodeGCArrayNew:         OpcodeGCArrayNewName,
+	OpcodeGCArrayNewDefault:  OpcodeGCArrayNewDefaultName,
+	OpcodeGCArrayNewFixed:    OpcodeGCArrayNewFixedName,
+	OpcodeGCArrayNewData:     OpcodeGCArrayNewDataName,
+	OpcodeGCArrayNewElem:     OpcodeGCArrayNewElemName,
+	OpcodeGCArrayGet:         OpcodeGCArrayGetName,
+	OpcodeGCArrayGetS:        OpcodeGCArrayGetSName,
+	OpcodeGCArrayGetU:        OpcodeGCArrayGetUName,
+	OpcodeGCArraySet:         OpcodeGCArraySetName,
+	OpcodeGCArrayLen:         OpcodeGCArrayLenName,
+	OpcodeGCArrayFill:        OpcodeGCArrayFillName,
+	OpcodeGCArrayCopy:        OpcodeGCArrayCopyName,
+	OpcodeGCArrayInitData:    OpcodeGCArrayInitDataName,
+	OpcodeGCArrayInitElem:    OpcodeGCArrayInitElemName,
+	OpcodeGCRefTest:          OpcodeGCRefTestName,
+	OpcodeGCRefTestNull:      OpcodeGCRefTestNullName,
+	OpcodeGCRefCast:          OpcodeGCRefCastName,
+	OpcodeGCRefCastNull:      OpcodeGCRefCastNullName,
+	OpcodeGCBrOnCast:         OpcodeGCBrOnCastName,
+	OpcodeGCBrOnCastFail:     OpcodeGCBrOnCastFailName,
+	OpcodeGCAnyConvertExtern: OpcodeGCAnyConvertExternName,
+	OpcodeGCExternConvertAny: OpcodeGCExternConvertAnyName,
+	OpcodeGCRefI31:           OpcodeGCRefI31Name,
+	OpcodeGCI31GetS:          OpcodeGCI31GetSName,
+	OpcodeGCI31GetU:          OpcodeGCI31GetUName,
+}
+
+// GCInstructionName returns the spec-format text name of a GC sub-opcode.
+func GCInstructionName(oc OpcodeGC) string {
+	if n, ok := gcInstructionName[oc]; ok {
+		return n
+	}
+	return ""
 }
 
 // Catch clause kinds used within try_table encoding.
