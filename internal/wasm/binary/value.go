@@ -25,7 +25,11 @@ func decodeValueTypes(r *bytes.Reader, num uint32) ([]wasm.ValueType, error) {
 		switch b {
 		case wasm.ValueTypeI32.Kind(), wasm.ValueTypeF32.Kind(), wasm.ValueTypeI64.Kind(), wasm.ValueTypeF64.Kind(),
 			wasm.ValueTypeExternref.Kind(), wasm.ValueTypeFuncref.Kind(), wasm.ValueTypeV128.Kind(),
-			wasm.ValueTypeExnref.Kind():
+			wasm.ValueTypeExnref.Kind(),
+			// wasm-gc nullable abstract heap-type shorthand bytes.
+			wasm.ValueTypeAnyref.Kind(), wasm.ValueTypeEqref.Kind(), wasm.ValueTypeI31ref.Kind(),
+			wasm.ValueTypeStructref.Kind(), wasm.ValueTypeArrayref.Kind(), wasm.ValueTypeNullref.Kind(),
+			wasm.ValueTypeNoFuncref.Kind(), wasm.ValueTypeNoExternref.Kind(), wasm.ValueTypeNoExnref.Kind():
 			ret = append(ret, wasm.ValueType(b))
 		case wasm.RefPrefixNullable, wasm.RefPrefixNonNullable:
 			ht, _, err := leb128.DecodeInt33AsInt64(r)

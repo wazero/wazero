@@ -104,18 +104,18 @@ func TestDecodeFunctionType_Errors(t *testing.T) {
 	}{
 		{
 			name:        "undefined param no result",
-			input:       []byte{0x60, 1, 0x6e, 0},
-			expectedErr: "could not read parameter types: invalid value type: 110",
+			input:       []byte{0x60, 1, 0x68, 0},
+			expectedErr: "could not read parameter types: invalid value type: 104",
 		},
 		{
 			name:        "no param undefined result",
-			input:       []byte{0x60, 0, 1, 0x6e},
-			expectedErr: "could not read result types: invalid value type: 110",
+			input:       []byte{0x60, 0, 1, 0x68},
+			expectedErr: "could not read result types: invalid value type: 104",
 		},
 		{
 			name:        "undefined param undefined result",
-			input:       []byte{0x60, 1, 0x6e, 1, 0x6e},
-			expectedErr: "could not read parameter types: invalid value type: 110",
+			input:       []byte{0x60, 1, 0x68, 1, 0x68},
+			expectedErr: "could not read parameter types: invalid value type: 104",
 		},
 		{
 			name:        "no param two results - multi-value not enabled",

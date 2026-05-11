@@ -274,6 +274,10 @@ func (m *Module) Validate(enabledFeatures api.CoreFeatures) error {
 		tp.CacheNumInUint64()
 	}
 
+	if err := m.validateTypeSection(enabledFeatures); err != nil {
+		return err
+	}
+
 	if err := m.validateStartSection(); err != nil {
 		return err
 	}
@@ -327,6 +331,46 @@ func (m *Module) validateTagSection() error {
 		ft := &m.TypeSection[tag.Type]
 		if len(ft.Results) > 0 {
 			return fmt.Errorf("tag[%d] type must have empty results, got %v", i, ft.Results)
+		}
+	}
+	return nil
+}
+
+// validateTypeSection rejects GC composite types (struct, array) and explicit
+// sub-typing (SuperTypeIndex) unless experimental.CoreFeaturesGC is enabled.
+// The bit value is matched against api.CoreFeatureSIMD<<5 directly because
+// internal/wasm cannot import experimental without a circular dependency;
+// experimental.CoreFeaturesGC is constructed the same way.
+func (m *Module) validateTypeSection(enabledFeatures api.CoreFeatures) error {
+	const coreFeaturesGC = api.CoreFeatureSIMD << 5
+	gcEnabled := enabledFeatures.IsEnabled(coreFeaturesGC)
+	numTypes := Index(len(m.TypeSection))
+	for i := range m.TypeSection {
+		t := &m.TypeSection[i]
+		switch t.Form {
+		case CompositeFormFunc:
+		case CompositeFormStruct, CompositeFormArray:
+			if !gcEnabled {
+				return fmt.Errorf("type[%d] %s is invalid as feature \"gc\" is disabled", i, t.Form)
+			}
+		default:
+			return fmt.Errorf("type[%d] unknown composite form %d", i, t.Form)
+		}
+		if t.SuperTypeIndex != nil {
+			if !gcEnabled {
+				return fmt.Errorf("type[%d] supertype is invalid as feature \"gc\" is disabled", i)
+			}
+			if *t.SuperTypeIndex >= numTypes {
+				return fmt.Errorf("type[%d] supertype index %d out of range", i, *t.SuperTypeIndex)
+			}
+			sup := &m.TypeSection[*t.SuperTypeIndex]
+			if sup.Final {
+				return fmt.Errorf("type[%d] supertype %d is final", i, *t.SuperTypeIndex)
+			}
+			if sup.Form != t.Form {
+				return fmt.Errorf("type[%d] form %s does not match supertype %d form %s",
+					i, t.Form, *t.SuperTypeIndex, sup.Form)
+			}
 		}
 	}
 	return nil
@@ -753,6 +797,32 @@ type FunctionType struct {
 
 	// RecGroupPosition is the 0-based position of this type within its rec group.
 	RecGroupPosition int
+
+	// Form discriminates whether this entry defines a function, struct, or
+	// array type. Default zero value is CompositeFormFunc, so existing
+	// code that constructs FunctionType{Params: ..., Results: ...} keeps
+	// its function-type semantics without change.
+	Form CompositeForm
+
+	// Fields lists the fields of a struct type, in declaration order.
+	// Used only when Form == CompositeFormStruct.
+	Fields []FieldType
+
+	// ArrayField is the single element field type of an array type.
+	// Used only when Form == CompositeFormArray.
+	ArrayField FieldType
+
+	// SuperTypeIndex is the type-section index of an explicitly declared
+	// supertype, or nil for top-level (no supertype) types. The MVP allows
+	// at most one supertype.
+	SuperTypeIndex *Index
+
+	// Final indicates whether this type can be a supertype of others.
+	// The shorthand 0x60 / 0x5F / 0x5E forms and the explicit 0x4F (sub
+	// final) form set this to true; the 0x50 (sub) form sets it to false.
+	// Default zero value (false) is benign for non-GC modules because they
+	// never declare subtypes.
+	Final bool
 }
 
 func (f *FunctionType) CacheNumInUint64() {
@@ -795,25 +865,76 @@ func (f *FunctionType) key() string {
 		return f.string
 	}
 	var ret string
-	for _, b := range f.Params {
-		ret += ValueTypeName(b)
+	switch f.Form {
+	case CompositeFormStruct:
+		ret = structKey(f.Fields)
+	case CompositeFormArray:
+		ret = arrayKey(f.ArrayField)
+	default:
+		ret = funcKey(f.Params, f.Results)
 	}
-	if len(f.Params) == 0 {
-		ret += "v_"
-	} else {
-		ret += "_"
+	if f.SuperTypeIndex != nil {
+		if f.RecGroupSize > 1 {
+			groupStart := uint32(0)
+			if f.RecGroupPosition >= 0 {
+				// The absolute module-level start of the rec group is
+				// unknown here, so emit a rec-relative reference when the
+				// index plausibly falls inside the group. This is a best
+				// effort: the strict iso-recursive tying lands in the
+				// validator path that has the module context.
+				ret += fmt.Sprintf("|sup=%d", *f.SuperTypeIndex)
+			}
+			_ = groupStart
+		} else {
+			ret += fmt.Sprintf("|sup=%d", *f.SuperTypeIndex)
+		}
 	}
-	for _, b := range f.Results {
-		ret += ValueTypeName(b)
-	}
-	if len(f.Results) == 0 {
-		ret += "v"
+	if f.Final {
+		ret += "|final"
 	}
 	if f.RecGroupSize > 1 {
 		ret += fmt.Sprintf("|rec%d/%d", f.RecGroupPosition, f.RecGroupSize)
 	}
 	f.string = ret
 	return ret
+}
+
+// funcKey is the legacy function-type key shape, e.g. "v_i32" or "i32i32_i32".
+func funcKey(params, results []ValueType) string {
+	var ret string
+	for _, b := range params {
+		ret += ValueTypeName(b)
+	}
+	if len(params) == 0 {
+		ret += "v_"
+	} else {
+		ret += "_"
+	}
+	for _, b := range results {
+		ret += ValueTypeName(b)
+	}
+	if len(results) == 0 {
+		ret += "v"
+	}
+	return ret
+}
+
+// structKey produces a canonical key for a struct type, e.g.
+// "struct{i32,mut i64,i8}".
+func structKey(fields []FieldType) string {
+	out := "struct{"
+	for i, f := range fields {
+		if i > 0 {
+			out += ","
+		}
+		out += f.String()
+	}
+	return out + "}"
+}
+
+// arrayKey produces a canonical key for an array type, e.g. "array(mut i32)".
+func arrayKey(elem FieldType) string {
+	return "array(" + elem.String() + ")"
 }
 
 // String implements fmt.Stringer.
