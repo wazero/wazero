@@ -180,3 +180,67 @@ func TestGC_I31RefEq(t *testing.T) {
 	})
 }
 
+func TestGC_RefAsNonNull(t *testing.T) {
+	ctx := context.Background()
+
+	// Build a module with two exported functions:
+	//   passthrough(i32) -> i32  : ref.i31(local.get 0); ref.as_non_null; i31.get_s
+	//   trapOnNull() -> i32      : ref.null any; ref.as_non_null; i31.get_s
+	passBody := []byte{
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefI31),
+		wasm.OpcodeRefAsNonNull,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCI31GetS),
+		wasm.OpcodeEnd,
+	}
+	// ref.null with heap type "any" (0x6E); ref.as_non_null traps on the
+	// null reference; the i32.const + drop branch never executes but is
+	// required to satisfy validation that the function returns i32.
+	trapBody := []byte{
+		wasm.OpcodeRefNull, 0x6E,
+		wasm.OpcodeRefAsNonNull,
+		wasm.OpcodeDrop,
+		wasm.OpcodeI32Const, 0x00,
+		wasm.OpcodeEnd,
+	}
+
+	mod := &wasm.Module{
+		TypeSection: []wasm.FunctionType{
+			{Form: wasm.CompositeFormFunc, Params: []wasm.ValueType{wasm.ValueTypeI32}, Results: []wasm.ValueType{wasm.ValueTypeI32}},
+			{Form: wasm.CompositeFormFunc, Results: []wasm.ValueType{wasm.ValueTypeI32}},
+		},
+		FunctionSection: []wasm.Index{0, 1},
+		CodeSection: []wasm.Code{
+			{Body: passBody},
+			{Body: trapBody},
+		},
+		ExportSection: []wasm.Export{
+			{Name: "passthrough", Type: wasm.ExternTypeFunc, Index: 0},
+			{Name: "trapOnNull", Type: wasm.ExternTypeFunc, Index: 1},
+		},
+	}
+	bin := binaryencoding.EncodeModule(mod)
+
+	cfg := wazero.NewRuntimeConfigInterpreter().
+		WithCoreFeatures(api.CoreFeaturesV2 | experimental.CoreFeaturesGC)
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	instance, err := r.Instantiate(ctx, bin)
+	require.NoError(t, err)
+
+	t.Run("passthrough(7)", func(t *testing.T) {
+		res, err := instance.ExportedFunction("passthrough").Call(ctx, 7)
+		require.NoError(t, err)
+		require.Equal(t, uint32(7), uint32(res[0]))
+	})
+
+	t.Run("trapOnNull traps", func(t *testing.T) {
+		_, err := instance.ExportedFunction("trapOnNull").Call(ctx)
+		require.Error(t, err)
+	})
+}
+
+// TestGC_Struct exercises struct.new, struct.get, struct.set, and
+// struct.new_default end-to-end. Field schema: two-field struct with one
+// const i32 and one mut i64.

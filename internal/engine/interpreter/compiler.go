@@ -1726,6 +1726,8 @@ operatorSwitch:
 		)
 	case wasm.OpcodeRefEq:
 		c.emit(newOperationRefEq())
+	case wasm.OpcodeRefAsNonNull:
+		c.emit(newOperationRefAsNonNull())
 	case wasm.OpcodeGCPrefix:
 		// applyToStack already consumed the LEB sub-opcode and stored it
 		// in `index`; c.pc points at the last byte of the LEB encoding.
@@ -1736,6 +1738,10 @@ operatorSwitch:
 			c.emit(newOperationI31GetS())
 		case wasm.OpcodeGCI31GetU:
 			c.emit(newOperationI31GetU())
+		case wasm.OpcodeGCAnyConvertExtern:
+			c.emit(newOperationAnyConvertExtern())
+		case wasm.OpcodeGCExternConvertAny:
+			c.emit(newOperationExternConvertAny())
 		default:
 			return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter",
 				wasm.GCInstructionName(index), index)
