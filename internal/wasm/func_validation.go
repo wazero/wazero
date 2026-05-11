@@ -2364,6 +2364,103 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					return fmt.Errorf("array.len: cannot pop array ref: %v", err)
 				}
 				valueTypeStack.push(ValueTypeI32)
+			case OpcodeGCArrayNewFixed:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.new_fixed type index: %v", err)
+				}
+				pc += n
+				count, n2, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.new_fixed count: %v", err)
+				}
+				pc += n2
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.new_fixed type index %d out of range", typeIdx)
+				}
+				at := &m.TypeSection[typeIdx]
+				if at.Form != CompositeFormArray {
+					return fmt.Errorf("array.new_fixed type %d is not an array", typeIdx)
+				}
+				vt, err := fieldOperandType(at.ArrayField)
+				if err != nil {
+					return fmt.Errorf("array.new_fixed element: %v", err)
+				}
+				for i := uint32(0); i < count; i++ {
+					if err := valueTypeStack.popAndVerifyType(vt); err != nil {
+						return fmt.Errorf("array.new_fixed: cannot pop element[%d]: %v", count-1-i, err)
+					}
+				}
+				valueTypeStack.push(ValueTypeArrayref)
+			case OpcodeGCArrayFill:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.fill type index: %v", err)
+				}
+				pc += n
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.fill type index %d out of range", typeIdx)
+				}
+				at := &m.TypeSection[typeIdx]
+				if at.Form != CompositeFormArray {
+					return fmt.Errorf("array.fill type %d is not an array", typeIdx)
+				}
+				if !at.ArrayField.Mutable {
+					return fmt.Errorf("array.fill on immutable array %d", typeIdx)
+				}
+				vt, err := fieldOperandType(at.ArrayField)
+				if err != nil {
+					return fmt.Errorf("array.fill element: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.fill: cannot pop count: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(vt); err != nil {
+					return fmt.Errorf("array.fill: cannot pop value: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.fill: cannot pop index: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.fill: cannot pop array ref: %v", err)
+				}
+			case OpcodeGCArrayCopy:
+				dstIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.copy dst type index: %v", err)
+				}
+				pc += n
+				srcIdx, n2, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.copy src type index: %v", err)
+				}
+				pc += n2
+				if dstIdx >= uint32(len(m.TypeSection)) || srcIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.copy type index out of range")
+				}
+				dst := &m.TypeSection[dstIdx]
+				src := &m.TypeSection[srcIdx]
+				if dst.Form != CompositeFormArray || src.Form != CompositeFormArray {
+					return fmt.Errorf("array.copy types must both be arrays")
+				}
+				if !dst.ArrayField.Mutable {
+					return fmt.Errorf("array.copy destination array %d is immutable", dstIdx)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.copy: cannot pop count: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.copy: cannot pop src index: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.copy: cannot pop src ref: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.copy: cannot pop dst index: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.copy: cannot pop dst ref: %v", err)
+				}
 			default:
 				if name := GCInstructionName(sub); name != "" {
 					return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter", name, sub)

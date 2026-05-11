@@ -1883,6 +1883,59 @@ operatorSwitch:
 			}
 		case wasm.OpcodeGCArrayLen:
 			c.emit(newOperationArrayLen())
+		case wasm.OpcodeGCArrayNewFixed:
+			c.pc++
+			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.new_fixed type index: %v", err)
+			}
+			c.pc += n
+			count, n2, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.new_fixed count: %v", err)
+			}
+			c.pc += n2 - 1
+			if !c.unreachableState.on {
+				for i := uint32(0); i < count; i++ {
+					c.stackPop()
+				}
+				c.stackPush(unsignedTypeI64)
+			}
+			c.emit(newOperationArrayNewFixed(typeIdx, count))
+		case wasm.OpcodeGCArrayFill:
+			c.pc++
+			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.fill type index: %v", err)
+			}
+			c.pc += n - 1
+			if !c.unreachableState.on {
+				c.stackPop() // count
+				c.stackPop() // value
+				c.stackPop() // index
+				c.stackPop() // array ref
+			}
+			c.emit(newOperationArrayFill(typeIdx))
+		case wasm.OpcodeGCArrayCopy:
+			c.pc++
+			dstIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.copy dst type index: %v", err)
+			}
+			c.pc += n
+			srcIdx, n2, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.copy src type index: %v", err)
+			}
+			c.pc += n2 - 1
+			if !c.unreachableState.on {
+				c.stackPop() // count
+				c.stackPop() // src index
+				c.stackPop() // src ref
+				c.stackPop() // dst index
+				c.stackPop() // dst ref
+			}
+			c.emit(newOperationArrayCopy(dstIdx, srcIdx))
 		default:
 			return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter",
 				wasm.GCInstructionName(index), index)

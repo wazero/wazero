@@ -497,6 +497,12 @@ func (o operationKind) String() (ret string) {
 		ret = "operationKindArraySet"
 	case operationKindArrayLen:
 		ret = "operationKindArrayLen"
+	case operationKindArrayNewFixed:
+		ret = "operationKindArrayNewFixed"
+	case operationKindArrayFill:
+		ret = "operationKindArrayFill"
+	case operationKindArrayCopy:
+		ret = "operationKindArrayCopy"
 	default:
 		panic(fmt.Errorf("unknown operation %d", o))
 	}
@@ -884,6 +890,15 @@ const (
 	operationKindArraySet
 	operationKindArrayLen
 
+	// operationKindArrayNewFixed is the Kind for array.new_fixed t N.
+	// U1 = type index. U2 = element count N.
+	operationKindArrayNewFixed
+	// operationKindArrayFill is the Kind for array.fill t. U1 = type index.
+	operationKindArrayFill
+	// operationKindArrayCopy is the Kind for array.copy. U1 = dst type
+	// index, U2 = src type index.
+	operationKindArrayCopy
+
 	// operationKindEnd is always placed at the bottom of this iota definition to be used in the test.
 	operationKindEnd
 )
@@ -1241,6 +1256,12 @@ func (o unionOperation) String() string {
 		return fmt.Sprintf("%s typeIdx=%d", o.Kind, o.U1)
 	case operationKindArrayLen:
 		return o.Kind.String()
+	case operationKindArrayNewFixed:
+		return fmt.Sprintf("%s typeIdx=%d count=%d", o.Kind, o.U1, o.U2)
+	case operationKindArrayFill:
+		return fmt.Sprintf("%s typeIdx=%d", o.Kind, o.U1)
+	case operationKindArrayCopy:
+		return fmt.Sprintf("%s dstTypeIdx=%d srcTypeIdx=%d", o.Kind, o.U1, o.U2)
 
 	default:
 		panic(fmt.Sprintf("TODO: %v", o.Kind))
@@ -3130,4 +3151,16 @@ func newOperationArraySet(typeIdx uint32) unionOperation {
 
 func newOperationArrayLen() unionOperation {
 	return unionOperation{Kind: operationKindArrayLen}
+}
+
+func newOperationArrayNewFixed(typeIdx, count uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayNewFixed, U1: uint64(typeIdx), U2: uint64(count)}
+}
+
+func newOperationArrayFill(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayFill, U1: uint64(typeIdx)}
+}
+
+func newOperationArrayCopy(dstTypeIdx, srcTypeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayCopy, U1: uint64(dstTypeIdx), U2: uint64(srcTypeIdx)}
 }

@@ -4797,6 +4797,72 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			ce.pushValue(uint64(a.Len()))
 			frame.pc++
 
+		case operationKindArrayNewFixed:
+			typeIdx := uint32(op.U1)
+			count := int(op.U2)
+			schema := &f.moduleInstance.Source.TypeSection[typeIdx]
+			elems := make([]any, count)
+			for i := count - 1; i >= 0; i-- {
+				raw := ce.popValue()
+				elems[i] = encodeFieldValue(schema.ArrayField, raw)
+			}
+			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
+			ce.keepAlive(a)
+			ce.pushValue(uint64(uintptr(unsafe.Pointer(a))))
+			frame.pc++
+
+		case operationKindArrayFill:
+			typeIdx := uint32(op.U1)
+			count := uint32(ce.popValue())
+			rawVal := ce.popValue()
+			idx := uint32(ce.popValue())
+			v := ce.popValue()
+			if v == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			a := *(**wasm.WasmArray)(unsafe.Pointer(&v))
+			if uint64(idx)+uint64(count) > uint64(a.Len()) {
+				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
+			}
+			schema := f.moduleInstance.Source.TypeSection[typeIdx].ArrayField
+			stored := encodeFieldValue(schema, rawVal)
+			for i := uint32(0); i < count; i++ {
+				if err := a.Set(idx+i, stored); err != nil {
+					panic(err)
+				}
+			}
+			frame.pc++
+
+		case operationKindArrayCopy:
+			count := uint32(ce.popValue())
+			srcIdx := uint32(ce.popValue())
+			srcV := ce.popValue()
+			dstIdx := uint32(ce.popValue())
+			dstV := ce.popValue()
+			if srcV == 0 || dstV == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			src := *(**wasm.WasmArray)(unsafe.Pointer(&srcV))
+			dst := *(**wasm.WasmArray)(unsafe.Pointer(&dstV))
+			if uint64(srcIdx)+uint64(count) > uint64(src.Len()) ||
+				uint64(dstIdx)+uint64(count) > uint64(dst.Len()) {
+				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
+			}
+			if src == dst && srcIdx < dstIdx {
+				for i := count; i > 0; i-- {
+					if err := dst.Set(dstIdx+i-1, src.Get(srcIdx+i-1)); err != nil {
+						panic(err)
+					}
+				}
+			} else {
+				for i := uint32(0); i < count; i++ {
+					if err := dst.Set(dstIdx+i, src.Get(srcIdx+i)); err != nil {
+						panic(err)
+					}
+				}
+			}
+			frame.pc++
+
 		case operationKindTailCallReturnCall:
 			f := &functions[op.U1]
 			ce.dropForTailCall(frame, f)
