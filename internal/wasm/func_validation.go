@@ -2563,8 +2563,35 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			}
 			// On fall-through the ref is consumed; do NOT push back.
 		} else if op == OpcodeCallRef || op == OpcodeReturnCallRef {
-			// Typed function-reference opcodes (gated on CoreFeaturesGC).
-			return fmt.Errorf("typed function-reference instruction %s (0x%x) is not yet supported by the interpreter", InstructionName(op), op)
+			// call_ref / return_call_ref t: pop a funcref of type $t,
+			// pop the function's params, push the function's results.
+			pc++
+			typeIdx, n, err := leb128.LoadUint32(body[pc:])
+			if err != nil {
+				return fmt.Errorf("read call_ref type index: %v", err)
+			}
+			pc += n - 1
+			if int(typeIdx) >= len(m.TypeSection) {
+				return fmt.Errorf("call_ref type index %d out of range", typeIdx)
+			}
+			ft := &m.TypeSection[typeIdx]
+			if ft.Form != CompositeFormFunc {
+				return fmt.Errorf("call_ref type %d is not a function type", typeIdx)
+			}
+			if err := valueTypeStack.popReferenceType(); err != nil {
+				return fmt.Errorf("call_ref: cannot pop funcref: %v", err)
+			}
+			for i := len(ft.Params) - 1; i >= 0; i-- {
+				if err := valueTypeStack.popAndVerifyType(ft.Params[i]); err != nil {
+					return fmt.Errorf("call_ref: cannot pop param[%d]: %v", i, err)
+				}
+			}
+			for _, r := range ft.Results {
+				valueTypeStack.push(r)
+			}
+			if op == OpcodeReturnCallRef {
+				valueTypeStack.unreachable()
+			}
 		} else if enabledFeatures.IsEnabled(experimental.CoreFeaturesExceptionHandling) &&
 			(op == OpcodeLegacyTry || op == OpcodeLegacyCatch || op == OpcodeLegacyRethrow ||
 				op == OpcodeLegacyDelegate || op == OpcodeLegacyCatchAll) {

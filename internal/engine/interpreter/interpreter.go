@@ -4662,6 +4662,50 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				frame.pc = op.U2
 			}
 
+		case operationKindCallRef:
+			// call_ref t: pop funcref, trap if null, type-check
+			// against the expected engine FunctionTypeID, call.
+			v := ce.popValue()
+			if v == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			tf := functionFromUintptr(uintptr(v))
+			expectedTypeID := f.moduleInstance.TypeIDs[uint32(op.U1)]
+			if tf.typeID != expectedTypeID {
+				panic(wasmruntime.ErrRuntimeIndirectCallTypeMismatch)
+			}
+			frameUnwound := ce.callWithUnwind(ctx, f.moduleInstance, tf)
+			if frameUnwound {
+				frame = ce.frames[len(ce.frames)-1]
+				body = frame.f.parent.body
+				bodyLen = uint64(len(body))
+				continue
+			}
+			frame.pc++
+
+		case operationKindReturnCallRef:
+			v := ce.popValue()
+			if v == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			tf := functionFromUintptr(uintptr(v))
+			expectedTypeID := f.moduleInstance.TypeIDs[uint32(op.U1)]
+			if tf.typeID != expectedTypeID {
+				panic(wasmruntime.ErrRuntimeIndirectCallTypeMismatch)
+			}
+			if tf.moduleInstance != f.moduleInstance {
+				frameUnwound := ce.callWithUnwind(ctx, f.moduleInstance, tf)
+				if frameUnwound {
+					frame = ce.frames[len(ce.frames)-1]
+					body = frame.f.parent.body
+					bodyLen = uint64(len(body))
+					continue
+				}
+				return
+			}
+			ce.dropForTailCall(frame, tf)
+			body, bodyLen = ce.resetPc(frame, tf)
+
 		case operationKindStructNew:
 			typeIdx := uint32(op.U1)
 			fieldCount := int(op.U2)

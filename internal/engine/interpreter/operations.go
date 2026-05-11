@@ -471,6 +471,10 @@ func (o operationKind) String() (ret string) {
 		ret = "operationKindBrOnNull"
 	case operationKindBrOnNonNull:
 		ret = "operationKindBrOnNonNull"
+	case operationKindCallRef:
+		ret = "operationKindCallRef"
+	case operationKindReturnCallRef:
+		ret = "operationKindReturnCallRef"
 	case operationKindStructNew:
 		ret = "operationKindStructNew"
 	case operationKindStructNewDefault:
@@ -868,6 +872,11 @@ const (
 	// we fall through.
 	operationKindBrOnNonNull
 
+	// operationKindCallRef is the Kind for call_ref t.
+	operationKindCallRef
+	// operationKindReturnCallRef is the Kind for return_call_ref t.
+	operationKindReturnCallRef
+
 	// operationKindStructNew is the Kind for struct.new: U1=typeIdx, U2=fieldCount.
 	operationKindStructNew
 	// operationKindStructNewDefault is the Kind for struct.new_default: U1=typeIdx, U2=fieldCount.
@@ -1245,6 +1254,8 @@ func (o unionOperation) String() string {
 		return o.Kind.String()
 	case operationKindBrOnNull, operationKindBrOnNonNull:
 		return fmt.Sprintf("%s thenLabel=%d elseLabel=%d drop=%#x", o.Kind, o.U1, o.U2, o.U3)
+	case operationKindCallRef, operationKindReturnCallRef:
+		return fmt.Sprintf("%s typeIdx=%d", o.Kind, o.U1)
 	case operationKindStructNew, operationKindStructNewDefault:
 		return fmt.Sprintf("%s typeIdx=%d fieldCount=%d", o.Kind, o.U1, o.U2)
 	case operationKindStructGet, operationKindStructGetS, operationKindStructGetU,
@@ -3163,4 +3174,12 @@ func newOperationArrayFill(typeIdx uint32) unionOperation {
 
 func newOperationArrayCopy(dstTypeIdx, srcTypeIdx uint32) unionOperation {
 	return unionOperation{Kind: operationKindArrayCopy, U1: uint64(dstTypeIdx), U2: uint64(srcTypeIdx)}
+}
+
+func newOperationCallRef(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindCallRef, U1: uint64(typeIdx)}
+}
+
+func newOperationReturnCallRef(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindReturnCallRef, U1: uint64(typeIdx)}
 }

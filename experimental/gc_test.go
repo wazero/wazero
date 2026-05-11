@@ -578,3 +578,53 @@ func TestGC_Array(t *testing.T) {
 		require.Equal(t, int32(100), api.DecodeI32(res[0]))
 	})
 }
+func TestGC_CallRef(t *testing.T) {
+	ctx := context.Background()
+
+	// Helper function: i32 -> i32 that doubles its argument.
+	double := []byte{
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeI32Add,
+		wasm.OpcodeEnd,
+	}
+	// invokeViaCallRef(i32) -> i32:
+	//   local.get 0; ref.func $double; call_ref $T  -> 2 * x
+	invokeViaCallRef := []byte{
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeRefFunc, 0x00, // ref to function index 0 (double)
+		wasm.OpcodeCallRef, 0x00, // type 0 = (i32) -> i32
+		wasm.OpcodeEnd,
+	}
+
+	mod := &wasm.Module{
+		TypeSection: []wasm.FunctionType{
+			// Type 0: (i32) -> i32
+			{Form: wasm.CompositeFormFunc, Params: []wasm.ValueType{wasm.ValueTypeI32}, Results: []wasm.ValueType{wasm.ValueTypeI32}},
+		},
+		FunctionSection: []wasm.Index{0, 0},
+		CodeSection: []wasm.Code{
+			{Body: double},
+			{Body: invokeViaCallRef},
+		},
+		ExportSection: []wasm.Export{
+			{Name: "double", Type: wasm.ExternTypeFunc, Index: 0},
+			{Name: "invokeViaCallRef", Type: wasm.ExternTypeFunc, Index: 1},
+		},
+	}
+	bin := binaryencoding.EncodeModule(mod)
+
+	cfg := wazero.NewRuntimeConfigInterpreter().
+		WithCoreFeatures(api.CoreFeaturesV2 | experimental.CoreFeaturesGC)
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	instance, err := r.Instantiate(ctx, bin)
+	require.NoError(t, err)
+
+	t.Run("invokeViaCallRef(21) returns 42", func(t *testing.T) {
+		res, err := instance.ExportedFunction("invokeViaCallRef").Call(ctx, 21)
+		require.NoError(t, err)
+		require.Equal(t, int32(42), api.DecodeI32(res[0]))
+	})
+}

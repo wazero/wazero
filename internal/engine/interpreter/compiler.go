@@ -1728,6 +1728,29 @@ operatorSwitch:
 		c.emit(newOperationRefEq())
 	case wasm.OpcodeRefAsNonNull:
 		c.emit(newOperationRefAsNonNull())
+	case wasm.OpcodeCallRef, wasm.OpcodeReturnCallRef:
+		c.pc++
+		typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+		if err != nil {
+			return fmt.Errorf("read call_ref type index: %v", err)
+		}
+		c.pc += n - 1
+		if !c.unreachableState.on {
+			ft := &c.types[typeIdx]
+			c.stackPop() // funcref
+			for range ft.Params {
+				c.stackPop()
+			}
+			for _, r := range ft.Results {
+				c.stackPush(wasmValueTypeTounsignedType(r))
+			}
+		}
+		if op == wasm.OpcodeCallRef {
+			c.emit(newOperationCallRef(typeIdx))
+		} else {
+			c.emit(newOperationReturnCallRef(typeIdx))
+			c.markUnreachable()
+		}
 	case wasm.OpcodeBrOnNull, wasm.OpcodeBrOnNonNull:
 		targetIndex, n, err := leb128.LoadUint32(c.body[c.pc+1:])
 		if err != nil {
