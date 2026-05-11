@@ -1933,6 +1933,47 @@ operatorSwitch:
 			} else {
 				c.emit(newOperationRefCast(kindByte, nullable, isConcrete, typeIdx))
 			}
+		case wasm.OpcodeGCBrOnCast, wasm.OpcodeGCBrOnCastFail:
+			c.pc++
+			flags := c.body[c.pc]
+			c.pc++
+			labelIdx, ln, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read br_on_cast label: %v", err)
+			}
+			c.pc += ln
+			_, srcN, err := leb128.LoadInt64(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read br_on_cast src heap type: %v", err)
+			}
+			c.pc += srcN
+			dstHt, dstN, err := leb128.LoadInt64(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read br_on_cast dst heap type: %v", err)
+			}
+			c.pc += dstN - 1
+			dstKindByte, dstTypeIdx, dstIsConcrete, _ := wasm.HeapTypeKindFromBinary(dstHt)
+			dstNullable := flags&wasm.BrOnCastFlagDstNullable != 0
+			if c.unreachableState.on {
+				break operatorSwitch
+			}
+			c.stackPop()
+			targetFrame := c.controlFrames.get(int(labelIdx))
+			targetFrame.ensureContinuation()
+			drop := c.getFrameDropRange(targetFrame, false)
+			target := targetFrame.asLabel()
+			c.result.LabelCallers[target]++
+			continuationLabel := newLabel(labelKindHeader, c.nextFrameID())
+			c.result.LabelCallers[continuationLabel]++
+			if index == wasm.OpcodeGCBrOnCast {
+				c.emit(newOperationBrOnCast(target, continuationLabel, drop,
+					dstKindByte, dstNullable, dstIsConcrete, dstTypeIdx))
+			} else {
+				c.emit(newOperationBrOnCastFail(target, continuationLabel, drop,
+					dstKindByte, dstNullable, dstIsConcrete, dstTypeIdx))
+			}
+			c.stackPush(unsignedTypeI64)
+			c.emit(newOperationLabel(continuationLabel))
 		case wasm.OpcodeGCArrayNewFixed:
 			c.pc++
 			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])

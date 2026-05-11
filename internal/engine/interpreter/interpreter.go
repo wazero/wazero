@@ -630,6 +630,9 @@ func (e *engine) lowerIR(ir *compilationResult, ret *compiledFunction) error {
 		case operationKindBrOnNull, operationKindBrOnNonNull:
 			e.setLabelAddress(&op.U1, label(op.U1), labelAddressResolutions)
 			e.setLabelAddress(&op.U2, label(op.U2), labelAddressResolutions)
+		case operationKindBrOnCast, operationKindBrOnCastFail:
+			e.setLabelAddress(&op.U1, label(op.U1), labelAddressResolutions)
+			e.setLabelAddress(&op.U2, label(op.U2), labelAddressResolutions)
 		case operationKindBrTable:
 			for j := 0; j < len(op.Us); j += 2 {
 				target := op.Us[j]
@@ -4859,6 +4862,28 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			}
 			ce.pushValue(v)
 			frame.pc++
+
+		case operationKindBrOnCast:
+			v := ce.popValue()
+			matches := refMatches(v, op.B1, op.B3, op.Us[1] != 0, uint32(op.Us[0]), f.moduleInstance)
+			ce.pushValue(v)
+			if matches {
+				ce.drop(op.U3)
+				frame.pc = op.U1
+			} else {
+				frame.pc = op.U2
+			}
+
+		case operationKindBrOnCastFail:
+			v := ce.popValue()
+			matches := refMatches(v, op.B1, op.B3, op.Us[1] != 0, uint32(op.Us[0]), f.moduleInstance)
+			ce.pushValue(v)
+			if !matches {
+				ce.drop(op.U3)
+				frame.pc = op.U1
+			} else {
+				frame.pc = op.U2
+			}
 
 		case operationKindArrayNewFixed:
 			typeIdx := uint32(op.U1)

@@ -511,6 +511,10 @@ func (o operationKind) String() (ret string) {
 		ret = "operationKindRefTest"
 	case operationKindRefCast:
 		ret = "operationKindRefCast"
+	case operationKindBrOnCast:
+		ret = "operationKindBrOnCast"
+	case operationKindBrOnCastFail:
+		ret = "operationKindBrOnCastFail"
 	default:
 		panic(fmt.Errorf("unknown operation %d", o))
 	}
@@ -923,6 +927,17 @@ const (
 	// immediates as RefTest.
 	operationKindRefCast
 
+	// operationKindBrOnCast: branch when popped ref's type matches the
+	// target heap-type. Immediates:
+	//   U1 = thenLabel, U2 = elseLabel, U3 = drop range
+	//   B1 = dst heap-type kind byte
+	//   B3 = dst nullable
+	//   Us[0] = dst concrete type index (only when concrete)
+	//   Us[1] = 1 if concrete, 0 otherwise
+	operationKindBrOnCast
+	// operationKindBrOnCastFail: inverse — branches when the cast fails.
+	operationKindBrOnCastFail
+
 	// operationKindEnd is always placed at the bottom of this iota definition to be used in the test.
 	operationKindEnd
 )
@@ -1290,6 +1305,9 @@ func (o unionOperation) String() string {
 		return fmt.Sprintf("%s dstTypeIdx=%d srcTypeIdx=%d", o.Kind, o.U1, o.U2)
 	case operationKindRefTest, operationKindRefCast:
 		return fmt.Sprintf("%s heapKind=%#x nullable=%v concrete=%v typeIdx=%d", o.Kind, o.B1, o.B3, o.U2 != 0, o.U1)
+	case operationKindBrOnCast, operationKindBrOnCastFail:
+		return fmt.Sprintf("%s thenLabel=%d elseLabel=%d drop=%#x heapKind=%#x nullable=%v",
+			o.Kind, o.U1, o.U2, o.U3, o.B1, o.B3)
 
 	default:
 		panic(fmt.Sprintf("TODO: %v", o.Kind))
@@ -3217,6 +3235,44 @@ func newOperationRefCast(heapKind byte, nullable, isConcrete bool, typeIdx uint3
 	op := unionOperation{Kind: operationKindRefCast, B1: heapKind, B3: nullable, U1: uint64(typeIdx)}
 	if isConcrete {
 		op.U2 = 1
+	}
+	return op
+}
+
+// newOperationBrOnCast constructs the operation for br_on_cast.
+func newOperationBrOnCast(thenTarget, elseTarget label, thenDrop inclusiveRange,
+	heapKind byte, nullable, isConcrete bool, typeIdx uint32,
+) unionOperation {
+	op := unionOperation{
+		Kind: operationKindBrOnCast,
+		U1:   uint64(thenTarget),
+		U2:   uint64(elseTarget),
+		U3:   thenDrop.AsU64(),
+		B1:   heapKind,
+		B3:   nullable,
+		Us:   []uint64{uint64(typeIdx), 0},
+	}
+	if isConcrete {
+		op.Us[1] = 1
+	}
+	return op
+}
+
+// newOperationBrOnCastFail constructs the operation for br_on_cast_fail.
+func newOperationBrOnCastFail(thenTarget, elseTarget label, thenDrop inclusiveRange,
+	heapKind byte, nullable, isConcrete bool, typeIdx uint32,
+) unionOperation {
+	op := unionOperation{
+		Kind: operationKindBrOnCastFail,
+		U1:   uint64(thenTarget),
+		U2:   uint64(elseTarget),
+		U3:   thenDrop.AsU64(),
+		B1:   heapKind,
+		B3:   nullable,
+		Us:   []uint64{uint64(typeIdx), 0},
+	}
+	if isConcrete {
+		op.Us[1] = 1
 	}
 	return op
 }
