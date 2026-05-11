@@ -627,6 +627,9 @@ func (e *engine) lowerIR(ir *compilationResult, ret *compiledFunction) error {
 		case operationKindBrIf:
 			e.setLabelAddress(&op.U1, label(op.U1), labelAddressResolutions)
 			e.setLabelAddress(&op.U2, label(op.U2), labelAddressResolutions)
+		case operationKindBrOnNull, operationKindBrOnNonNull:
+			e.setLabelAddress(&op.U1, label(op.U1), labelAddressResolutions)
+			e.setLabelAddress(&op.U2, label(op.U2), labelAddressResolutions)
 		case operationKindBrTable:
 			for j := 0; j < len(op.Us); j += 2 {
 				target := op.Us[j]
@@ -4638,6 +4641,26 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			// externref. The validator already updated the type-stack
 			// to the converted side.
 			frame.pc++
+
+		case operationKindBrOnNull:
+			v := ce.popValue()
+			if v == 0 {
+				ce.drop(op.U3)
+				frame.pc = op.U1
+			} else {
+				ce.pushValue(v)
+				frame.pc = op.U2
+			}
+
+		case operationKindBrOnNonNull:
+			v := ce.popValue()
+			if v != 0 {
+				ce.pushValue(v)
+				ce.drop(op.U3)
+				frame.pc = op.U1
+			} else {
+				frame.pc = op.U2
+			}
 
 		case operationKindTailCallReturnCall:
 			f := &functions[op.U1]

@@ -1728,6 +1728,33 @@ operatorSwitch:
 		c.emit(newOperationRefEq())
 	case wasm.OpcodeRefAsNonNull:
 		c.emit(newOperationRefAsNonNull())
+	case wasm.OpcodeBrOnNull, wasm.OpcodeBrOnNonNull:
+		targetIndex, n, err := leb128.LoadUint32(c.body[c.pc+1:])
+		if err != nil {
+			return fmt.Errorf("read target for %s: %w", wasm.InstructionName(op), err)
+		}
+		c.pc += n
+		if c.unreachableState.on {
+			break operatorSwitch
+		}
+		// br_on_null pops a ref then maybe re-pushes it; br_on_non_null
+		// pops a ref then maybe re-pushes it. Both need the unsignedType
+		// pop tracked here (the validator handled the value-type stack).
+		c.stackPop()
+		targetFrame := c.controlFrames.get(int(targetIndex))
+		targetFrame.ensureContinuation()
+		drop := c.getFrameDropRange(targetFrame, false)
+		target := targetFrame.asLabel()
+		c.result.LabelCallers[target]++
+		continuationLabel := newLabel(labelKindHeader, c.nextFrameID())
+		c.result.LabelCallers[continuationLabel]++
+		if op == wasm.OpcodeBrOnNull {
+			c.emit(newOperationBrOnNull(target, continuationLabel, drop))
+			c.stackPush(unsignedTypeI64)
+		} else {
+			c.emit(newOperationBrOnNonNull(target, continuationLabel, drop))
+		}
+		c.emit(newOperationLabel(continuationLabel))
 	case wasm.OpcodeGCPrefix:
 		// applyToStack already consumed the LEB sub-opcode and stored it
 		// in `index`; c.pc points at the last byte of the LEB encoding.

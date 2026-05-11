@@ -277,6 +277,9 @@ func (c *compiler) wasmOpcodeSignature(op wasm.Opcode, index uint32) (*signature
 	case wasm.OpcodeRefAsNonNull:
 		// One ref -> same ref.
 		return signature_I64_I64, nil
+	case wasm.OpcodeBrOnNull, wasm.OpcodeBrOnNonNull:
+		// Stack manipulation handled dynamically by the compiler.
+		return signature_None_None, nil
 	case wasm.OpcodeGCPrefix:
 		// 0xfb-prefixed sub-opcodes have varying signatures. The caller
 		// passes the sub-opcode in index.

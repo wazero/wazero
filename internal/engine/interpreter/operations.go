@@ -467,6 +467,10 @@ func (o operationKind) String() (ret string) {
 		ret = "operationKindAnyConvertExtern"
 	case operationKindExternConvertAny:
 		ret = "operationKindExternConvertAny"
+	case operationKindBrOnNull:
+		ret = "operationKindBrOnNull"
+	case operationKindBrOnNonNull:
+		ret = "operationKindBrOnNonNull"
 	default:
 		panic(fmt.Errorf("unknown operation %d", o))
 	}
@@ -821,6 +825,17 @@ const (
 	// Runtime representation is identical so this is a no-op.
 	operationKindExternConvertAny
 
+	// operationKindBrOnNull is the Kind for br_on_null l. Pops a ref; if
+	// null, branches to label l (U1=thenLabel, U2=elseLabel, U3=drop
+	// range). If non-null, pushes the ref back and falls through.
+	operationKindBrOnNull
+
+	// operationKindBrOnNonNull is the Kind for br_on_non_null l. Pops a
+	// ref; if non-null, pushes it back AND branches to label l (the
+	// label's last param is the ref). If null, the ref is consumed and
+	// we fall through.
+	operationKindBrOnNonNull
+
 	// operationKindEnd is always placed at the bottom of this iota definition to be used in the test.
 	operationKindEnd
 )
@@ -1165,6 +1180,8 @@ func (o unionOperation) String() string {
 	case operationKindRefI31, operationKindI31GetS, operationKindI31GetU, operationKindRefEq,
 		operationKindRefAsNonNull, operationKindAnyConvertExtern, operationKindExternConvertAny:
 		return o.Kind.String()
+	case operationKindBrOnNull, operationKindBrOnNonNull:
+		return fmt.Sprintf("%s thenLabel=%d elseLabel=%d drop=%#x", o.Kind, o.U1, o.U2, o.U3)
 
 	default:
 		panic(fmt.Sprintf("TODO: %v", o.Kind))
@@ -2974,4 +2991,24 @@ func newOperationAnyConvertExtern() unionOperation {
 // newOperationExternConvertAny constructs the operation for extern.convert_any.
 func newOperationExternConvertAny() unionOperation {
 	return unionOperation{Kind: operationKindExternConvertAny}
+}
+
+// newOperationBrOnNull constructs the operation for br_on_null.
+func newOperationBrOnNull(thenTarget, elseTarget label, thenDrop inclusiveRange) unionOperation {
+	return unionOperation{
+		Kind: operationKindBrOnNull,
+		U1:   uint64(thenTarget),
+		U2:   uint64(elseTarget),
+		U3:   thenDrop.AsU64(),
+	}
+}
+
+// newOperationBrOnNonNull constructs the operation for br_on_non_null.
+func newOperationBrOnNonNull(thenTarget, elseTarget label, thenDrop inclusiveRange) unionOperation {
+	return unionOperation{
+		Kind: operationKindBrOnNonNull,
+		U1:   uint64(thenTarget),
+		U2:   uint64(elseTarget),
+		U3:   thenDrop.AsU64(),
+	}
 }

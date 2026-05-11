@@ -244,3 +244,114 @@ func TestGC_RefAsNonNull(t *testing.T) {
 // TestGC_Struct exercises struct.new, struct.get, struct.set, and
 // struct.new_default end-to-end. Field schema: two-field struct with one
 // const i32 and one mut i64.
+func TestGC_BrOnNullAndNonNull(t *testing.T) {
+	ctx := context.Background()
+
+	// brOnNullStripsRef(i32 v) -> i32:
+	//   block $l (result i32)
+	//     i32.const 999      ;; default carried on the null-branch path
+	//     local.get 0
+	//     ref.i31            ;; non-null i31 always
+	//     br_on_null $l      ;; non-null -> fall through; stack: [999, ref]
+	//     i31.get_s          ;; stack: [999, value]
+	//     return             ;; returns value
+	//   end                   ;; reachable only via the null branch; result is 999
+	brOnNullStripsRef := []byte{
+		wasm.OpcodeBlock, 0x7F, // block (result i32)
+		wasm.OpcodeI32Const, 0x80, 0x07, // i32.const 999 (LEB encoded)
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefI31),
+		wasm.OpcodeBrOnNull, 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCI31GetS),
+		wasm.OpcodeReturn,
+		wasm.OpcodeEnd,
+		wasm.OpcodeEnd,
+	}
+	// brOnNullBranches() -> i32:
+	//   block $l (result i32)
+	//     i32.const 42       ;; carried by the branch
+	//     ref.null any
+	//     br_on_null $l      ;; null -> always branches with [42]
+	//     unreachable
+	//   end                   ;; block end with [42] on stack
+	brOnNullBranches := []byte{
+		wasm.OpcodeBlock, 0x7F,
+		wasm.OpcodeI32Const, 0x2A,
+		wasm.OpcodeRefNull, 0x6E,
+		wasm.OpcodeBrOnNull, 0x00,
+		wasm.OpcodeUnreachable,
+		wasm.OpcodeEnd,
+		wasm.OpcodeEnd,
+	}
+	// brOnNonNullPropagates(i32 v) -> i32:
+	//   block $l (result i32)
+	//     i32.const 0         ;; placeholder (only used if br_on_non_null doesn't fire)
+	//     ref.i31 (local.get 0)
+	//     br_on_non_null $l   ;; non-null => branches, ref on stack at target.
+	//                          ;; The target expects [i32, ref]; we set up i32 above.
+	//                          ;; But our block (result i32) only expects i32, not [i32, ref].
+	//                          ;; So this won't validate. Let me redesign.
+	// Simpler: brOnNonNullToFuncReturn(i32 v) -> i32 in i31 context.
+	// Use a block (result i31ref) so the target receives the ref.
+	// Then outside the block, extract i31.get_s.
+	brOnNonNullPropagates := []byte{
+		// block (result i31ref)
+		wasm.OpcodeBlock, 0x6C, // i31ref shorthand byte
+		wasm.OpcodeLocalGet, 0x00,
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCRefI31),
+		wasm.OpcodeBrOnNonNull, 0x00, // non-null => branches with ref on stack
+		wasm.OpcodeUnreachable, // null path — never reached for non-null i31
+		wasm.OpcodeEnd,         // block end — receives ref via the branch
+		// outside the block: i31.get_s
+		wasm.OpcodeGCPrefix, byte(wasm.OpcodeGCI31GetS),
+		wasm.OpcodeEnd,
+	}
+
+	mod := &wasm.Module{
+		TypeSection: []wasm.FunctionType{
+			// 0: func (i32) -> i32
+			{Form: wasm.CompositeFormFunc, Params: []wasm.ValueType{wasm.ValueTypeI32}, Results: []wasm.ValueType{wasm.ValueTypeI32}},
+			// 1: func () -> i32
+			{Form: wasm.CompositeFormFunc, Results: []wasm.ValueType{wasm.ValueTypeI32}},
+		},
+		FunctionSection: []wasm.Index{0, 1, 0},
+		CodeSection: []wasm.Code{
+			{Body: brOnNullStripsRef},
+			{Body: brOnNullBranches},
+			{Body: brOnNonNullPropagates},
+		},
+		ExportSection: []wasm.Export{
+			{Name: "brOnNullStripsRef", Type: wasm.ExternTypeFunc, Index: 0},
+			{Name: "brOnNullBranches", Type: wasm.ExternTypeFunc, Index: 1},
+			{Name: "brOnNonNullPropagates", Type: wasm.ExternTypeFunc, Index: 2},
+		},
+	}
+	bin := binaryencoding.EncodeModule(mod)
+
+	cfg := wazero.NewRuntimeConfigInterpreter().
+		WithCoreFeatures(api.CoreFeaturesV2 | experimental.CoreFeaturesGC)
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	instance, err := r.Instantiate(ctx, bin)
+	require.NoError(t, err)
+
+	t.Run("br_on_null falls through on non-null", func(t *testing.T) {
+		res, err := instance.ExportedFunction("brOnNullStripsRef").Call(ctx, 42)
+		require.NoError(t, err)
+		require.Equal(t, int32(42), api.DecodeI32(res[0]))
+	})
+
+	t.Run("br_on_null branches on null", func(t *testing.T) {
+		res, err := instance.ExportedFunction("brOnNullBranches").Call(ctx)
+		require.NoError(t, err)
+		require.Equal(t, int32(42), api.DecodeI32(res[0]))
+	})
+
+	t.Run("br_on_non_null propagates ref via branch", func(t *testing.T) {
+		res, err := instance.ExportedFunction("brOnNonNullPropagates").Call(ctx, 7)
+		require.NoError(t, err)
+		require.Equal(t, int32(7), api.DecodeI32(res[0]))
+	})
+}
+
