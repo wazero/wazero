@@ -32,9 +32,9 @@ func TestDecodeModule(t *testing.T) {
 			name: "type section",
 			input: &wasm.Module{
 				TypeSection: []wasm.FunctionType{
-					{Final: true},
-					{Params: []wasm.ValueType{i32, i32}, Results: []wasm.ValueType{i32}, Final: true},
-					{Params: []wasm.ValueType{i32, i32, i32, i32}, Results: []wasm.ValueType{i32}, Final: true},
+					{},
+					{Params: []wasm.ValueType{i32, i32}, Results: []wasm.ValueType{i32}},
+					{Params: []wasm.ValueType{i32, i32, i32, i32}, Results: []wasm.ValueType{i32}},
 				},
 			},
 		},
@@ -46,8 +46,8 @@ func TestDecodeModule(t *testing.T) {
 				ImportMemoryCount:   1,
 				ImportGlobalCount:   3,
 				TypeSection: []wasm.FunctionType{
-					{Params: []wasm.ValueType{i32, i32}, Results: []wasm.ValueType{i32}, Final: true},
-					{Params: []wasm.ValueType{f32, f32}, Results: []wasm.ValueType{f32}, Final: true},
+					{Params: []wasm.ValueType{i32, i32}, Results: []wasm.ValueType{i32}},
+					{Params: []wasm.ValueType{f32, f32}, Results: []wasm.ValueType{f32}},
 				},
 				ImportSection: []wasm.Import{
 					{
@@ -106,7 +106,7 @@ func TestDecodeModule(t *testing.T) {
 			name: "type function and start section",
 			input: &wasm.Module{
 				ImportFunctionCount: 1,
-				TypeSection:         []wasm.FunctionType{{Final: true}},
+				TypeSection:         []wasm.FunctionType{{}},
 				ImportSection: []wasm.Import{{
 					Module: "", Name: "hello",
 					Type:     wasm.ExternTypeFunc,

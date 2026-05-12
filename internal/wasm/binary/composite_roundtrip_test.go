@@ -23,7 +23,7 @@ func TestEncodeDecodeRoundTrip_Composite(t *testing.T) {
 		{
 			name: "func shorthand",
 			in: []wasm.FunctionType{
-				{Form: wasm.CompositeFormFunc, Params: []wasm.ValueType{wasm.ValueTypeI32}, Results: []wasm.ValueType{wasm.ValueTypeI64}, Final: true},
+				{Form: wasm.CompositeFormFunc, Params: []wasm.ValueType{wasm.ValueTypeI32}, Results: []wasm.ValueType{wasm.ValueTypeI64}},
 			},
 		},
 		{
@@ -35,7 +35,6 @@ func TestEncodeDecodeRoundTrip_Composite(t *testing.T) {
 						{ValueType: wasm.ValueTypeI32},
 						{ValueType: wasm.ValueTypeI64, Mutable: true},
 					},
-					Final: true,
 				},
 			},
 		},
@@ -48,32 +47,31 @@ func TestEncodeDecodeRoundTrip_Composite(t *testing.T) {
 						{Packed: wasm.PackedTypeI8, Mutable: true},
 						{Packed: wasm.PackedTypeI16},
 					},
-					Final: true,
 				},
 			},
 		},
 		{
 			name: "struct empty",
 			in: []wasm.FunctionType{
-				{Form: wasm.CompositeFormStruct, Final: true},
+				{Form: wasm.CompositeFormStruct},
 			},
 		},
 		{
 			name: "array shorthand",
 			in: []wasm.FunctionType{
-				{Form: wasm.CompositeFormArray, ArrayField: wasm.FieldType{ValueType: wasm.ValueTypeI32, Mutable: true}, Final: true},
+				{Form: wasm.CompositeFormArray, ArrayField: wasm.FieldType{ValueType: wasm.ValueTypeI32, Mutable: true}},
 			},
 		},
 		{
 			name: "array packed",
 			in: []wasm.FunctionType{
-				{Form: wasm.CompositeFormArray, ArrayField: wasm.FieldType{Packed: wasm.PackedTypeI8}, Final: true},
+				{Form: wasm.CompositeFormArray, ArrayField: wasm.FieldType{Packed: wasm.PackedTypeI8}},
 			},
 		},
 		{
 			name: "sub final with supertype",
 			in: []wasm.FunctionType{
-				{Form: wasm.CompositeFormFunc, Params: []wasm.ValueType{wasm.ValueTypeI32}, Final: true},
+				{Form: wasm.CompositeFormFunc, Params: []wasm.ValueType{wasm.ValueTypeI32}},
 				{
 					Form:           wasm.CompositeFormFunc,
 					Params:         []wasm.ValueType{wasm.ValueTypeI32, wasm.ValueTypeI32},
@@ -85,7 +83,7 @@ func TestEncodeDecodeRoundTrip_Composite(t *testing.T) {
 		{
 			name: "sub (non-final) struct with supertype",
 			in: []wasm.FunctionType{
-				{Form: wasm.CompositeFormStruct, Fields: []wasm.FieldType{{ValueType: wasm.ValueTypeI32}}, Final: true},
+				{Form: wasm.CompositeFormStruct, Fields: []wasm.FieldType{{ValueType: wasm.ValueTypeI32}}},
 				{
 					Form:           wasm.CompositeFormStruct,
 					Fields:         []wasm.FieldType{{ValueType: wasm.ValueTypeI32}, {ValueType: wasm.ValueTypeI64}},
@@ -102,14 +100,12 @@ func TestEncodeDecodeRoundTrip_Composite(t *testing.T) {
 					Fields:           []wasm.FieldType{{ValueType: wasm.ValueTypeI32}},
 					RecGroupSize:     2,
 					RecGroupPosition: 0,
-					Final:            true,
 				},
 				{
 					Form:             wasm.CompositeFormStruct,
 					Fields:           []wasm.FieldType{{ValueType: wasm.ValueTypeI64}},
 					RecGroupSize:     2,
 					RecGroupPosition: 1,
-					Final:            true,
 				},
 			},
 		},
