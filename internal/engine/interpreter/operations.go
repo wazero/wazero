@@ -3297,12 +3297,15 @@ func newOperationBrOnCastFail(thenTarget, elseTarget label, thenDrop inclusiveRa
 func newOperationArrayNewData(typeIdx, segIdx uint32) unionOperation {
 	return unionOperation{Kind: operationKindArrayNewData, U1: uint64(typeIdx), U2: uint64(segIdx)}
 }
+
 func newOperationArrayNewElem(typeIdx, segIdx uint32) unionOperation {
 	return unionOperation{Kind: operationKindArrayNewElem, U1: uint64(typeIdx), U2: uint64(segIdx)}
 }
+
 func newOperationArrayInitData(typeIdx, segIdx uint32) unionOperation {
 	return unionOperation{Kind: operationKindArrayInitData, U1: uint64(typeIdx), U2: uint64(segIdx)}
 }
+
 func newOperationArrayInitElem(typeIdx, segIdx uint32) unionOperation {
 	return unionOperation{Kind: operationKindArrayInitElem, U1: uint64(typeIdx), U2: uint64(segIdx)}
 }

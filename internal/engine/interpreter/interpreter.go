@@ -5475,11 +5475,11 @@ func decodeFieldValueRead(f wasm.FieldType, stored any, readKind operationKind) 
 // typeIdx). Used by ref.test / ref.cast / br_on_cast(_fail).
 //
 // Discrimination strategy without a parallel ref stack:
-//   1. v == 0           -> null reference; matches iff target is nullable.
-//   2. v & 0b11 == 0b01 -> tagged i31; matches i31/eq/any.
-//   3. otherwise        -> heap pointer. Read TypeID from the first
-//                          field of the pointed-to object. Look up the
-//                          form via the module's TypeSection.
+//  1. v == 0           -> null reference; matches iff target is nullable.
+//  2. v & 0b11 == 0b01 -> tagged i31; matches i31/eq/any.
+//  3. otherwise        -> heap pointer. Read TypeID from the first
+//     field of the pointed-to object. Look up the
+//     form via the module's TypeSection.
 //
 // For concrete targets, this minimal implementation accepts only exact
 // TypeID equality; a strict subtype check via Cohen display can come

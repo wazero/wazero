@@ -928,6 +928,7 @@ func funcTypeIndex(m *Module, funcIdx Index) (uint32, bool) {
 	}
 	return m.FunctionSection[local], true
 }
+
 // references and SuperTypeIndex values that point inside the rec
 // group at [groupStart, groupEnd) are encoded as "rec.N" relative to
 // the group start.

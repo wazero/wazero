@@ -491,6 +491,7 @@ func TestGC_Struct(t *testing.T) {
 		require.Equal(t, int32(0), api.DecodeI32(res[0]))
 	})
 }
+
 func TestGC_Array(t *testing.T) {
 	ctx := context.Background()
 
@@ -578,6 +579,7 @@ func TestGC_Array(t *testing.T) {
 		require.Equal(t, int32(100), api.DecodeI32(res[0]))
 	})
 }
+
 func TestGC_CallRef(t *testing.T) {
 	ctx := context.Background()
 
@@ -628,6 +630,7 @@ func TestGC_CallRef(t *testing.T) {
 		require.Equal(t, int32(42), api.DecodeI32(res[0]))
 	})
 }
+
 func TestGC_RefTestAndCast(t *testing.T) {
 	ctx := context.Background()
 

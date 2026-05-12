@@ -748,9 +748,9 @@ type validationModuleCtx struct {
 	m *Module
 }
 
-func (v validationModuleCtx) TypeSection() []FunctionType { return v.m.TypeSection }
+func (v validationModuleCtx) TypeSection() []FunctionType  { return v.m.TypeSection }
 func (v validationModuleCtx) TypeID(uint32) FunctionTypeID { return 0 }
-func (v validationModuleCtx) KeepAlive(any)                 {}
+func (v validationModuleCtx) KeepAlive(any)                {}
 func (v validationModuleCtx) FunctionTypeIndex(funcIdx Index) (uint32, bool) {
 	imported := uint32(v.m.ImportFunctionCount)
 	if funcIdx < imported {
