@@ -61,11 +61,21 @@ func decodeElementConstExprVector(r *bytes.Reader, elemType wasm.RefType, enable
 
 func decodeElementRefType(r *bytes.Reader) (ret wasm.RefType, err error) {
 	b, e := r.ReadByte()
-	ret = wasm.ValueType(b)
 	if e != nil {
 		err = fmt.Errorf("read element ref type: %w", e)
 		return
 	}
+	if b == wasm.RefPrefixNullable || b == wasm.RefPrefixNonNullable {
+		// 0x63 / 0x64 ref-prefix encoding followed by s33 heap-type.
+		ht, _, hErr := readSignedLeb33(r)
+		if hErr != nil {
+			err = fmt.Errorf("read element ref heap type: %w", hErr)
+			return
+		}
+		ret = heapTypeToAbstractByte(ht)
+		return
+	}
+	ret = wasm.ValueType(b)
 	switch ret {
 	case wasm.RefTypeFuncref, wasm.RefTypeExternref,
 		// wasm-gc nullable abstract heap-type shorthand bytes.

@@ -4675,7 +4675,10 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			tf := functionFromUintptr(uintptr(v))
 			expectedTypeID := f.moduleInstance.TypeIDs[uint32(op.U1)]
 			if tf.typeID != expectedTypeID {
-				panic(wasmruntime.ErrRuntimeIndirectCallTypeMismatch)
+				store := tf.moduleInstance.GetStore()
+				if !store.IsSubtype(tf.typeID, expectedTypeID) {
+					panic(wasmruntime.ErrRuntimeIndirectCallTypeMismatch)
+				}
 			}
 			frameUnwound := ce.callWithUnwind(ctx, f.moduleInstance, tf)
 			if frameUnwound {
@@ -4694,7 +4697,10 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			tf := functionFromUintptr(uintptr(v))
 			expectedTypeID := f.moduleInstance.TypeIDs[uint32(op.U1)]
 			if tf.typeID != expectedTypeID {
-				panic(wasmruntime.ErrRuntimeIndirectCallTypeMismatch)
+				store := tf.moduleInstance.GetStore()
+				if !store.IsSubtype(tf.typeID, expectedTypeID) {
+					panic(wasmruntime.ErrRuntimeIndirectCallTypeMismatch)
+				}
 			}
 			if tf.moduleInstance != f.moduleInstance {
 				frameUnwound := ce.callWithUnwind(ctx, f.moduleInstance, tf)
@@ -5113,8 +5119,14 @@ func (ce *callEngine) functionForOffset(table *wasm.TableInstance, offset uint64
 	}
 
 	tf := functionFromUintptr(rawPtr)
+	// Accept exact match or any declared supertype via Store.IsSubtype
+	// so a table typed `(ref $T)` accepts function entries declared
+	// `(ref $U)` where $U is a subtype of $T.
 	if tf.typeID != expectedTypeID {
-		panic(wasmruntime.ErrRuntimeIndirectCallTypeMismatch)
+		store := tf.moduleInstance.GetStore()
+		if !store.IsSubtype(tf.typeID, expectedTypeID) {
+			panic(wasmruntime.ErrRuntimeIndirectCallTypeMismatch)
+		}
 	}
 	return tf
 }
@@ -5464,27 +5476,25 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 	// pointed-to object (both WasmStruct and WasmArray place TypeID first).
 	// We use the double-pointer cast idiom to avoid the
 	// unsafe.Pointer(uintptr(...)) pattern that go vet flags.
+	// Heap pointer: read the TypeID from the first field of the
+	// pointed-to object (both WasmStruct and WasmArray place TypeID first).
+	// We use the double-pointer cast idiom to avoid the
+	// unsafe.Pointer(uintptr(...)) pattern that go vet flags.
 	hdrPtr := *(**wasm.FunctionTypeID)(unsafe.Pointer(&v))
 	objTypeID := *hdrPtr
-	objForm := wasm.CompositeFormFunc
-	objIsResolved := false
-	for i, tid := range mi.TypeIDs {
-		if tid == objTypeID {
-			objForm = mi.Source.TypeSection[i].Form
-			objIsResolved = true
-			break
-		}
-	}
+	store := mi.GetStore()
 	if isConcrete {
 		if int(typeIdx) >= len(mi.TypeIDs) {
 			return false
 		}
-		return objTypeID == mi.TypeIDs[typeIdx]
+		// Use Store.IsSubtype so a concrete instance can match any of
+		// its declared supertypes via the Cohen display.
+		return store.IsSubtype(objTypeID, mi.TypeIDs[typeIdx])
 	}
-	if !objIsResolved {
-		// Unknown TypeID; conservatively reject for abstract dispatch.
+	if !store.IsResolvedType(objTypeID) {
 		return false
 	}
+	objForm := store.TypeForm(objTypeID)
 	switch kindByte {
 	case wasm.ValueTypeAnyref.Kind(), wasm.ValueTypeEqref.Kind():
 		return objForm == wasm.CompositeFormStruct || objForm == wasm.CompositeFormArray

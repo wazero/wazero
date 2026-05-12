@@ -28,8 +28,10 @@ func TestIsRefSubtypeOf_ConcreteIntoAbstract(t *testing.T) {
 	require.True(t, isRefSubtypeOf(ConcreteRef(0, true), ValueTypeFuncref))
 	require.True(t, isRefSubtypeOf(ConcreteRef(0, false), ValueTypeFuncref))
 	require.True(t, isRefSubtypeOf(ConcreteRef(0, true), ValueTypeAnyref))
-	// But not into structref/arrayref/i31ref/eqref without module context.
-	require.False(t, isRefSubtypeOf(ConcreteRef(0, true), ValueTypeStructref))
+	// Concrete refs are permissively accepted into structref/arrayref/
+	// i31ref slots at the byte-stack level; the runtime ref.test path
+	// verifies the actual form via Store.TypeForm.
+	require.True(t, isRefSubtypeOf(ConcreteRef(0, true), ValueTypeStructref))
 }
 
 func TestIsRefSubtypeOf_ConcreteByTypeIdx(t *testing.T) {

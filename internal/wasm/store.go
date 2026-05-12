@@ -54,6 +54,12 @@ type (
 		// do type-checks on indirect function calls.
 		typeIDs map[string]FunctionTypeID
 
+		// subtypes is index-correlated with typeIDs (a FunctionTypeID is
+		// the slice index): subtypes[id] holds the Cohen-style subtype
+		// display for the type, plus its CompositeForm. Populated lazily
+		// by computeSubtypeDisplays after each GetFunctionTypeIDs call.
+		subtypes []subtypeInfo
+
 		// functionMaxTypes represents the limit on the number of function types in a store.
 		// Note: this is fixed to 2^27 but have this a field for testability.
 		functionMaxTypes uint32
@@ -628,6 +634,9 @@ func (s *Store) GetFunctionTypeIDs(ts []FunctionType) ([]FunctionTypeID, error) 
 		}
 		ret[i] = inst
 	}
+	// Populate Cohen-style subtype displays for the assigned IDs so
+	// ref.test / ref.cast / call_ref can answer subtype queries in O(1).
+	s.computeSubtypeDisplays(ts, ret)
 	return ret, nil
 }
 
@@ -691,4 +700,138 @@ func (m *ModuleInstance) TypeID(typeIdx uint32) FunctionTypeID {
 // traces it for the module's lifetime. Implements gcModuleCtx.
 func (m *ModuleInstance) KeepAlive(v any) {
 	m.GCRoots = append(m.GCRoots, v)
+}
+
+// subtypeInfo records the Cohen-style subtype display for a given
+// FunctionTypeID together with its composite form. Resolved is true
+// once the display has been filled in by computeSubtypeDisplays.
+//
+// Cohen displays let Store.IsSubtype answer "is `sub` a subtype of
+// `sup`?" in O(1) time: the answer is sub.Display[sup.Depth] == sup.
+type subtypeInfo struct {
+	Depth    uint32
+	Display  []FunctionTypeID
+	Resolved bool
+	Form     CompositeForm
+}
+
+// computeSubtypeDisplays fills in the Cohen subtype display for each of
+// the freshly-assigned FunctionTypeIDs in ids (parallel to ts). Types
+// without a SuperTypeIndex get a single-element display containing
+// themselves at depth 0. Types with a supertype inherit the supertype's
+// display and extend it by one. The walk is iterative so it tolerates
+// forward references inside a rec group.
+func (s *Store) computeSubtypeDisplays(ts []FunctionType, ids []FunctionTypeID) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	// Ensure the subtypes slice can index all known IDs.
+	maxID := FunctionTypeID(0)
+	for _, id := range ids {
+		if id > maxID {
+			maxID = id
+		}
+	}
+	if int(maxID) >= len(s.subtypes) {
+		grown := make([]subtypeInfo, maxID+1)
+		copy(grown, s.subtypes)
+		s.subtypes = grown
+	}
+	// Iterate until fixed point. Each iteration resolves any ID whose
+	// supertype is already resolved (or whose supertype is "outside the
+	// batch" — i.e., already in s.subtypes from a previous call).
+	for {
+		progressed := false
+		for i := range ts {
+			id := ids[i]
+			if s.subtypes[id].Resolved {
+				continue
+			}
+			t := &ts[i]
+			if t.SuperTypeIndex == nil {
+				s.subtypes[id] = subtypeInfo{
+					Depth:    0,
+					Display:  []FunctionTypeID{id},
+					Resolved: true,
+					Form:     t.Form,
+				}
+				progressed = true
+				continue
+			}
+			// Resolve supertype's display.
+			supIdx := *t.SuperTypeIndex
+			if int(supIdx) >= len(ids) {
+				// Out of range — leave unresolved.
+				continue
+			}
+			supID := ids[supIdx]
+			if int(supID) >= len(s.subtypes) || !s.subtypes[supID].Resolved {
+				continue
+			}
+			supInfo := s.subtypes[supID]
+			display := make([]FunctionTypeID, len(supInfo.Display)+1)
+			copy(display, supInfo.Display)
+			display[len(supInfo.Display)] = id
+			s.subtypes[id] = subtypeInfo{
+				Depth:    supInfo.Depth + 1,
+				Display:  display,
+				Resolved: true,
+				Form:     t.Form,
+			}
+			progressed = true
+		}
+		if !progressed {
+			break
+		}
+	}
+}
+
+// IsSubtype reports whether `sub` is a subtype of `sup` per the
+// declared SuperTypeIndex chain (transitive). Equality counts as a
+// subtype. O(1) by indexing into sub's Cohen display at sup's depth.
+func (s *Store) IsSubtype(sub, sup FunctionTypeID) bool {
+	if sub == sup {
+		return true
+	}
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	if int(sub) >= len(s.subtypes) || int(sup) >= len(s.subtypes) {
+		return false
+	}
+	subInfo, supInfo := s.subtypes[sub], s.subtypes[sup]
+	if !subInfo.Resolved || !supInfo.Resolved {
+		return false
+	}
+	if supInfo.Depth >= uint32(len(subInfo.Display)) {
+		return false
+	}
+	return subInfo.Display[supInfo.Depth] == sup
+}
+
+// TypeForm returns the composite form registered for the given
+// FunctionTypeID. Returns CompositeFormFunc as the zero value default.
+func (s *Store) TypeForm(id FunctionTypeID) CompositeForm {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	if int(id) >= len(s.subtypes) {
+		return CompositeFormFunc
+	}
+	return s.subtypes[id].Form
+}
+
+// IsResolvedType reports whether the given FunctionTypeID has been
+// registered and its subtype display computed.
+func (s *Store) IsResolvedType(id FunctionTypeID) bool {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	if int(id) >= len(s.subtypes) {
+		return false
+	}
+	return s.subtypes[id].Resolved
+}
+
+// GetStore returns the Store on which this module is instantiated.
+// Used by interpreter handlers (e.g., ref.test, ref.cast) to look up
+// engine-wide subtype info at runtime.
+func (m *ModuleInstance) GetStore() *Store {
+	return m.s
 }

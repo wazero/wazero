@@ -751,7 +751,11 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			}
 
 			table := tables[tableIndex]
-			if table.Type != RefTypeFuncref {
+			// Accept any table whose element type lies in the func-ref
+			// hierarchy: plain funcref, nofuncref, or a concrete-ref
+			// type (which carries the funcref kind byte placeholder).
+			tableKind := table.Type.Kind()
+			if tableKind != byte(ValueTypeFuncref) && tableKind != byte(ValueTypeNoFuncref) {
 				return fmt.Errorf("table is not funcref type but was %s for %s", RefTypeName(table.Type), opcodeName)
 			}
 
@@ -1209,7 +1213,8 @@ func (m *Module) validateFunctionWithMaxStackValues(
 						return fmt.Errorf("table of index %d not found", tableIndex)
 					}
 
-					if m.ElementSection[elementIndex].Type != tables[tableIndex].Type {
+					if m.ElementSection[elementIndex].Type != tables[tableIndex].Type &&
+						!isRefSubtypeOf(m.ElementSection[elementIndex].Type, tables[tableIndex].Type) {
 						return fmt.Errorf("type mismatch for table.init: element type %s does not match table type %s",
 							RefTypeName(m.ElementSection[elementIndex].Type),
 							RefTypeName(tables[tableIndex].Type),
@@ -2201,7 +2206,9 @@ func (m *Module) validateFunctionWithMaxStackValues(
 						}
 					}
 				}
-				valueTypeStack.push(ValueTypeStructref)
+				// struct.new produces a non-null concrete ref so a
+				// downstream (ref $T) consumer can match precisely.
+				valueTypeStack.push(ConcreteRef(typeIdx, false))
 			case OpcodeGCStructGet, OpcodeGCStructGetS, OpcodeGCStructGetU:
 				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
 				if err != nil {
@@ -2299,7 +2306,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 						return fmt.Errorf("array.new: cannot pop element: %v", err)
 					}
 				}
-				valueTypeStack.push(ValueTypeArrayref)
+				valueTypeStack.push(ConcreteRef(typeIdx, false))
 			case OpcodeGCArrayGet, OpcodeGCArrayGetS, OpcodeGCArrayGetU:
 				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
 				if err != nil {
@@ -2392,7 +2399,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 						return fmt.Errorf("array.new_fixed: cannot pop element[%d]: %v", count-1-i, err)
 					}
 				}
-				valueTypeStack.push(ValueTypeArrayref)
+				valueTypeStack.push(ConcreteRef(typeIdx, false))
 			case OpcodeGCArrayFill:
 				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
 				if err != nil {
@@ -2485,7 +2492,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return fmt.Errorf("array.new_data/elem: cannot pop src offset: %v", err)
 				}
-				valueTypeStack.push(ValueTypeArrayref)
+				valueTypeStack.push(ConcreteRef(typeIdx, false))
 			case OpcodeGCArrayInitData, OpcodeGCArrayInitElem:
 				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
 				if err != nil {
@@ -2525,7 +2532,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					return fmt.Errorf("read ref.test heap type: %v", err)
 				}
 				pc += n
-				_, typeIdx, isConcrete, ok := HeapTypeKindFromBinary(ht)
+				kindByte, typeIdx, isConcrete, ok := HeapTypeKindFromBinary(ht)
 				if !ok {
 					return fmt.Errorf("invalid heap type for %s: %d", GCInstructionName(sub), ht)
 				}
@@ -2538,8 +2545,16 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if sub == OpcodeGCRefTest || sub == OpcodeGCRefTestNull {
 					valueTypeStack.push(ValueTypeI32)
 				} else {
-					// ref.cast pushes a ref back; loose tracking with anyref.
-					valueTypeStack.push(ValueTypeAnyref)
+					// ref.cast pushes a ref of the target heap type so
+					// a subsequent i31.get_u / struct.get / etc. validates.
+					nullable := sub == OpcodeGCRefCastNull
+					var resultType ValueType
+					if isConcrete {
+						resultType = ConcreteRef(typeIdx, nullable)
+					} else {
+						resultType = AbstractRef(kindByte, nullable)
+					}
+					valueTypeStack.push(resultType)
 				}
 			case OpcodeGCBrOnCast, OpcodeGCBrOnCastFail:
 				pc++

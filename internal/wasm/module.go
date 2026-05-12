@@ -714,6 +714,11 @@ func validateConstExpression(globals []GlobalType, numFuncs uint32, expr *Consta
 		return err
 	}
 	if typ != expectedType {
+		// Allow subtype relation for ref types (e.g. (ref T) flows into
+		// (ref null T), concrete (ref $i31ref) flows into anyref).
+		if isReferenceValueType(typ) && isReferenceValueType(expectedType) && isRefSubtypeOf(typ, expectedType) {
+			return nil
+		}
 		return fmt.Errorf("const expression type mismatch expected %s but got %s", ValueTypeName(expectedType), ValueTypeName(typ))
 	}
 	return nil
@@ -1633,10 +1638,18 @@ func isRefSubtypeOf(actual, expected ValueType) bool {
 	// into an abstract slot in the appropriate hierarchy.
 	if actual.IsConcreteRef() && expected.IsAbstract() {
 		// Without the module's type section here, we can't classify
-		// the concrete type's form. Validator callers that need this
-		// must use IsValueTypeSubtypeOf with a *Module instead.
-		return expected.Kind() == byte(ValueTypeFuncref) ||
-			expected.Kind() == byte(ValueTypeAnyref)
+		// the concrete type's form precisely. Be permissive and accept
+		// any abstract target in the funcref / any hierarchy; the
+		// runtime ref.test / call_indirect path verifies the actual
+		// form precisely via Store.TypeForm.
+		switch ValueType(expected.Kind()) {
+		case ValueTypeFuncref, ValueTypeNoFuncref,
+			ValueTypeAnyref, ValueTypeEqref,
+			ValueTypeStructref, ValueTypeArrayref,
+			ValueTypeI31ref, ValueTypeNullref:
+			return true
+		}
+		return false
 	}
 	if actual.IsConcreteRef() && expected.IsConcreteRef() {
 		return actual.TypeIndex() == expected.TypeIndex()
