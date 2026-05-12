@@ -5464,10 +5464,8 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 		if isConcrete {
 			return false
 		}
-		switch kindByte {
-		case wasm.ValueTypeI31ref.Kind(),
-			wasm.ValueTypeEqref.Kind(),
-			wasm.ValueTypeAnyref.Kind():
+		switch wasm.ValueType(kindByte) {
+		case wasm.ValueTypeI31ref, wasm.ValueTypeEqref, wasm.ValueTypeAnyref:
 			return true
 		}
 		return false
@@ -5495,14 +5493,14 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 		return false
 	}
 	objForm := store.TypeForm(objTypeID)
-	switch kindByte {
-	case wasm.ValueTypeAnyref.Kind(), wasm.ValueTypeEqref.Kind():
+	switch wasm.ValueType(kindByte) {
+	case wasm.ValueTypeAnyref, wasm.ValueTypeEqref:
 		return objForm == wasm.CompositeFormStruct || objForm == wasm.CompositeFormArray
-	case wasm.ValueTypeStructref.Kind():
+	case wasm.ValueTypeStructref:
 		return objForm == wasm.CompositeFormStruct
-	case wasm.ValueTypeArrayref.Kind():
+	case wasm.ValueTypeArrayref:
 		return objForm == wasm.CompositeFormArray
-	case wasm.ValueTypeFuncref.Kind():
+	case wasm.ValueTypeFuncref:
 		return objForm == wasm.CompositeFormFunc
 	}
 	return false

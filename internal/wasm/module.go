@@ -1487,12 +1487,12 @@ func (v ValueType) IsRef() bool {
 	if v.IsConcreteRef() {
 		return true
 	}
-	switch v.Kind() {
-	case byte(ValueTypeFuncref), byte(ValueTypeExternref), byte(ValueTypeExnref),
-		byte(ValueTypeAnyref), byte(ValueTypeEqref), byte(ValueTypeI31ref),
-		byte(ValueTypeStructref), byte(ValueTypeArrayref),
-		byte(ValueTypeNullref), byte(ValueTypeNoFuncref),
-		byte(ValueTypeNoExternref), byte(ValueTypeNoExnref):
+	switch ValueType(v.Kind()) {
+	case ValueTypeFuncref, ValueTypeExternref, ValueTypeExnref,
+		ValueTypeAnyref, ValueTypeEqref, ValueTypeI31ref,
+		ValueTypeStructref, ValueTypeArrayref,
+		ValueTypeNullref, ValueTypeNoFuncref,
+		ValueTypeNoExternref, ValueTypeNoExnref:
 		return true
 	}
 	return false
@@ -1540,29 +1540,30 @@ func IsAbstractByteSubtypeOf(actual, expected byte) bool {
 	if actual == expected {
 		return true
 	}
+	a, e := ValueType(actual), ValueType(expected)
 	// Bottoms.
-	if actual == byte(ValueTypeNoFuncref) && expected == byte(ValueTypeFuncref) {
+	if a == ValueTypeNoFuncref && e == ValueTypeFuncref {
 		return true
 	}
-	if actual == byte(ValueTypeNoExternref) && expected == byte(ValueTypeExternref) {
+	if a == ValueTypeNoExternref && e == ValueTypeExternref {
 		return true
 	}
-	if actual == byte(ValueTypeNoExnref) && expected == byte(ValueTypeExnref) {
+	if a == ValueTypeNoExnref && e == ValueTypeExnref {
 		return true
 	}
-	if actual == byte(ValueTypeNullref) {
-		switch expected {
-		case byte(ValueTypeI31ref), byte(ValueTypeStructref), byte(ValueTypeArrayref),
-			byte(ValueTypeEqref), byte(ValueTypeAnyref):
+	if a == ValueTypeNullref {
+		switch e {
+		case ValueTypeI31ref, ValueTypeStructref, ValueTypeArrayref,
+			ValueTypeEqref, ValueTypeAnyref:
 			return true
 		}
 	}
 	// any-hierarchy: i31 / struct / array <: eq <: any.
-	switch actual {
-	case byte(ValueTypeI31ref), byte(ValueTypeStructref), byte(ValueTypeArrayref):
-		return expected == byte(ValueTypeEqref) || expected == byte(ValueTypeAnyref)
-	case byte(ValueTypeEqref):
-		return expected == byte(ValueTypeAnyref)
+	switch a {
+	case ValueTypeI31ref, ValueTypeStructref, ValueTypeArrayref:
+		return e == ValueTypeEqref || e == ValueTypeAnyref
+	case ValueTypeEqref:
+		return e == ValueTypeAnyref
 	}
 	return false
 }
