@@ -66,7 +66,14 @@ func decodeElementRefType(r *bytes.Reader) (ret wasm.RefType, err error) {
 		err = fmt.Errorf("read element ref type: %w", e)
 		return
 	}
-	if ret != wasm.RefTypeFuncref && ret != wasm.RefTypeExternref {
+	switch ret {
+	case wasm.RefTypeFuncref, wasm.RefTypeExternref,
+		// wasm-gc nullable abstract heap-type shorthand bytes.
+		wasm.ValueTypeExnref,
+		wasm.ValueTypeAnyref, wasm.ValueTypeEqref, wasm.ValueTypeI31ref,
+		wasm.ValueTypeStructref, wasm.ValueTypeArrayref, wasm.ValueTypeNullref,
+		wasm.ValueTypeNoFuncref, wasm.ValueTypeNoExternref, wasm.ValueTypeNoExnref:
+	default:
 		return 0, errors.New("ref type must be funcref or externref for element as of WebAssembly 2.0")
 	}
 	return

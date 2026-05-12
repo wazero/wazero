@@ -86,6 +86,12 @@ type (
 		// This is necessary to achieve fast runtime type checking for indirect function calls at runtime.
 		TypeIDs []FunctionTypeID
 
+		// GCRoots keeps Go-allocated WasmStruct / WasmArray / I31Ref
+		// pointers alive for the lifetime of the module instance. The
+		// operand-stack and globals store uintptr casts that the Go GC
+		// cannot trace; this slice provides the missing trace edge.
+		GCRoots []any
+
 		// DataInstances holds data segments bytes of the module.
 		// This is only used by bulk memory operations.
 		//
@@ -180,16 +186,27 @@ func (m *ModuleInstance) GetFunctionTypeID(t *FunctionType) FunctionTypeID {
 func (m *ModuleInstance) buildElementInstances(elements []ElementSegment) {
 	m.ElementInstances = make([][]Reference, len(elements))
 	for i, elm := range elements {
-		if elm.Type == RefTypeFuncref && elm.Mode == ElementModePassive {
-			// Only passive elements can be access as element instances.
-			// See https://www.w3.org/TR/2022/WD-wasm-core-2-20220419/syntax/modules.html#element-segments
-			inits := elm.Init
-			inst := make([]Reference, len(inits))
-			m.ElementInstances[i] = inst
-			for j, idx := range inits {
-				initExprResults := evaluateConstExprInModuleInstance(&idx, m)
-				inst[j] = Reference(initExprResults[0])
-			}
+		if elm.Mode != ElementModePassive {
+			continue
+		}
+		// Only passive elements are exposed as instances.
+		// See https://www.w3.org/TR/2022/WD-wasm-core-2-20220419/syntax/modules.html#element-segments
+		switch elm.Type {
+		case RefTypeFuncref, RefTypeExternref,
+			ValueTypeExnref,
+			ValueTypeAnyref, ValueTypeEqref, ValueTypeI31ref,
+			ValueTypeStructref, ValueTypeArrayref, ValueTypeNullref,
+			ValueTypeNoFuncref, ValueTypeNoExternref, ValueTypeNoExnref:
+		default:
+			// Unsupported ref type for passive element instance.
+			continue
+		}
+		inits := elm.Init
+		inst := make([]Reference, len(inits))
+		m.ElementInstances[i] = inst
+		for j, idx := range inits {
+			initExprResults := evaluateConstExprInModuleInstance(&idx, m)
+			inst[j] = Reference(initExprResults[0])
 		}
 	}
 }
@@ -548,8 +565,12 @@ func errorInvalidImport(i *Import, err error) error {
 //
 // Global initialization constant expression can only reference the imported globals.
 // See the note on https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#constant-expressions%E2%91%A0
-func (g *GlobalInstance) initialize(importedGlobals []*GlobalInstance, expr *ConstantExpression, funcRefResolver func(funcIndex Index) Reference) {
-	result, _, _ := evaluateConstExpr(
+//
+// gcCtx, when non-nil, provides the TypeSection / TypeIDs / KeepAlive
+// hooks needed to evaluate GC opcodes (struct.new, array.new, ref.i31)
+// in the init expression.
+func (g *GlobalInstance) initialize(importedGlobals []*GlobalInstance, expr *ConstantExpression, funcRefResolver func(funcIndex Index) Reference, gcCtx gcModuleCtx) {
+	result, _, _ := evaluateConstExprWithModule(
 		expr,
 		func(globalIndex Index) (ValueType, uint64, uint64, error) {
 			g := importedGlobals[globalIndex]
@@ -558,6 +579,7 @@ func (g *GlobalInstance) initialize(importedGlobals []*GlobalInstance, expr *Con
 		func(funcIndex Index) (Reference, error) {
 			return funcRefResolver(funcIndex), nil
 		},
+		gcCtx,
 	)
 	switch len(result) {
 	case 1:
@@ -648,4 +670,25 @@ func (s *Store) CloseWithExitCode(ctx context.Context, exitCode uint32) error {
 	s.nameToModuleCap = 0
 	s.typeIDs = nil
 	return errors.Join(errs...)
+}
+
+// TypeSection returns the module's composite type entries.
+// Implements gcModuleCtx for the GC-aware const-expression evaluator.
+func (m *ModuleInstance) TypeSection() []FunctionType {
+	return m.Source.TypeSection
+}
+
+// TypeID returns the engine-wide FunctionTypeID for the given
+// module-local type index. Implements gcModuleCtx.
+func (m *ModuleInstance) TypeID(typeIdx uint32) FunctionTypeID {
+	if int(typeIdx) >= len(m.TypeIDs) {
+		return 0
+	}
+	return m.TypeIDs[typeIdx]
+}
+
+// KeepAlive records v on the module instance's GCRoots so the Go GC
+// traces it for the module's lifetime. Implements gcModuleCtx.
+func (m *ModuleInstance) KeepAlive(v any) {
+	m.GCRoots = append(m.GCRoots, v)
 }

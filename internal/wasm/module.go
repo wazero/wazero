@@ -751,7 +751,7 @@ func (m *ModuleInstance) buildGlobals(module *Module, funcRefResolver func(funcI
 		}
 		m.Globals[i+module.ImportGlobalCount] = g
 		g.Type = gs.Type
-		g.initialize(importedGlobals, &gs.Init, funcRefResolver)
+		g.initialize(importedGlobals, &gs.Init, funcRefResolver, m)
 	}
 }
 

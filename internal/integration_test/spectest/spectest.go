@@ -116,6 +116,11 @@ func (c commandActionVal) String() string {
 		v = "null"
 	case "exnref":
 		v = "null"
+	case "anyref", "eqref", "i31ref", "structref", "arrayref", "nullref",
+		"nofuncref", "noexternref", "noexnref":
+		// GC abstract ref types: spec tests typically assert only the type,
+		// not a specific value. Treat as opaque "any value of this ref type".
+		v = "ref"
 	case "v128":
 		simdValues, ok := c.Value.([]interface{})
 		if !ok {
@@ -323,6 +328,14 @@ func (c command) expectedError() (err error) {
 		err = wasmruntime.ErrRuntimeUnreachable
 	case "uncaught exception":
 		err = wasmruntime.ErrRuntimeUncaughtException
+	case "null i31 reference", "null struct reference", "null array reference",
+		"null reference", "null ref":
+		// wasm-gc trap text variants for the null-deref family.
+		err = wasmruntime.ErrRuntimeNullReference
+	case "out of bounds array access", "array out of bounds":
+		err = wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess
+	case "cast failure", "ref.cast failure":
+		err = wasmruntime.ErrRuntimeInvalidConversionToInteger
 	default:
 		if strings.HasPrefix(c.Text, "uninitialized") {
 			err = wasmruntime.ErrRuntimeInvalidTableAccess
@@ -443,8 +456,13 @@ func RunCase(t *testing.T, testDataFS embed.FS, f string, ctx context.Context, c
 								laneTypes[i] = expV.LaneType
 							}
 							// When value is nil for ref types, it means "any ref" — skip comparison.
-							if expV.Value == nil && (expV.ValType == "funcref" || expV.ValType == "externref" || expV.ValType == "exnref") {
-								skipIndices[i] = true
+							switch expV.ValType {
+							case "funcref", "externref", "exnref",
+								"anyref", "eqref", "i31ref", "structref", "arrayref",
+								"nullref", "nofuncref", "noexternref", "noexnref":
+								if expV.Value == nil {
+									skipIndices[i] = true
+								}
 							}
 						}
 						matched, valuesMsg := valuesEq(results, exps, wasm.FromApiValueType(fn.Definition().ResultTypes()), laneTypes, skipIndices)
@@ -602,7 +620,11 @@ func valuesEq(actual, exps []uint64, valTypes []wasm.ValueType, laneTypes map[in
 			msgActualValuesStrs = append(msgActualValuesStrs, fmt.Sprintf("%d", uint32(actual[uint64RepPos])))
 			matched = matched && uint32(exps[uint64RepPos]) == uint32(actual[uint64RepPos])
 			uint64RepPos++
-		case wasm.ValueTypeI64, wasm.ValueTypeExternref, wasm.ValueTypeFuncref:
+		case wasm.ValueTypeI64, wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
+			wasm.ValueTypeExnref,
+			wasm.ValueTypeAnyref, wasm.ValueTypeEqref, wasm.ValueTypeI31ref,
+			wasm.ValueTypeStructref, wasm.ValueTypeArrayref, wasm.ValueTypeNullref,
+			wasm.ValueTypeNoFuncref, wasm.ValueTypeNoExternref, wasm.ValueTypeNoExnref:
 			msgExpValuesStrs = append(msgExpValuesStrs, fmt.Sprintf("%d", exps[uint64RepPos]))
 			msgActualValuesStrs = append(msgActualValuesStrs, fmt.Sprintf("%d", actual[uint64RepPos]))
 			matched = matched && exps[uint64RepPos] == actual[uint64RepPos]
