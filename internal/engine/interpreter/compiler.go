@@ -3965,7 +3965,11 @@ func (c *compiler) applyToStack(opcode wasm.Opcode) (index uint32, err error) {
 	}
 
 	if c.unreachableState.on {
-		return 0, nil
+		// Pass the consumed `index` back to the caller so the GC-prefix
+		// sub-opcode dispatch can still skip the right number of
+		// immediates in unreachable code. Returning 0 here would make
+		// the caller mis-dispatch to struct.new (sub-opcode 0).
+		return index, nil
 	}
 
 	// Retrieve the signature of the opcode.
@@ -4074,6 +4078,14 @@ func (c *compiler) emitDefaultValue(t wasm.ValueType) {
 	case wasm.ValueTypeV128:
 		c.stackPush(unsignedTypeV128)
 		c.emit(newOperationV128Const(0, 0))
+	default:
+		// GC abstract ref types (anyref, eqref, i31ref, structref,
+		// arrayref, nullref, nofuncref, noexternref, noexnref) and
+		// concrete (ref $t) — all stored as a single uint64 (null = 0).
+		if t.IsRef() {
+			c.stackPush(unsignedTypeI64)
+			c.emit(newOperationConstI64(0))
+		}
 	}
 }
 

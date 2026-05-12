@@ -1,6 +1,7 @@
 package wasm
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -33,6 +34,9 @@ type gcModuleCtx interface {
 	// KeepAlive records a Go pointer so the GC traces it for the
 	// lifetime of the consuming instance.
 	KeepAlive(v any)
+	// FunctionTypeIndex returns the module-local type index of the
+	// function at funcIdx, or ok=false if unknown.
+	FunctionTypeIndex(funcIdx Index) (uint32, bool)
 }
 
 // evaluateConstExprWithModule is the GC-aware evaluator. mi may be nil
@@ -105,20 +109,30 @@ func evaluateConstExprWithModule(
 			}
 			typeStack = append(typeStack, typ)
 		case OpcodeRefNull:
-			// Reference types are opaque 64bit pointer at runtime.
+			// Heap type is s33 LEB. Positive: concrete type index → push
+			// nullable (ref null $idx). Negative: abstract heap-type byte.
 			if pc >= uint64(len(data)) {
 				return nil, 0, fmt.Errorf("read reference type for ref.null: %w", io.ErrShortBuffer)
 			}
-			valType := ValueType(data[pc])
-			switch valType {
-			case ValueTypeFuncref, ValueTypeExternref, ValueTypeExnref,
-				ValueTypeAnyref, ValueTypeEqref, ValueTypeI31ref,
-				ValueTypeStructref, ValueTypeArrayref, ValueTypeNullref,
-				ValueTypeNoFuncref, ValueTypeNoExternref, ValueTypeNoExnref:
-			default:
-				return nil, 0, fmt.Errorf("invalid type for ref.null: 0x%x", valType)
+			ht, n, err := leb128.DecodeInt33AsInt64(bytes.NewReader(data[pc:]))
+			if err != nil {
+				return nil, 0, fmt.Errorf("read ref.null heap type: %w", err)
 			}
-			pc += 1
+			pc += n
+			var valType ValueType
+			if ht >= 0 {
+				valType = ConcreteRef(uint32(ht), true)
+			} else {
+				valType = ValueType(byte(ht & 0x7F))
+				switch valType {
+				case ValueTypeFuncref, ValueTypeExternref, ValueTypeExnref,
+					ValueTypeAnyref, ValueTypeEqref, ValueTypeI31ref,
+					ValueTypeStructref, ValueTypeArrayref, ValueTypeNullref,
+					ValueTypeNoFuncref, ValueTypeNoExternref, ValueTypeNoExnref:
+				default:
+					return nil, 0, fmt.Errorf("invalid type for ref.null: 0x%x", ht)
+				}
+			}
 			stack = append(stack, 0)
 			typeStack = append(typeStack, valType)
 		case OpcodeRefFunc:
@@ -132,7 +146,17 @@ func evaluateConstExprWithModule(
 				return nil, 0, err
 			}
 			stack = append(stack, uint64(ref))
-			typeStack = append(typeStack, ValueTypeFuncref)
+			var t ValueType
+			if mi != nil {
+				if typeIdx, ok := mi.FunctionTypeIndex(Index(v)); ok {
+					t = ConcreteRef(typeIdx, false)
+				} else {
+					t = ValueTypeFuncref.AsNonNullable()
+				}
+			} else {
+				t = ValueTypeFuncref.AsNonNullable()
+			}
+			typeStack = append(typeStack, t)
 		case OpcodeVecPrefix:
 			if data[pc] != OpcodeVecV128Const {
 				return nil, 0, fmt.Errorf("invalid vector opcode for const expression: %#x", data[pc-1])
@@ -373,6 +397,24 @@ func evaluateConstExprWithModule(
 					stack = append(stack, 0)
 				}
 				typeStack = append(typeStack, ConcreteRef(typeIdx, false))
+			case OpcodeGCAnyConvertExtern:
+				if len(typeStack) < 1 {
+					return nil, 0, errors.New("any.convert_extern: stack underflow")
+				}
+				v := stack[len(stack)-1]
+				if v != 0 {
+					stack[len(stack)-1] = uint64(PackExternAsAny(uintptr(v)))
+				}
+				typeStack[len(typeStack)-1] = ValueTypeAnyref
+			case OpcodeGCExternConvertAny:
+				if len(typeStack) < 1 {
+					return nil, 0, errors.New("extern.convert_any: stack underflow")
+				}
+				v := stack[len(stack)-1]
+				if v != 0 && IsTaggedExternAsAny(uintptr(v)) {
+					stack[len(stack)-1] = uint64(UnpackExternAsAny(uintptr(v)))
+				}
+				typeStack[len(typeStack)-1] = ValueTypeExternref
 			default:
 				return nil, 0, fmt.Errorf("GC sub-opcode %#x is not yet supported in const expressions", sub)
 			}

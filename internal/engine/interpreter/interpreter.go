@@ -4638,11 +4638,24 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			ce.pushValue(v)
 			frame.pc++
 
-		case operationKindAnyConvertExtern, operationKindExternConvertAny:
-			// Both forms are a runtime no-op: refs are uint64 uintptrs
-			// regardless of whether the spec types them as anyref or
-			// externref. The validator already updated the type-stack
-			// to the converted side.
+		case operationKindAnyConvertExtern:
+			// Tag the externref bit pattern so refMatches can later
+			// distinguish "externref wrapped as anyref" from genuine
+			// heap-pointer anyrefs. Null passes through unchanged.
+			v := ce.popValue()
+			ce.pushValue(uint64(wasm.PackExternAsAny(uintptr(v))))
+			frame.pc++
+
+		case operationKindExternConvertAny:
+			// Untag a previously-tagged externref. Heap-pointer anyrefs
+			// (struct/array/i31) are passed through unchanged so the
+			// validator's static externref typing is honoured.
+			v := ce.popValue()
+			if wasm.IsTaggedExternAsAny(uintptr(v)) {
+				ce.pushValue(uint64(wasm.UnpackExternAsAny(uintptr(v))))
+			} else {
+				ce.pushValue(v)
+			}
 			frame.pc++
 
 		case operationKindBrOnNull:
@@ -4989,7 +5002,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			srcOff := uint32(ce.popValue())
 			elem := f.moduleInstance.ElementInstances[segIdx]
 			if uint64(srcOff)+uint64(count) > uint64(len(elem)) {
-				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
+				panic(wasmruntime.ErrRuntimeInvalidTableAccess)
 			}
 			elems := make([]any, count)
 			for i := uint32(0); i < count; i++ {
@@ -5041,9 +5054,11 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			}
 			a := *(**wasm.WasmArray)(unsafe.Pointer(&arrV))
 			elem := f.moduleInstance.ElementInstances[segIdx]
-			if uint64(dstOff)+uint64(count) > uint64(a.Len()) ||
-				uint64(srcOff)+uint64(count) > uint64(len(elem)) {
+			if uint64(dstOff)+uint64(count) > uint64(a.Len()) {
 				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
+			}
+			if uint64(srcOff)+uint64(count) > uint64(len(elem)) {
+				panic(wasmruntime.ErrRuntimeInvalidTableAccess)
 			}
 			for i := uint32(0); i < count; i++ {
 				if err := a.Set(dstOff+i, uint64(elem[srcOff+i])); err != nil {
@@ -5408,7 +5423,11 @@ func encodeFieldValue(f wasm.FieldType, raw uint64) any {
 	case wasm.ValueTypeF64:
 		return math.Float64frombits(raw)
 	}
-	panic(fmt.Sprintf("unsupported struct/array field type %#x", f.ValueType))
+	// Reference fields: store the raw uintptr-cast as-is.
+	if f.ValueType.IsRef() {
+		return raw
+	}
+	panic(fmt.Sprintf("unsupported struct/array field type %#x", f.ValueType.Kind()))
 }
 
 // decodeFieldValueRead reads a stored field value and converts it to the
@@ -5439,7 +5458,16 @@ func decodeFieldValueRead(f wasm.FieldType, stored any, readKind operationKind) 
 	case wasm.ValueTypeF64:
 		return math.Float64bits(stored.(float64))
 	}
-	panic(fmt.Sprintf("unsupported struct/array field type %#x", f.ValueType))
+	// Reference fields: the stored uint64 is the raw uintptr cast.
+	if f.ValueType.IsRef() {
+		switch v := stored.(type) {
+		case uint64:
+			return v
+		case nil:
+			return 0
+		}
+	}
+	panic(fmt.Sprintf("unsupported struct/array field type %#x", f.ValueType.Kind()))
 }
 
 // refMatches reports whether the operand-stack uint64 ref value matches
@@ -5460,6 +5488,29 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 	if v == 0 {
 		return nullable
 	}
+	// Externref targets accept ANY non-null value: externref instances
+	// are raw uintptrs from the host that don't carry an engine TypeID,
+	// so we can't (and shouldn't) discriminate them by heap form. The
+	// test framework increments host externref values to avoid 0, so
+	// these may even alias the i31 tag bit pattern. Handle this case
+	// before any pointer-shape inspection. Note: noextern (the bottom
+	// of the extern hierarchy) only matches null, so reject here.
+	if !isConcrete && wasm.ValueType(kindByte) == wasm.ValueTypeExternref {
+		return true
+	}
+	// Externref-wrapped-as-anyref values (produced by any.convert_extern)
+	// carry the 0b11 tag. They do NOT match struct/array/i31/eq targets
+	// (they're host-opaque), and they DO match any/funcref-hierarchy
+	// targets reduce to false (extern is its own hierarchy).
+	if wasm.IsTaggedExternAsAny(uintptr(v)) {
+		if isConcrete {
+			return false
+		}
+		// Only anyref accepts a wrapped externref; the struct/array/eq/
+		// i31/func families reject. nofuncref / noextern / etc. are
+		// bottoms and only match null.
+		return wasm.ValueType(kindByte) == wasm.ValueTypeAnyref
+	}
 	if wasm.IsTaggedI31(uintptr(v)) {
 		if isConcrete {
 			return false
@@ -5472,10 +5523,22 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 	}
 	// Heap pointer: read the TypeID from the first field of the
 	// pointed-to object (both WasmStruct and WasmArray place TypeID first).
-	// We use the double-pointer cast idiom to avoid the
-	// unsafe.Pointer(uintptr(...)) pattern that go vet flags.
-	// Heap pointer: read the TypeID from the first field of the
-	// pointed-to object (both WasmStruct and WasmArray place TypeID first).
+	// For function values the layout is different (the first field is
+	// the *FunctionType pointer), so we check the funcref hierarchy
+	// targets separately using functionFromUintptr.
+	if !isConcrete {
+		switch wasm.ValueType(kindByte) {
+		case wasm.ValueTypeFuncref:
+			// Any non-null funcref-typed value matches funcref. The
+			// validator constrains the static type so we can trust
+			// that v is a function pointer here.
+			tf := functionFromUintptr(uintptr(v))
+			return tf != nil
+		case wasm.ValueTypeNoFuncref:
+			// nofunc is the bottom of the func hierarchy; only null matches.
+			return false
+		}
+	}
 	// We use the double-pointer cast idiom to avoid the
 	// unsafe.Pointer(uintptr(...)) pattern that go vet flags.
 	hdrPtr := *(**wasm.FunctionTypeID)(unsafe.Pointer(&v))
@@ -5485,9 +5548,18 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 		if int(typeIdx) >= len(mi.TypeIDs) {
 			return false
 		}
-		// Use Store.IsSubtype so a concrete instance can match any of
-		// its declared supertypes via the Cohen display.
-		return store.IsSubtype(objTypeID, mi.TypeIDs[typeIdx])
+		expected := mi.TypeIDs[typeIdx]
+		// Function: typeID lives at offset 16 (after funcType + moduleInstance pointers).
+		// For struct/array, typeID is at offset 0. Try the offset-0
+		// candidate first, then fall back to the function-pointer cast.
+		if store.IsSubtype(objTypeID, expected) {
+			return true
+		}
+		tf := functionFromUintptr(uintptr(v))
+		if tf != nil {
+			return store.IsSubtype(tf.typeID, expected)
+		}
+		return false
 	}
 	if !store.IsResolvedType(objTypeID) {
 		return false

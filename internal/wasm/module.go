@@ -436,6 +436,9 @@ func (m *Module) validateTypeSection(enabledFeatures api.CoreFeatures) error {
 				return fmt.Errorf("type[%d] form %s does not match supertype %d form %s",
 					i, t.Form, *t.SuperTypeIndex, sup.Form)
 			}
+			if err := checkStructuralSubtype(t, sup, m); err != nil {
+				return fmt.Errorf("type[%d] sub type: %v", i, err)
+			}
 		}
 	}
 	return nil
@@ -467,7 +470,7 @@ func (m *Module) validateGlobals(globals []GlobalType, numFuncts, maxGlobals uin
 	importedGlobals := globals[:m.ImportGlobalCount]
 	for i := range m.GlobalSection {
 		g := &m.GlobalSection[i]
-		if err := validateConstExpression(importedGlobals, numFuncts, &g.Init, g.Type.ValType); err != nil {
+		if err := validateConstExpressionForModule(m, importedGlobals, numFuncts, &g.Init, g.Type.ValType); err != nil {
 			return err
 		}
 	}
@@ -547,7 +550,7 @@ func (m *Module) declaredFunctionIndexes(enabledFeatures api.CoreFeatures) (ret 
 	for i := range m.GlobalSection {
 		g := &m.GlobalSection[i]
 
-		_, _, initErr := evaluateConstExpr(
+		_, _, initErr := evaluateConstExprWithModule(
 			&g.Init,
 			func(globalIndex Index) (ValueType, uint64, uint64, error) {
 				vt, err := m.resolveConstExprGlobalType(enabledFeatures, SectionIDGlobal, Index(i), globalIndex)
@@ -557,6 +560,7 @@ func (m *Module) declaredFunctionIndexes(enabledFeatures api.CoreFeatures) (ret 
 				ret[funcIndex] = struct{}{}
 				return 0, nil
 			},
+			validationModuleCtx{m: m},
 		)
 
 		if initErr != nil {
@@ -568,7 +572,7 @@ func (m *Module) declaredFunctionIndexes(enabledFeatures api.CoreFeatures) (ret 
 	for i := range m.ElementSection {
 		elem := &m.ElementSection[i]
 		for _, initExpr := range elem.Init {
-			_, _, _ = evaluateConstExpr(
+			_, _, _ = evaluateConstExprWithModule(
 				&initExpr,
 				func(globalIndex Index) (ValueType, uint64, uint64, error) {
 					vt, err := m.resolveConstExprGlobalType(enabledFeatures, SectionIDElement, Index(i), globalIndex)
@@ -578,6 +582,7 @@ func (m *Module) declaredFunctionIndexes(enabledFeatures api.CoreFeatures) (ret 
 					ret[funcIndex] = struct{}{}
 					return 0, nil
 				},
+				validationModuleCtx{m: m},
 			)
 		}
 	}
@@ -695,7 +700,18 @@ func (m *Module) validateExports(enabledFeatures api.CoreFeatures, functions []I
 }
 
 func validateConstExpression(globals []GlobalType, numFuncs uint32, expr *ConstantExpression, expectedType ValueType) (err error) {
-	_, typ, err := evaluateConstExpr(
+	return validateConstExpressionForModule(nil, globals, numFuncs, expr, expectedType)
+}
+
+// validateConstExpressionForModule is the GC-aware variant. m may be nil
+// for callers that don't have a Module handy (e.g. unit tests); in that
+// case ref.func produces the generic non-nullable funcref.
+func validateConstExpressionForModule(m *Module, globals []GlobalType, numFuncs uint32, expr *ConstantExpression, expectedType ValueType) (err error) {
+	var ctx gcModuleCtx
+	if m != nil {
+		ctx = validationModuleCtx{m: m}
+	}
+	_, typ, err := evaluateConstExprWithModule(
 		expr,
 		func(globalIndex Index) (ValueType, uint64, uint64, error) {
 			if uint32(len(globals)) <= globalIndex {
@@ -709,6 +725,7 @@ func validateConstExpression(globals []GlobalType, numFuncs uint32, expr *Consta
 			}
 			return 0, nil
 		},
+		ctx,
 	)
 	if err != nil {
 		return err
@@ -716,12 +733,48 @@ func validateConstExpression(globals []GlobalType, numFuncs uint32, expr *Consta
 	if typ != expectedType {
 		// Allow subtype relation for ref types (e.g. (ref T) flows into
 		// (ref null T), concrete (ref $i31ref) flows into anyref).
-		if isReferenceValueType(typ) && isReferenceValueType(expectedType) && isRefSubtypeOf(typ, expectedType) {
+		if isReferenceValueType(typ) && isReferenceValueType(expectedType) && isRefSubtypeOfInModule(typ, expectedType, m) {
 			return nil
 		}
 		return fmt.Errorf("const expression type mismatch expected %s but got %s", ValueTypeName(expectedType), ValueTypeName(typ))
 	}
 	return nil
+}
+
+// validationModuleCtx is a no-allocate gcModuleCtx used during static
+// validation. Only TypeSection / FunctionTypeIndex are answered from
+// real data; allocations are skipped (mi == nil path in the evaluator).
+type validationModuleCtx struct {
+	m *Module
+}
+
+func (v validationModuleCtx) TypeSection() []FunctionType { return v.m.TypeSection }
+func (v validationModuleCtx) TypeID(uint32) FunctionTypeID { return 0 }
+func (v validationModuleCtx) KeepAlive(any)                 {}
+func (v validationModuleCtx) FunctionTypeIndex(funcIdx Index) (uint32, bool) {
+	imported := uint32(v.m.ImportFunctionCount)
+	if funcIdx < imported {
+		var fi uint32
+		for i := range v.m.ImportSection {
+			imp := &v.m.ImportSection[i]
+			if imp.Type != ExternTypeFunc {
+				continue
+			}
+			if fi == funcIdx {
+				return imp.DescFunc, true
+			}
+			fi++
+			if fi > funcIdx {
+				break
+			}
+		}
+		return 0, false
+	}
+	local := funcIdx - imported
+	if int(local) >= len(v.m.FunctionSection) {
+		return 0, false
+	}
+	return v.m.FunctionSection[local], true
 }
 
 func (m *Module) validateDataCountSection() (err error) {
@@ -1624,6 +1677,13 @@ func isReferenceValueType(vt ValueType) bool {
 // subtype checks (via Store.IsSubtype) are wired through the validator
 // callers that have access to the module's Store.
 func isRefSubtypeOf(actual, expected ValueType) bool {
+	return isRefSubtypeOfInModule(actual, expected, nil)
+}
+
+// isRefSubtypeOfInModule is the GC-aware variant: when both sides are
+// concrete refs and m is provided, it walks SuperTypeIndex chains so a
+// concrete (ref $sub) flows into (ref $super).
+func isRefSubtypeOfInModule(actual, expected ValueType, m *Module) bool {
 	if actual == expected {
 		return true
 	}
@@ -1653,7 +1713,39 @@ func isRefSubtypeOf(actual, expected ValueType) bool {
 		return false
 	}
 	if actual.IsConcreteRef() && expected.IsConcreteRef() {
-		return actual.TypeIndex() == expected.TypeIndex()
+		if actual.TypeIndex() == expected.TypeIndex() {
+			return true
+		}
+		if m == nil {
+			return false
+		}
+		// Iso-recursive equivalence: two concrete refs with structurally
+		// identical canonical keys (rec-relative supertype + rec-relative
+		// field/param/result types) refer to the same type.
+		if concreteCanonicalEqual(m.TypeSection, actual.TypeIndex(), expected.TypeIndex()) {
+			return true
+		}
+		// Walk SuperTypeIndex chain: actual <: ... <: expected.
+		expIdx := expected.TypeIndex()
+		idx := actual.TypeIndex()
+		ts := m.TypeSection
+		for steps := 0; steps < len(ts); steps++ {
+			if int(idx) >= len(ts) {
+				return false
+			}
+			t := &ts[idx]
+			if t.SuperTypeIndex == nil {
+				return false
+			}
+			if *t.SuperTypeIndex == expIdx {
+				return true
+			}
+			if concreteCanonicalEqual(ts, *t.SuperTypeIndex, expIdx) {
+				return true
+			}
+			idx = *t.SuperTypeIndex
+		}
+		return false
 	}
 	if actual.IsAbstract() && expected.IsAbstract() {
 		return IsAbstractByteSubtypeOf(actual.Kind(), expected.Kind())
@@ -1666,6 +1758,144 @@ func isRefSubtypeOf(actual, expected ValueType) bool {
 // Currently identical to isRefSubtypeOf.
 func isStrictRefSubtypeOf(actual, expected ValueType) bool {
 	return isRefSubtypeOf(actual, expected)
+}
+
+// concreteCanonicalEqual reports whether the types at indices a and b
+// are structurally equivalent under iso-recursive equivalence: their
+// canonical (rec-relative) keys match.
+func concreteCanonicalEqual(ts []FunctionType, a, b uint32) bool {
+	if a == b {
+		return true
+	}
+	if int(a) >= len(ts) || int(b) >= len(ts) {
+		return false
+	}
+	keyA := canonicalKeyAt(ts, a)
+	keyB := canonicalKeyAt(ts, b)
+	return keyA == keyB
+}
+
+// checkStructuralSubtype enforces the wasm-gc rule that when t declares
+// sup as its supertype, t's composite shape must structurally be a
+// subtype of sup's:
+//   - func: params contravariant (sup.Params <: t.Params), results
+//     covariant (t.Results <: sup.Results).
+//   - struct: t must have at least as many fields as sup; each common
+//     field must be field-subtype-equal (mutability matches; immut
+//     types covariant, mut types invariant).
+//   - array: the element field must be field-subtype-equal.
+func checkStructuralSubtype(t, sup *FunctionType, m *Module) error {
+	switch t.Form {
+	case CompositeFormFunc:
+		if len(t.Params) != len(sup.Params) {
+			return fmt.Errorf("function param count differs")
+		}
+		if len(t.Results) != len(sup.Results) {
+			return fmt.Errorf("function result count differs")
+		}
+		for i := range t.Params {
+			// Contravariant: sup.Params[i] <: t.Params[i].
+			if !isValueSubtypeAcrossForm(sup.Params[i], t.Params[i], m) {
+				return fmt.Errorf("param[%d] not contravariant", i)
+			}
+		}
+		for i := range t.Results {
+			// Covariant: t.Results[i] <: sup.Results[i].
+			if !isValueSubtypeAcrossForm(t.Results[i], sup.Results[i], m) {
+				return fmt.Errorf("result[%d] not covariant", i)
+			}
+		}
+	case CompositeFormStruct:
+		if len(t.Fields) < len(sup.Fields) {
+			return fmt.Errorf("struct fewer fields than supertype")
+		}
+		for i := range sup.Fields {
+			if err := checkFieldSubtype(t.Fields[i], sup.Fields[i], m); err != nil {
+				return fmt.Errorf("field[%d]: %v", i, err)
+			}
+		}
+	case CompositeFormArray:
+		if err := checkFieldSubtype(t.ArrayField, sup.ArrayField, m); err != nil {
+			return fmt.Errorf("array element: %v", err)
+		}
+	}
+	return nil
+}
+
+// checkFieldSubtype enforces wasm-gc field subtyping:
+//   - mutability must match exactly.
+//   - if mutable: value types must match exactly (invariant).
+//   - if immutable: src value type must be a subtype of dst.
+//   - packed storage must match exactly.
+func checkFieldSubtype(sub, sup FieldType, m *Module) error {
+	if sub.Mutable != sup.Mutable {
+		return fmt.Errorf("mutability mismatch")
+	}
+	if sub.Packed != sup.Packed {
+		return fmt.Errorf("packed storage mismatch")
+	}
+	if sub.Packed != PackedTypeNone {
+		return nil
+	}
+	if sub.Mutable {
+		// Invariant: types must match exactly (or be equivalent
+		// concrete refs).
+		if sub.ValueType == sup.ValueType {
+			return nil
+		}
+		if sub.ValueType.IsConcreteRef() && sup.ValueType.IsConcreteRef() {
+			if concreteCanonicalEqual(m.TypeSection, sub.ValueType.TypeIndex(), sup.ValueType.TypeIndex()) {
+				return nil
+			}
+		}
+		return fmt.Errorf("mutable field value type %s != %s",
+			ValueTypeName(sub.ValueType), ValueTypeName(sup.ValueType))
+	}
+	if !isValueSubtypeAcrossForm(sub.ValueType, sup.ValueType, m) {
+		return fmt.Errorf("immutable field value type %s not subtype of %s",
+			ValueTypeName(sub.ValueType), ValueTypeName(sup.ValueType))
+	}
+	return nil
+}
+
+// isValueSubtypeAcrossForm reports whether `sub` flows into `sup` for
+// type-section structural subtype checks. Non-ref types must equal;
+// ref types defer to isRefSubtypeOfInModule.
+func isValueSubtypeAcrossForm(sub, sup ValueType, m *Module) bool {
+	if sub == sup {
+		return true
+	}
+	if isReferenceValueType(sub) && isReferenceValueType(sup) {
+		return isRefSubtypeOfInModule(sub, sup, m)
+	}
+	return false
+}
+
+// canonicalKeyAt returns the rec-relative canonical key for the type at
+// idx. Includes a group digest for rec-groups of size > 1 so that two
+// structurally-identical members from different rec groups with
+// non-equivalent siblings are distinguishable.
+func canonicalKeyAt(ts []FunctionType, idx uint32) string {
+	t := &ts[idx]
+	groupSize := t.RecGroupSize
+	if groupSize < 1 {
+		groupSize = 1
+	}
+	groupStart := idx - uint32(t.RecGroupPosition)
+	groupEnd := groupStart + uint32(groupSize)
+	own := canonicalKey(t, groupStart, groupEnd)
+	if groupSize <= 1 {
+		return own
+	}
+	parts := make([]string, 0, groupSize)
+	for j := uint32(0); j < uint32(groupSize); j++ {
+		k := groupStart + j
+		if int(k) >= len(ts) {
+			break
+		}
+		parts = append(parts, canonicalKey(&ts[k], groupStart, groupEnd))
+	}
+	return own + "|grp=[" + strings.Join(parts, "|") + "]"
 }
 
 // ExternType is an alias of api.ExternType defined to simplify imports.

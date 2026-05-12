@@ -165,15 +165,8 @@ func (m *Module) validateTable(enabledFeatures api.CoreFeatures, tables []Table,
 				return err
 			}
 
-			switch elem.Type {
-			case RefTypeFuncref:
-				if initType != ValueTypeFuncref {
-					return fmt.Errorf("%s[%d].init[%d] must be funcref but was %s", SectionIDName(SectionIDElement), idx, ei, ValueTypeName(initType))
-				}
-			case RefTypeExternref:
-				if initType != ValueTypeExternref {
-					return fmt.Errorf("%s[%d].init[%d] must be externref but was %s", SectionIDName(SectionIDElement), idx, ei, ValueTypeName(initType))
-				}
+			if !isRefSubtypeOf(initType, elem.Type) {
+				return fmt.Errorf("%s[%d].init[%d] must be %s but was %s", SectionIDName(SectionIDElement), idx, ei, ValueTypeName(elem.Type), ValueTypeName(initType))
 			}
 		}
 

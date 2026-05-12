@@ -205,6 +205,7 @@ func DefaultFieldValue(f FieldType) any {
 		return [16]byte{}
 	}
 	// All other shorthand types are nullable abstract references whose
-	// default is the null reference (nil).
-	return nil
+	// default is the null reference (encoded as the zero uint64 by the
+	// interpreter's operand-stack representation).
+	return uint64(0)
 }

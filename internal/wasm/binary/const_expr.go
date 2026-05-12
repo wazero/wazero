@@ -55,19 +55,22 @@ func decodeConstantExpression(r *bytes.Reader, enabledFeatures api.CoreFeatures,
 			if err := enabledFeatures.RequireEnabled(api.CoreFeatureBulkMemoryOperations); err != nil {
 				return fmt.Errorf("ref.null is not supported as %w", err)
 			}
-			b, err := r.ReadByte()
-			reftype := wasm.ValueType(b)
-			if err != nil {
-				return fmt.Errorf("read reference type for ref.null: %w", err)
+			// Heap type is encoded as s33 LEB. Positive: concrete type
+			// index. Negative: abstract heap-type byte.
+			ht, _, hErr := leb128.DecodeInt33AsInt64(r)
+			if hErr != nil {
+				return fmt.Errorf("read reference type for ref.null: %w", hErr)
 			}
-			switch reftype {
-			case wasm.RefTypeFuncref, wasm.RefTypeExternref,
-				wasm.ValueTypeExnref,
-				wasm.ValueTypeAnyref, wasm.ValueTypeEqref, wasm.ValueTypeI31ref,
-				wasm.ValueTypeStructref, wasm.ValueTypeArrayref, wasm.ValueTypeNullref,
-				wasm.ValueTypeNoFuncref, wasm.ValueTypeNoExternref, wasm.ValueTypeNoExnref:
-			default:
-				return fmt.Errorf("invalid type for ref.null: 0x%x", reftype)
+			if ht < 0 {
+				switch wasm.ValueType(byte(ht & 0x7F)) {
+				case wasm.RefTypeFuncref, wasm.RefTypeExternref,
+					wasm.ValueTypeExnref,
+					wasm.ValueTypeAnyref, wasm.ValueTypeEqref, wasm.ValueTypeI31ref,
+					wasm.ValueTypeStructref, wasm.ValueTypeArrayref, wasm.ValueTypeNullref,
+					wasm.ValueTypeNoFuncref, wasm.ValueTypeNoExternref, wasm.ValueTypeNoExnref:
+				default:
+					return fmt.Errorf("invalid type for ref.null: 0x%x", ht)
+				}
 			}
 		case wasm.OpcodeRefFunc:
 			if err := enabledFeatures.RequireEnabled(api.CoreFeatureBulkMemoryOperations); err != nil {
@@ -85,6 +88,8 @@ func decodeConstantExpression(r *bytes.Reader, enabledFeatures api.CoreFeatures,
 			}
 			switch sub {
 			case wasm.OpcodeGCRefI31:
+				// No immediate.
+			case wasm.OpcodeGCAnyConvertExtern, wasm.OpcodeGCExternConvertAny:
 				// No immediate.
 			case wasm.OpcodeGCStructNew, wasm.OpcodeGCStructNewDefault,
 				wasm.OpcodeGCArrayNew, wasm.OpcodeGCArrayNewDefault:

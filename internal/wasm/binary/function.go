@@ -55,8 +55,7 @@ func decodeSubType(enabledFeatures api.CoreFeatures, r *bytes.Reader, ret *wasm.
 		if err := r.UnreadByte(); err != nil {
 			return err
 		}
-		// Shorthand entries keep Final at its zero value to preserve
-		// FunctionType{}-style test fixtures; Phase 5 will reconcile.
+		ret.Final = true
 		return decodeCompositeForm(enabledFeatures, r, ret)
 	}
 	return fmt.Errorf("%w: %#x", ErrInvalidByte, b)

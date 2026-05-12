@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -298,6 +299,9 @@ func (m *ModuleInstance) applyData(data []DataSegment) error {
 		d := &data[i]
 		m.DataInstances[i] = d.Init
 		if !d.IsPassive() {
+			if m.MemoryInstance == nil {
+				return fmt.Errorf("%s[%d]: active data segment requires memory", SectionIDName(SectionIDData), i)
+			}
 			offsetExprResults := evaluateConstExprInModuleInstance(&d.OffsetExpression, m)
 			offset := int(offsetExprResults[0])
 			if offset < 0 || offset+len(d.Init) > len(m.MemoryInstance.Buffer) {
@@ -467,7 +471,7 @@ func (m *ModuleInstance) resolveImports(ctx context.Context, module *Module) (er
 				expectedType := &module.TypeSection[i.DescFunc]
 				src := importedModule.Source
 				actual := src.typeOfFunction(imported.Index)
-				if !actual.EqualsSignature(expectedType.Params, expectedType.Results) {
+				if !sameFunctionSignature(m.s, expectedType, actual) {
 					err = errorInvalidImport(i, fmt.Errorf("signature mismatch: %s != %s", expectedType, actual))
 					return
 				}
@@ -625,6 +629,13 @@ func (g *GlobalInstance) SetValue(lo, hi uint64) {
 }
 
 func (s *Store) GetFunctionTypeIDs(ts []FunctionType) ([]FunctionTypeID, error) {
+	// Rewrite each type's cached key so that supertype references and
+	// concrete-ref Field/Param/Result types inside the same rec group
+	// are encoded rec-relatively. Two modules declaring the same
+	// structural rec group then produce the same canonical key and
+	// share a FunctionTypeID — required for iso-recursive type
+	// equivalence per the spec.
+	canonicalizeRecGroupKeys(ts)
 	ret := make([]FunctionTypeID, len(ts))
 	for i := range ts {
 		t := &ts[i]
@@ -638,6 +649,158 @@ func (s *Store) GetFunctionTypeIDs(ts []FunctionType) ([]FunctionTypeID, error) 
 	// ref.test / ref.cast / call_ref can answer subtype queries in O(1).
 	s.computeSubtypeDisplays(ts, ret)
 	return ret, nil
+}
+
+// canonicalizeRecGroupKeys updates each FunctionType.string with a
+// canonical key whose in-rec-group SuperTypeIndex / concrete-ref
+// references are emitted as "rec.N" instead of an absolute module-
+// level index. Out-of-group references keep the absolute index.
+//
+// Each member's canonical key additionally includes a digest of all
+// rec-group members (in declaration order). This enforces iso-recursive
+// equivalence: two rec groups whose members have identical pairwise
+// structural keys are equivalent; otherwise they are distinct.
+func canonicalizeRecGroupKeys(ts []FunctionType) {
+	i := 0
+	for i < len(ts) {
+		t := &ts[i]
+		groupSize := t.RecGroupSize
+		if groupSize < 1 {
+			groupSize = 1
+		}
+		groupStart := uint32(i - t.RecGroupPosition)
+		groupEnd := groupStart + uint32(groupSize)
+		// First pass: compute each member's local rec-relative key.
+		memberKeys := make([]string, groupSize)
+		for j := 0; j < groupSize; j++ {
+			idx := groupStart + uint32(j)
+			if int(idx) >= len(ts) {
+				memberKeys[j] = ""
+				continue
+			}
+			memberKeys[j] = canonicalKey(&ts[idx], groupStart, groupEnd)
+		}
+		// For multi-element rec groups, suffix each member's key with a
+		// digest of all members so that two structurally-identical
+		// individual entries from different rec groups whose siblings
+		// differ are distinguishable.
+		var groupSuffix string
+		if groupSize > 1 {
+			groupSuffix = "|grp=[" + strings.Join(memberKeys, "|") + "]"
+		}
+		for j := 0; j < groupSize; j++ {
+			idx := groupStart + uint32(j)
+			if int(idx) >= len(ts) {
+				break
+			}
+			ts[idx].string = memberKeys[j] + groupSuffix
+		}
+		i += int(groupSize)
+		if groupSize == 0 {
+			i++ // safety
+		}
+	}
+}
+
+// sameFunctionSignature compares two FunctionTypes structurally. After
+// canonicalizeRecGroupKeys (run by GetFunctionTypeIDs), iso-recursively
+// equivalent types have identical .string canonical keys, so a string
+// compare suffices for both ordinary and GC-typed signatures.
+func sameFunctionSignature(s *Store, a, b *FunctionType) bool {
+	if a == b {
+		return true
+	}
+	if a.string != "" && a.string == b.string {
+		return true
+	}
+	// Fall back to a value-by-value comparison for the non-GC case
+	// where the canonical key wasn't precomputed (e.g. tag types).
+	return a.EqualsSignature(b.Params, b.Results)
+}
+// references and SuperTypeIndex values that point inside the rec
+// group at [groupStart, groupEnd) are encoded as "rec.N" relative to
+// the group start.
+func canonicalKey(t *FunctionType, groupStart, groupEnd uint32) string {
+	var ret string
+	switch t.Form {
+	case CompositeFormStruct:
+		ret = structKeyWithGroup(t.Fields, groupStart, groupEnd)
+	case CompositeFormArray:
+		ret = "array(" + fieldKeyWithGroup(t.ArrayField, groupStart, groupEnd) + ")"
+	default:
+		ret = funcKeyWithGroup(t.Params, t.Results, groupStart, groupEnd)
+	}
+	if t.SuperTypeIndex != nil {
+		sup := *t.SuperTypeIndex
+		if sup >= groupStart && sup < groupEnd {
+			ret += fmt.Sprintf("|sup=rec.%d", sup-groupStart)
+		} else {
+			ret += fmt.Sprintf("|sup=%d", sup)
+		}
+	}
+	if t.Final {
+		ret += "|final"
+	}
+	if t.RecGroupSize > 1 {
+		ret += fmt.Sprintf("|rec%d/%d", t.RecGroupPosition, t.RecGroupSize)
+	}
+	return ret
+}
+
+func valueTypeKeyWithGroup(vt ValueType, groupStart, groupEnd uint32) string {
+	if vt.IsConcreteRef() {
+		idx := vt.TypeIndex()
+		prefix := "(ref "
+		if vt.IsNullable() {
+			prefix = "(ref null "
+		}
+		if idx >= groupStart && idx < groupEnd {
+			return fmt.Sprintf("%srec.%d)", prefix, idx-groupStart)
+		}
+		return fmt.Sprintf("%s%d)", prefix, idx)
+	}
+	return ValueTypeName(vt)
+}
+
+func fieldKeyWithGroup(f FieldType, groupStart, groupEnd uint32) string {
+	var prefix string
+	if f.Mutable {
+		prefix = "mut "
+	}
+	if f.Packed != PackedTypeNone {
+		return prefix + f.Packed.String()
+	}
+	return prefix + valueTypeKeyWithGroup(f.ValueType, groupStart, groupEnd)
+}
+
+func structKeyWithGroup(fields []FieldType, groupStart, groupEnd uint32) string {
+	out := "struct{"
+	for i, f := range fields {
+		if i > 0 {
+			out += ","
+		}
+		out += fieldKeyWithGroup(f, groupStart, groupEnd)
+	}
+	return out + "}"
+}
+
+func funcKeyWithGroup(params, results []ValueType, groupStart, groupEnd uint32) string {
+	var ret string
+	for _, b := range params {
+		ret += valueTypeKeyWithGroup(b, groupStart, groupEnd)
+	}
+	if len(params) == 0 {
+		ret += "v_"
+	} else {
+		ret += "_"
+	}
+	for _, b := range results {
+		ret += valueTypeKeyWithGroup(b, groupStart, groupEnd)
+	}
+	if len(results) == 0 {
+		ret += "v"
+	}
+	return ret
 }
 
 func (s *Store) GetFunctionTypeID(t *FunctionType) (FunctionTypeID, error) {
@@ -700,6 +863,42 @@ func (m *ModuleInstance) TypeID(typeIdx uint32) FunctionTypeID {
 // traces it for the module's lifetime. Implements gcModuleCtx.
 func (m *ModuleInstance) KeepAlive(v any) {
 	m.GCRoots = append(m.GCRoots, v)
+}
+
+// FunctionTypeIndex returns the module-local type index of the function
+// at funcIdx (covering both imported and module-defined functions), or
+// ok=false if funcIdx is out of range. Implements gcModuleCtx so const
+// expressions evaluating ref.func can push a typed concrete-ref result.
+func (m *ModuleInstance) FunctionTypeIndex(funcIdx Index) (uint32, bool) {
+	src := m.Source
+	if src == nil {
+		return 0, false
+	}
+	imported := uint32(src.ImportFunctionCount)
+	if funcIdx < imported {
+		// Walk the import section to find the typeIdx of the funcIdx-th
+		// imported function. Imports are interleaved with other kinds.
+		var fi uint32
+		for i := range src.ImportSection {
+			imp := &src.ImportSection[i]
+			if imp.Type != ExternTypeFunc {
+				continue
+			}
+			if fi == funcIdx {
+				return imp.DescFunc, true
+			}
+			fi++
+			if fi > funcIdx {
+				break
+			}
+		}
+		return 0, false
+	}
+	local := funcIdx - imported
+	if int(local) >= len(src.FunctionSection) {
+		return 0, false
+	}
+	return src.FunctionSection[local], true
 }
 
 // subtypeInfo records the Cohen-style subtype display for a given
