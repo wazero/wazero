@@ -109,16 +109,16 @@ func TestDecodeConstantExpression_errors(t *testing.T) {
 			in: []byte{
 				wasm.OpcodeRefNull,
 			},
-			expectedErr: "read reference type for ref.null: EOF",
+			expectedErr: "read reference type for ref.null: readByte failed: EOF",
 			features:    api.CoreFeatureBulkMemoryOperations,
 		},
 		{
 			in: []byte{
 				wasm.OpcodeRefNull,
-				0xff,
+				0x65, // single-byte negative s33 = -27, not a valid heap-type shorthand
 				wasm.OpcodeEnd,
 			},
-			expectedErr: "invalid type for ref.null: 0xff",
+			expectedErr: "invalid type for ref.null: -27",
 			features:    api.CoreFeatureBulkMemoryOperations,
 		},
 		{

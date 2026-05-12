@@ -471,7 +471,12 @@ func (m *ModuleInstance) resolveImports(ctx context.Context, module *Module) (er
 				expectedType := &module.TypeSection[i.DescFunc]
 				src := importedModule.Source
 				actual := src.typeOfFunction(imported.Index)
-				if !sameFunctionSignature(m.s, expectedType, actual) {
+				// Compatible if the actual function's type is a subtype
+				// of (or equal to) the import's declared type. With the
+				// canonicalised .string keys this covers iso-recursive
+				// equivalence; the Store's subtype displays cover
+				// declared (nominal) sub-type chains.
+				if !importCompatibleFunc(m.s, module, expectedType, src, actual, imported.Index) {
 					err = errorInvalidImport(i, fmt.Errorf("signature mismatch: %s != %s", expectedType, actual))
 					return
 				}
@@ -651,6 +656,10 @@ func (s *Store) GetFunctionTypeIDs(ts []FunctionType) ([]FunctionTypeID, error) 
 	return ret, nil
 }
 
+func init() {
+	canonicalizeForValidation = canonicalizeRecGroupKeys
+}
+
 // canonicalizeRecGroupKeys updates each FunctionType.string with a
 // canonical key whose in-rec-group SuperTypeIndex / concrete-ref
 // references are emitted as "rec.N" instead of an absolute module-
@@ -660,7 +669,38 @@ func (s *Store) GetFunctionTypeIDs(ts []FunctionType) ([]FunctionTypeID, error) 
 // rec-group members (in declaration order). This enforces iso-recursive
 // equivalence: two rec groups whose members have identical pairwise
 // structural keys are equivalent; otherwise they are distinct.
+//
+// After computing initial keys, we iteratively refine them: any
+// `|sup=N` (out-of-group absolute) reference is rewritten to
+// `|sup=key(N)` so that two types whose supertypes are themselves
+// canonically equivalent share a canonical key. The process is
+// fixed-point — repeat until keys stabilise.
 func canonicalizeRecGroupKeys(ts []FunctionType) {
+	// Step 1: compute initial keys with absolute supertype indices.
+	computeInitialKeys(ts)
+	// Step 2: refine — substitute supertype absolute indices with the
+	// canonical key of the target type. Repeat until no key changes.
+	for round := 0; round < len(ts)+1; round++ {
+		changed := false
+		newKeys := make([]string, len(ts))
+		for i := range ts {
+			t := &ts[i]
+			k := refinedKey(ts, t, i)
+			newKeys[i] = k
+		}
+		for i := range ts {
+			if newKeys[i] != ts[i].string {
+				ts[i].string = newKeys[i]
+				changed = true
+			}
+		}
+		if !changed {
+			return
+		}
+	}
+}
+
+func computeInitialKeys(ts []FunctionType) {
 	i := 0
 	for i < len(ts) {
 		t := &ts[i]
@@ -670,7 +710,6 @@ func canonicalizeRecGroupKeys(ts []FunctionType) {
 		}
 		groupStart := uint32(i - t.RecGroupPosition)
 		groupEnd := groupStart + uint32(groupSize)
-		// First pass: compute each member's local rec-relative key.
 		memberKeys := make([]string, groupSize)
 		for j := 0; j < groupSize; j++ {
 			idx := groupStart + uint32(j)
@@ -680,10 +719,6 @@ func canonicalizeRecGroupKeys(ts []FunctionType) {
 			}
 			memberKeys[j] = canonicalKey(&ts[idx], groupStart, groupEnd)
 		}
-		// For multi-element rec groups, suffix each member's key with a
-		// digest of all members so that two structurally-identical
-		// individual entries from different rec groups whose siblings
-		// differ are distinguishable.
 		var groupSuffix string
 		if groupSize > 1 {
 			groupSuffix = "|grp=[" + strings.Join(memberKeys, "|") + "]"
@@ -695,11 +730,124 @@ func canonicalizeRecGroupKeys(ts []FunctionType) {
 			}
 			ts[idx].string = memberKeys[j] + groupSuffix
 		}
-		i += int(groupSize)
-		if groupSize == 0 {
-			i++ // safety
+		i += groupSize
+	}
+}
+
+// refinedKey recomputes a type's canonical key, replacing each
+// `|sup=N` absolute reference with `|sup=(<key of ts[N]>)`. This makes
+// structurally-equivalent supertypes produce identical keys regardless
+// of the absolute module-level index they originally pointed at.
+func refinedKey(ts []FunctionType, t *FunctionType, idx int) string {
+	groupSize := t.RecGroupSize
+	if groupSize < 1 {
+		groupSize = 1
+	}
+	groupStart := uint32(idx - t.RecGroupPosition)
+	groupEnd := groupStart + uint32(groupSize)
+
+	own := refinedSingleKey(t, groupStart, groupEnd, ts)
+	if groupSize <= 1 {
+		return own
+	}
+	parts := make([]string, 0, groupSize)
+	for j := 0; j < groupSize; j++ {
+		k := groupStart + uint32(j)
+		if int(k) >= len(ts) {
+			break
+		}
+		parts = append(parts, refinedSingleKey(&ts[k], groupStart, groupEnd, ts))
+	}
+	return own + "|grp=[" + strings.Join(parts, "|") + "]"
+}
+
+func refinedSingleKey(t *FunctionType, groupStart, groupEnd uint32, ts []FunctionType) string {
+	var ret string
+	switch t.Form {
+	case CompositeFormStruct:
+		ret = structKeyWithGroupRefined(t.Fields, groupStart, groupEnd, ts)
+	case CompositeFormArray:
+		ret = "array(" + fieldKeyWithGroupRefined(t.ArrayField, groupStart, groupEnd, ts) + ")"
+	default:
+		ret = funcKeyWithGroupRefined(t.Params, t.Results, groupStart, groupEnd, ts)
+	}
+	if t.SuperTypeIndex != nil {
+		sup := *t.SuperTypeIndex
+		if sup >= groupStart && sup < groupEnd {
+			ret += fmt.Sprintf("|sup=rec.%d", sup-groupStart)
+		} else if int(sup) < len(ts) {
+			// Substitute the supertype's canonical key.
+			ret += "|sup=(" + ts[sup].string + ")"
+		} else {
+			ret += fmt.Sprintf("|sup=%d", sup)
 		}
 	}
+	if t.Final {
+		ret += "|final"
+	}
+	if t.RecGroupSize > 1 {
+		ret += fmt.Sprintf("|rec%d/%d", t.RecGroupPosition, t.RecGroupSize)
+	}
+	return ret
+}
+
+func valueTypeKeyWithGroupRefined(vt ValueType, groupStart, groupEnd uint32, ts []FunctionType) string {
+	if vt.IsConcreteRef() {
+		idxv := vt.TypeIndex()
+		prefix := "(ref "
+		if vt.IsNullable() {
+			prefix = "(ref null "
+		}
+		if idxv >= groupStart && idxv < groupEnd {
+			return fmt.Sprintf("%srec.%d)", prefix, idxv-groupStart)
+		}
+		if int(idxv) < len(ts) {
+			return prefix + "(" + ts[idxv].string + "))"
+		}
+		return fmt.Sprintf("%s%d)", prefix, idxv)
+	}
+	return ValueTypeName(vt)
+}
+
+func fieldKeyWithGroupRefined(f FieldType, groupStart, groupEnd uint32, ts []FunctionType) string {
+	var prefix string
+	if f.Mutable {
+		prefix = "mut "
+	}
+	if f.Packed != PackedTypeNone {
+		return prefix + f.Packed.String()
+	}
+	return prefix + valueTypeKeyWithGroupRefined(f.ValueType, groupStart, groupEnd, ts)
+}
+
+func structKeyWithGroupRefined(fields []FieldType, groupStart, groupEnd uint32, ts []FunctionType) string {
+	out := "struct{"
+	for i, f := range fields {
+		if i > 0 {
+			out += ","
+		}
+		out += fieldKeyWithGroupRefined(f, groupStart, groupEnd, ts)
+	}
+	return out + "}"
+}
+
+func funcKeyWithGroupRefined(params, results []ValueType, groupStart, groupEnd uint32, ts []FunctionType) string {
+	var ret string
+	for _, b := range params {
+		ret += valueTypeKeyWithGroupRefined(b, groupStart, groupEnd, ts)
+	}
+	if len(params) == 0 {
+		ret += "v_"
+	} else {
+		ret += "_"
+	}
+	for _, b := range results {
+		ret += valueTypeKeyWithGroupRefined(b, groupStart, groupEnd, ts)
+	}
+	if len(results) == 0 {
+		ret += "v"
+	}
+	return ret
 }
 
 // sameFunctionSignature compares two FunctionTypes structurally. After
@@ -713,9 +861,72 @@ func sameFunctionSignature(s *Store, a, b *FunctionType) bool {
 	if a.string != "" && a.string == b.string {
 		return true
 	}
+	if a.string != "" && b.string != "" {
+		// Both canonicalised but different: definitively distinct.
+		return false
+	}
 	// Fall back to a value-by-value comparison for the non-GC case
 	// where the canonical key wasn't precomputed (e.g. tag types).
 	return a.EqualsSignature(b.Params, b.Results)
+}
+
+// importCompatibleFunc checks whether `actual` (the function being
+// imported from `actualMod`) satisfies the import declaration
+// `expected` from `importerMod`. Compatible means actual <: expected:
+// either canonical-key equivalence or the actual's declared
+// SuperTypeIndex chain reaches a type equivalent to the expected.
+func importCompatibleFunc(s *Store, importerMod *Module, expected *FunctionType, actualMod *Module, actual *FunctionType, actualFuncIdx Index) bool {
+	if sameFunctionSignature(s, expected, actual) {
+		return true
+	}
+	// Walk the actual function's declared SuperTypeIndex chain: every
+	// intermediate type compared against `expected` via canonical key.
+	// Find the type idx of the actual function within actualMod.
+	actualTypeIdx, ok := funcTypeIndex(actualMod, actualFuncIdx)
+	if !ok {
+		return false
+	}
+	for steps := 0; steps < len(actualMod.TypeSection); steps++ {
+		t := &actualMod.TypeSection[actualTypeIdx]
+		if t.SuperTypeIndex == nil {
+			return false
+		}
+		sup := *t.SuperTypeIndex
+		if int(sup) >= len(actualMod.TypeSection) {
+			return false
+		}
+		supType := &actualMod.TypeSection[sup]
+		if sameFunctionSignature(s, expected, supType) {
+			return true
+		}
+		actualTypeIdx = sup
+	}
+	return false
+}
+
+// funcTypeIndex returns the module-local type index of the function at
+// funcIdx, walking the import section to count imported functions.
+func funcTypeIndex(m *Module, funcIdx Index) (uint32, bool) {
+	imported := uint32(m.ImportFunctionCount)
+	if funcIdx < imported {
+		var fi uint32
+		for i := range m.ImportSection {
+			imp := &m.ImportSection[i]
+			if imp.Type != ExternTypeFunc {
+				continue
+			}
+			if fi == funcIdx {
+				return imp.DescFunc, true
+			}
+			fi++
+		}
+		return 0, false
+	}
+	local := funcIdx - imported
+	if int(local) >= len(m.FunctionSection) {
+		return 0, false
+	}
+	return m.FunctionSection[local], true
 }
 // references and SuperTypeIndex values that point inside the rec
 // group at [groupStart, groupEnd) are encoded as "rec.N" relative to

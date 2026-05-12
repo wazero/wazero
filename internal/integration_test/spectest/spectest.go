@@ -331,7 +331,8 @@ func (c command) expectedError() (err error) {
 		err = wasmruntime.ErrRuntimeUnreachable
 	case "uncaught exception":
 		err = wasmruntime.ErrRuntimeUncaughtException
-	case "null i31 reference", "null struct reference", "null array reference",
+	case "null i31 reference", "null struct reference", "null structure reference",
+		"null array reference", "null function reference",
 		"null reference", "null ref":
 		// wasm-gc trap text variants for the null-deref family.
 		err = wasmruntime.ErrRuntimeNullReference

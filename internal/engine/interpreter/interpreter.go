@@ -5498,6 +5498,14 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 	if !isConcrete && wasm.ValueType(kindByte) == wasm.ValueTypeExternref {
 		return true
 	}
+	// Bottom types only match null — handle before any pointer-shape
+	// inspection so raw host refs don't get derefed.
+	if !isConcrete {
+		switch wasm.ValueType(kindByte) {
+		case wasm.ValueTypeNoExternref, wasm.ValueTypeNoExnref, wasm.ValueTypeNullref:
+			return false
+		}
+	}
 	// Externref-wrapped-as-anyref values (produced by any.convert_extern)
 	// carry the 0b11 tag. They do NOT match struct/array/i31/eq targets
 	// (they're host-opaque), and they DO match any/funcref-hierarchy

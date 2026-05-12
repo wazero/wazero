@@ -69,7 +69,7 @@ func decodeConstantExpression(r *bytes.Reader, enabledFeatures api.CoreFeatures,
 					wasm.ValueTypeStructref, wasm.ValueTypeArrayref, wasm.ValueTypeNullref,
 					wasm.ValueTypeNoFuncref, wasm.ValueTypeNoExternref, wasm.ValueTypeNoExnref:
 				default:
-					return fmt.Errorf("invalid type for ref.null: 0x%x", ht)
+					return fmt.Errorf("invalid type for ref.null: %d", ht)
 				}
 			}
 		case wasm.OpcodeRefFunc:

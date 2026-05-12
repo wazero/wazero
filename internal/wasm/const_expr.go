@@ -130,7 +130,7 @@ func evaluateConstExprWithModule(
 					ValueTypeStructref, ValueTypeArrayref, ValueTypeNullref,
 					ValueTypeNoFuncref, ValueTypeNoExternref, ValueTypeNoExnref:
 				default:
-					return nil, 0, fmt.Errorf("invalid type for ref.null: 0x%x", ht)
+					return nil, 0, fmt.Errorf("invalid type for ref.null: %d", ht)
 				}
 			}
 			stack = append(stack, 0)

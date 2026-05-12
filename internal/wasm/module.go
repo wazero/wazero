@@ -1762,7 +1762,7 @@ func isStrictRefSubtypeOf(actual, expected ValueType) bool {
 
 // concreteCanonicalEqual reports whether the types at indices a and b
 // are structurally equivalent under iso-recursive equivalence: their
-// canonical (rec-relative) keys match.
+// canonical (rec-relative, supertype-refined) keys match.
 func concreteCanonicalEqual(ts []FunctionType, a, b uint32) bool {
 	if a == b {
 		return true
@@ -1770,10 +1770,24 @@ func concreteCanonicalEqual(ts []FunctionType, a, b uint32) bool {
 	if int(a) >= len(ts) || int(b) >= len(ts) {
 		return false
 	}
-	keyA := canonicalKeyAt(ts, a)
-	keyB := canonicalKeyAt(ts, b)
-	return keyA == keyB
+	// Run a transient canonicalization on a copy so we don't mutate
+	// caller state mid-validation. The cached .string set by f.key() is
+	// a per-type partial key (no refinement) and can't be trusted for
+	// iso-recursive comparison.
+	copyTs := make([]FunctionType, len(ts))
+	copy(copyTs, ts)
+	for i := range copyTs {
+		copyTs[i].string = ""
+	}
+	canonicalizeForValidation(copyTs)
+	return copyTs[a].string == copyTs[b].string
 }
+
+// canonicalizeForValidation is a validation-time wrapper that mirrors
+// Store.canonicalizeRecGroupKeys but operates on a local slice copy.
+// Implemented as an indirect reference to keep the heavy logic in
+// store.go (where strings package is already imported).
+var canonicalizeForValidation = func(ts []FunctionType) {}
 
 // checkStructuralSubtype enforces the wasm-gc rule that when t declares
 // sup as its supertype, t's composite shape must structurally be a

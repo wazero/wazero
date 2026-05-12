@@ -1044,7 +1044,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					case ValueTypeNoExnref:
 						valueTypeStack.push(ValueTypeNoExnref)
 					default:
-						return fmt.Errorf("unknown type for ref.null: 0x%x", ht)
+						return fmt.Errorf("unknown type for ref.null: %d", ht)
 					}
 				}
 			case OpcodeRefIsNull:
@@ -2652,8 +2652,8 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				} else {
 					dstType = AbstractRef(dstKind, dstNullable)
 				}
-				// dst must be a subtype of src.
-				if !isRefSubtypeOfInModule(dstType.AsNullable(), srcType.AsNullable(), m) {
+				// dst must be a subtype of src (including nullability).
+				if !isRefSubtypeOfInModule(dstType, srcType, m) {
 					return fmt.Errorf("%s dst type %s is not a subtype of src %s",
 						GCInstructionName(sub), ValueTypeName(dstType), ValueTypeName(srcType))
 				}
