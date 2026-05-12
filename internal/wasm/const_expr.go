@@ -80,7 +80,12 @@ func evaluateConstExpr(e *ConstantExpression, globalResolver func(globalIndex In
 				return nil, 0, fmt.Errorf("read reference type for ref.null: %w", io.ErrShortBuffer)
 			}
 			valType := ValueType(data[pc])
-			if valType != RefTypeFuncref && valType != RefTypeExternref {
+			switch valType {
+			case ValueTypeFuncref, ValueTypeExternref, ValueTypeExnref,
+				ValueTypeAnyref, ValueTypeEqref, ValueTypeI31ref,
+				ValueTypeStructref, ValueTypeArrayref, ValueTypeNullref,
+				ValueTypeNoFuncref, ValueTypeNoExternref, ValueTypeNoExnref:
+			default:
 				return nil, 0, fmt.Errorf("invalid type for ref.null: 0x%x", valType)
 			}
 			pc += 1
@@ -201,6 +206,23 @@ func evaluateConstExpr(e *ConstantExpression, globalResolver func(globalIndex In
 				return nil, 0, errors.New("stack has more than one value at end of constant expression")
 			}
 			return stack, typeStack[0], nil
+		case OpcodeGCPrefix:
+			sub, n, err := leb128.LoadUint32(data[pc:])
+			if err != nil {
+				return nil, 0, fmt.Errorf("read GC sub-opcode: %w", err)
+			}
+			pc += n
+			switch sub {
+			case OpcodeGCRefI31:
+				if len(typeStack) < 1 || typeStack[len(typeStack)-1] != ValueTypeI32 {
+					return nil, 0, errors.New("ref.i31 requires i32 on stack")
+				}
+				v := stack[len(stack)-1]
+				stack[len(stack)-1] = uint64(PackI31(uint32(v)))
+				typeStack[len(typeStack)-1] = ValueTypeI31ref.AsNonNullable()
+			default:
+				return nil, 0, fmt.Errorf("GC sub-opcode %#x is not yet supported in const expressions", sub)
+			}
 		default:
 			return nil, 0, fmt.Errorf("invalid opcode for const expression: 0x%x", opCode)
 		}

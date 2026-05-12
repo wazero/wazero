@@ -2160,7 +2160,8 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
 					return fmt.Errorf("cannot pop the operand for ref.i31: %v", err)
 				}
-				valueTypeStack.push(ValueTypeI31ref)
+				// ref.i31 produces a non-null i31 reference.
+				valueTypeStack.push(ValueTypeI31ref.AsNonNullable())
 			case OpcodeGCI31GetS, OpcodeGCI31GetU:
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI31ref); err != nil {
 					return fmt.Errorf("cannot pop the operand for %s: %v", GCInstructionName(sub), err)

@@ -377,13 +377,46 @@ func (m *Module) validateTypeSection(enabledFeatures api.CoreFeatures) error {
 	const coreFeaturesGC = api.CoreFeatureSIMD << 5
 	gcEnabled := enabledFeatures.IsEnabled(coreFeaturesGC)
 	numTypes := Index(len(m.TypeSection))
+	checkValueType := func(loc string, vt ValueType) error {
+		if vt.IsConcreteRef() {
+			if vt.TypeIndex() >= numTypes {
+				return fmt.Errorf("%s: concrete type index %d out of range", loc, vt.TypeIndex())
+			}
+		}
+		return nil
+	}
 	for i := range m.TypeSection {
 		t := &m.TypeSection[i]
 		switch t.Form {
 		case CompositeFormFunc:
+			for j, vt := range t.Params {
+				if err := checkValueType(fmt.Sprintf("type[%d] param[%d]", i, j), vt); err != nil {
+					return err
+				}
+			}
+			for j, vt := range t.Results {
+				if err := checkValueType(fmt.Sprintf("type[%d] result[%d]", i, j), vt); err != nil {
+					return err
+				}
+			}
 		case CompositeFormStruct, CompositeFormArray:
 			if !gcEnabled {
 				return fmt.Errorf("type[%d] %s is invalid as feature \"gc\" is disabled", i, t.Form)
+			}
+			if t.Form == CompositeFormStruct {
+				for j, f := range t.Fields {
+					if f.Packed == PackedTypeNone {
+						if err := checkValueType(fmt.Sprintf("type[%d] field[%d]", i, j), f.ValueType); err != nil {
+							return err
+						}
+					}
+				}
+			} else {
+				if t.ArrayField.Packed == PackedTypeNone {
+					if err := checkValueType(fmt.Sprintf("type[%d] array element", i), t.ArrayField.ValueType); err != nil {
+						return err
+					}
+				}
 			}
 		default:
 			return fmt.Errorf("type[%d] unknown composite form %d", i, t.Form)

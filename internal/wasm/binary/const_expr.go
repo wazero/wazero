@@ -59,7 +59,14 @@ func decodeConstantExpression(r *bytes.Reader, enabledFeatures api.CoreFeatures,
 			reftype := wasm.ValueType(b)
 			if err != nil {
 				return fmt.Errorf("read reference type for ref.null: %w", err)
-			} else if reftype != wasm.RefTypeFuncref && reftype != wasm.RefTypeExternref {
+			}
+			switch reftype {
+			case wasm.RefTypeFuncref, wasm.RefTypeExternref,
+				wasm.ValueTypeExnref,
+				wasm.ValueTypeAnyref, wasm.ValueTypeEqref, wasm.ValueTypeI31ref,
+				wasm.ValueTypeStructref, wasm.ValueTypeArrayref, wasm.ValueTypeNullref,
+				wasm.ValueTypeNoFuncref, wasm.ValueTypeNoExternref, wasm.ValueTypeNoExnref:
+			default:
 				return fmt.Errorf("invalid type for ref.null: 0x%x", reftype)
 			}
 		case wasm.OpcodeRefFunc:
@@ -68,6 +75,19 @@ func decodeConstantExpression(r *bytes.Reader, enabledFeatures api.CoreFeatures,
 			}
 			// Parsing index.
 			_, _, err = leb128.DecodeUint32(r)
+		case wasm.OpcodeGCPrefix:
+			// GC sub-opcodes in const expressions. Currently support ref.i31;
+			// struct.new / array.new etc. require richer evaluator work.
+			sub, _, lerr := leb128.DecodeUint32(r)
+			if lerr != nil {
+				return fmt.Errorf("read GC sub-opcode for const expression: %w", lerr)
+			}
+			switch sub {
+			case wasm.OpcodeGCRefI31:
+				// No immediate.
+			default:
+				return fmt.Errorf("GC sub-opcode 0x%x is not yet supported in const expressions", sub)
+			}
 		case wasm.OpcodeVecPrefix:
 			if err := enabledFeatures.RequireEnabled(api.CoreFeatureSIMD); err != nil {
 				return fmt.Errorf("vector instructions are not supported as %w", err)
