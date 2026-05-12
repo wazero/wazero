@@ -1885,33 +1885,6 @@ func isValueSubtypeAcrossForm(sub, sup ValueType, m *Module) bool {
 	return false
 }
 
-// canonicalKeyAt returns the rec-relative canonical key for the type at
-// idx. Includes a group digest for rec-groups of size > 1 so that two
-// structurally-identical members from different rec groups with
-// non-equivalent siblings are distinguishable.
-func canonicalKeyAt(ts []FunctionType, idx uint32) string {
-	t := &ts[idx]
-	groupSize := t.RecGroupSize
-	if groupSize < 1 {
-		groupSize = 1
-	}
-	groupStart := idx - uint32(t.RecGroupPosition)
-	groupEnd := groupStart + uint32(groupSize)
-	own := canonicalKey(t, groupStart, groupEnd)
-	if groupSize <= 1 {
-		return own
-	}
-	parts := make([]string, 0, groupSize)
-	for j := uint32(0); j < uint32(groupSize); j++ {
-		k := groupStart + j
-		if int(k) >= len(ts) {
-			break
-		}
-		parts = append(parts, canonicalKey(&ts[k], groupStart, groupEnd))
-	}
-	return own + "|grp=[" + strings.Join(parts, "|") + "]"
-}
-
 // ExternType is an alias of api.ExternType defined to simplify imports.
 type ExternType = api.ExternType
 
