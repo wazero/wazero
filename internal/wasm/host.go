@@ -174,6 +174,10 @@ func (m *Module) maybeAddType(params, results []ValueType, enabledFeatures api.C
 	}
 
 	result := m.SectionElementCount(SectionIDType)
-	m.TypeSection = append(m.TypeSection, FunctionType{Params: params, Results: results})
+	// Host-defined function types are nominally `(sub final (func ...))`:
+	// they cannot be subtyped. Mark them Final so their canonical key
+	// matches the binary decoder's `(func ...)` shorthand, keeping
+	// import linking consistent between host and decoded modules.
+	m.TypeSection = append(m.TypeSection, FunctionType{Params: params, Results: results, Final: true})
 	return result, nil
 }

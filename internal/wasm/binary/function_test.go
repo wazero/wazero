@@ -87,9 +87,12 @@ func TestFunctionType(t *testing.T) {
 			var actual wasm.FunctionType
 			err := decodeFunctionType(api.CoreFeaturesV2, bytes.NewReader(b), &actual)
 			require.NoError(t, err)
+			// The `(func ...)` shorthand decodes as `(sub final ...)`.
+			expected := tc.input
+			expected.Final = true
 			// Set the FunctionType key on the input.
-			_ = tc.input.String()
-			require.Equal(t, actual, tc.input)
+			_ = expected.String()
+			require.Equal(t, actual, expected)
 		})
 	}
 }
