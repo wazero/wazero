@@ -285,7 +285,8 @@ func TestNewFunctionExporterForModule(t *testing.T) {
 					ResultTypes: []wasm.ValueType{i32},
 					Code: wasm.Code{GoFunc: &internal.InvokeFunc{FunctionType: &wasm.FunctionType{
 						Params:  []wasm.ValueType{i32, i32, i32, i32},
-						Results: []wasm.ValueType{i32}, Final: true,}}},
+						Results: []wasm.ValueType{i32}, Final: true,
+					}}},
 				},
 			},
 		},
@@ -311,7 +312,8 @@ func TestNewFunctionExporterForModule(t *testing.T) {
 					ParamTypes: []wasm.ValueType{i32, i32, i32, i32, f64, f64, i32, i32, i32, i32, i32, i32},
 					ParamNames: []string{"index", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11"},
 					Code: wasm.Code{GoFunc: &internal.InvokeFunc{FunctionType: &wasm.FunctionType{
-						Params: []wasm.ValueType{i32, i32, i32, f64, f64, i32, i32, i32, i32, i32, i32}, Final: true,}}},
+						Params: []wasm.ValueType{i32, i32, i32, f64, f64, i32, i32, i32, i32, i32, i32}, Final: true,
+					}}},
 				},
 			},
 		},
