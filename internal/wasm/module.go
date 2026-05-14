@@ -268,10 +268,46 @@ func (m *Module) typeOfFunction(funcIdx Index) *FunctionType {
 	return &m.TypeSection[typeIdx]
 }
 
+// typeIndexOfFunction returns the TypeSection index for the given function
+// space index, or (0, false) if the index does not resolve to a function.
+func (m *Module) typeIndexOfFunction(funcIdx Index) (Index, bool) {
+	typeSectionLength, importedFunctionCount := uint32(len(m.TypeSection)), m.ImportFunctionCount
+	if funcIdx < importedFunctionCount {
+		cur := Index(0)
+		for i := range m.ImportSection {
+			imp := &m.ImportSection[i]
+			if imp.Type != ExternTypeFunc {
+				continue
+			}
+			if funcIdx == cur {
+				if imp.DescFunc >= typeSectionLength {
+					return 0, false
+				}
+				return imp.DescFunc, true
+			}
+			cur++
+		}
+		return 0, false
+	}
+	funcSectionIdx := funcIdx - m.ImportFunctionCount
+	if funcSectionIdx >= uint32(len(m.FunctionSection)) {
+		return 0, false
+	}
+	typeIdx := m.FunctionSection[funcSectionIdx]
+	if typeIdx >= typeSectionLength {
+		return 0, false
+	}
+	return typeIdx, true
+}
+
 func (m *Module) Validate(enabledFeatures api.CoreFeatures) error {
 	for i := range m.TypeSection {
 		tp := &m.TypeSection[i]
 		tp.CacheNumInUint64()
+	}
+
+	if err := m.validateTypeSection(enabledFeatures); err != nil {
+		return err
 	}
 
 	if err := m.validateStartSection(); err != nil {
@@ -332,6 +368,82 @@ func (m *Module) validateTagSection() error {
 	return nil
 }
 
+// validateTypeSection rejects GC composite types (struct, array) and explicit
+// sub-typing (SuperTypeIndex) unless experimental.CoreFeaturesGC is enabled.
+// The bit value is matched against api.CoreFeatureSIMD<<5 directly because
+// internal/wasm cannot import experimental without a circular dependency;
+// experimental.CoreFeaturesGC is constructed the same way.
+func (m *Module) validateTypeSection(enabledFeatures api.CoreFeatures) error {
+	const coreFeaturesGC = api.CoreFeatureSIMD << 5
+	gcEnabled := enabledFeatures.IsEnabled(coreFeaturesGC)
+	numTypes := Index(len(m.TypeSection))
+	checkValueType := func(loc string, vt ValueType) error {
+		if vt.IsConcreteRef() {
+			if vt.TypeIndex() >= numTypes {
+				return fmt.Errorf("%s: concrete type index %d out of range", loc, vt.TypeIndex())
+			}
+		}
+		return nil
+	}
+	for i := range m.TypeSection {
+		t := &m.TypeSection[i]
+		switch t.Form {
+		case CompositeFormFunc:
+			for j, vt := range t.Params {
+				if err := checkValueType(fmt.Sprintf("type[%d] param[%d]", i, j), vt); err != nil {
+					return err
+				}
+			}
+			for j, vt := range t.Results {
+				if err := checkValueType(fmt.Sprintf("type[%d] result[%d]", i, j), vt); err != nil {
+					return err
+				}
+			}
+		case CompositeFormStruct, CompositeFormArray:
+			if !gcEnabled {
+				return fmt.Errorf("type[%d] %s is invalid as feature \"gc\" is disabled", i, t.Form)
+			}
+			if t.Form == CompositeFormStruct {
+				for j, f := range t.Fields {
+					if f.Packed == PackedTypeNone {
+						if err := checkValueType(fmt.Sprintf("type[%d] field[%d]", i, j), f.ValueType); err != nil {
+							return err
+						}
+					}
+				}
+			} else {
+				if t.ArrayField.Packed == PackedTypeNone {
+					if err := checkValueType(fmt.Sprintf("type[%d] array element", i), t.ArrayField.ValueType); err != nil {
+						return err
+					}
+				}
+			}
+		default:
+			return fmt.Errorf("type[%d] unknown composite form %d", i, t.Form)
+		}
+		if t.SuperTypeIndex != nil {
+			if !gcEnabled {
+				return fmt.Errorf("type[%d] supertype is invalid as feature \"gc\" is disabled", i)
+			}
+			if *t.SuperTypeIndex >= numTypes {
+				return fmt.Errorf("type[%d] supertype index %d out of range", i, *t.SuperTypeIndex)
+			}
+			sup := &m.TypeSection[*t.SuperTypeIndex]
+			if sup.Final {
+				return fmt.Errorf("type[%d] supertype %d is final", i, *t.SuperTypeIndex)
+			}
+			if sup.Form != t.Form {
+				return fmt.Errorf("type[%d] form %s does not match supertype %d form %s",
+					i, t.Form, *t.SuperTypeIndex, sup.Form)
+			}
+			if err := checkStructuralSubtype(t, sup, m); err != nil {
+				return fmt.Errorf("type[%d] sub type: %v", i, err)
+			}
+		}
+	}
+	return nil
+}
+
 func (m *Module) validateStartSection() error {
 	// Check the start function is valid.
 	// TODO: this should be verified during decode so that errors have the correct source positions
@@ -358,7 +470,7 @@ func (m *Module) validateGlobals(globals []GlobalType, numFuncts, maxGlobals uin
 	importedGlobals := globals[:m.ImportGlobalCount]
 	for i := range m.GlobalSection {
 		g := &m.GlobalSection[i]
-		if err := validateConstExpression(importedGlobals, numFuncts, &g.Init, g.Type.ValType); err != nil {
+		if err := validateConstExpressionForModule(m, importedGlobals, numFuncts, &g.Init, g.Type.ValType); err != nil {
 			return err
 		}
 	}
@@ -438,7 +550,7 @@ func (m *Module) declaredFunctionIndexes(enabledFeatures api.CoreFeatures) (ret 
 	for i := range m.GlobalSection {
 		g := &m.GlobalSection[i]
 
-		_, _, initErr := evaluateConstExpr(
+		_, _, initErr := evaluateConstExprWithModule(
 			&g.Init,
 			func(globalIndex Index) (ValueType, uint64, uint64, error) {
 				vt, err := m.resolveConstExprGlobalType(enabledFeatures, SectionIDGlobal, Index(i), globalIndex)
@@ -448,6 +560,7 @@ func (m *Module) declaredFunctionIndexes(enabledFeatures api.CoreFeatures) (ret 
 				ret[funcIndex] = struct{}{}
 				return 0, nil
 			},
+			validationModuleCtx{m: m},
 		)
 
 		if initErr != nil {
@@ -459,7 +572,7 @@ func (m *Module) declaredFunctionIndexes(enabledFeatures api.CoreFeatures) (ret 
 	for i := range m.ElementSection {
 		elem := &m.ElementSection[i]
 		for _, initExpr := range elem.Init {
-			_, _, _ = evaluateConstExpr(
+			_, _, _ = evaluateConstExprWithModule(
 				&initExpr,
 				func(globalIndex Index) (ValueType, uint64, uint64, error) {
 					vt, err := m.resolveConstExprGlobalType(enabledFeatures, SectionIDElement, Index(i), globalIndex)
@@ -469,6 +582,7 @@ func (m *Module) declaredFunctionIndexes(enabledFeatures api.CoreFeatures) (ret 
 					ret[funcIndex] = struct{}{}
 					return 0, nil
 				},
+				validationModuleCtx{m: m},
 			)
 		}
 	}
@@ -586,7 +700,18 @@ func (m *Module) validateExports(enabledFeatures api.CoreFeatures, functions []I
 }
 
 func validateConstExpression(globals []GlobalType, numFuncs uint32, expr *ConstantExpression, expectedType ValueType) (err error) {
-	_, typ, err := evaluateConstExpr(
+	return validateConstExpressionForModule(nil, globals, numFuncs, expr, expectedType)
+}
+
+// validateConstExpressionForModule is the GC-aware variant. m may be nil
+// for callers that don't have a Module handy (e.g. unit tests); in that
+// case ref.func produces the generic non-nullable funcref.
+func validateConstExpressionForModule(m *Module, globals []GlobalType, numFuncs uint32, expr *ConstantExpression, expectedType ValueType) (err error) {
+	var ctx gcModuleCtx
+	if m != nil {
+		ctx = validationModuleCtx{m: m}
+	}
+	_, typ, err := evaluateConstExprWithModule(
 		expr,
 		func(globalIndex Index) (ValueType, uint64, uint64, error) {
 			if uint32(len(globals)) <= globalIndex {
@@ -600,14 +725,56 @@ func validateConstExpression(globals []GlobalType, numFuncs uint32, expr *Consta
 			}
 			return 0, nil
 		},
+		ctx,
 	)
 	if err != nil {
 		return err
 	}
 	if typ != expectedType {
+		// Allow subtype relation for ref types (e.g. (ref T) flows into
+		// (ref null T), concrete (ref $i31ref) flows into anyref).
+		if isReferenceValueType(typ) && isReferenceValueType(expectedType) && isRefSubtypeOfInModule(typ, expectedType, m) {
+			return nil
+		}
 		return fmt.Errorf("const expression type mismatch expected %s but got %s", ValueTypeName(expectedType), ValueTypeName(typ))
 	}
 	return nil
+}
+
+// validationModuleCtx is a no-allocate gcModuleCtx used during static
+// validation. Only TypeSection / FunctionTypeIndex are answered from
+// real data; allocations are skipped (mi == nil path in the evaluator).
+type validationModuleCtx struct {
+	m *Module
+}
+
+func (v validationModuleCtx) TypeSection() []FunctionType  { return v.m.TypeSection }
+func (v validationModuleCtx) TypeID(uint32) FunctionTypeID { return 0 }
+func (v validationModuleCtx) KeepAlive(any)                {}
+func (v validationModuleCtx) FunctionTypeIndex(funcIdx Index) (uint32, bool) {
+	imported := uint32(v.m.ImportFunctionCount)
+	if funcIdx < imported {
+		var fi uint32
+		for i := range v.m.ImportSection {
+			imp := &v.m.ImportSection[i]
+			if imp.Type != ExternTypeFunc {
+				continue
+			}
+			if fi == funcIdx {
+				return imp.DescFunc, true
+			}
+			fi++
+			if fi > funcIdx {
+				break
+			}
+		}
+		return 0, false
+	}
+	local := funcIdx - imported
+	if int(local) >= len(v.m.FunctionSection) {
+		return 0, false
+	}
+	return v.m.FunctionSection[local], true
 }
 
 func (m *Module) validateDataCountSection() (err error) {
@@ -642,7 +809,7 @@ func (m *ModuleInstance) buildGlobals(module *Module, funcRefResolver func(funcI
 		}
 		m.Globals[i+module.ImportGlobalCount] = g
 		g.Type = gs.Type
-		g.initialize(importedGlobals, &gs.Init, funcRefResolver)
+		g.initialize(importedGlobals, &gs.Init, funcRefResolver, m)
 	}
 }
 
@@ -753,6 +920,32 @@ type FunctionType struct {
 
 	// RecGroupPosition is the 0-based position of this type within its rec group.
 	RecGroupPosition int
+
+	// Form discriminates whether this entry defines a function, struct, or
+	// array type. Default zero value is CompositeFormFunc, so existing
+	// code that constructs FunctionType{Params: ..., Results: ...} keeps
+	// its function-type semantics without change.
+	Form CompositeForm
+
+	// Fields lists the fields of a struct type, in declaration order.
+	// Used only when Form == CompositeFormStruct.
+	Fields []FieldType
+
+	// ArrayField is the single element field type of an array type.
+	// Used only when Form == CompositeFormArray.
+	ArrayField FieldType
+
+	// SuperTypeIndex is the type-section index of an explicitly declared
+	// supertype, or nil for top-level (no supertype) types. The MVP allows
+	// at most one supertype.
+	SuperTypeIndex *Index
+
+	// Final indicates whether this type can be a supertype of others.
+	// The shorthand 0x60 / 0x5F / 0x5E forms and the explicit 0x4F (sub
+	// final) form set this to true; the 0x50 (sub) form sets it to false.
+	// Default zero value (false) is benign for non-GC modules because they
+	// never declare subtypes.
+	Final bool
 }
 
 func (f *FunctionType) CacheNumInUint64() {
@@ -795,25 +988,76 @@ func (f *FunctionType) key() string {
 		return f.string
 	}
 	var ret string
-	for _, b := range f.Params {
-		ret += ValueTypeName(b)
+	switch f.Form {
+	case CompositeFormStruct:
+		ret = structKey(f.Fields)
+	case CompositeFormArray:
+		ret = arrayKey(f.ArrayField)
+	default:
+		ret = funcKey(f.Params, f.Results)
 	}
-	if len(f.Params) == 0 {
-		ret += "v_"
-	} else {
-		ret += "_"
+	if f.SuperTypeIndex != nil {
+		if f.RecGroupSize > 1 {
+			groupStart := uint32(0)
+			if f.RecGroupPosition >= 0 {
+				// The absolute module-level start of the rec group is
+				// unknown here, so emit a rec-relative reference when the
+				// index plausibly falls inside the group. This is a best
+				// effort: the strict iso-recursive tying lands in the
+				// validator path that has the module context.
+				ret += fmt.Sprintf("|sup=%d", *f.SuperTypeIndex)
+			}
+			_ = groupStart
+		} else {
+			ret += fmt.Sprintf("|sup=%d", *f.SuperTypeIndex)
+		}
 	}
-	for _, b := range f.Results {
-		ret += ValueTypeName(b)
-	}
-	if len(f.Results) == 0 {
-		ret += "v"
+	if f.Final {
+		ret += "|final"
 	}
 	if f.RecGroupSize > 1 {
 		ret += fmt.Sprintf("|rec%d/%d", f.RecGroupPosition, f.RecGroupSize)
 	}
 	f.string = ret
 	return ret
+}
+
+// funcKey is the legacy function-type key shape, e.g. "v_i32" or "i32i32_i32".
+func funcKey(params, results []ValueType) string {
+	var ret string
+	for _, b := range params {
+		ret += ValueTypeName(b)
+	}
+	if len(params) == 0 {
+		ret += "v_"
+	} else {
+		ret += "_"
+	}
+	for _, b := range results {
+		ret += ValueTypeName(b)
+	}
+	if len(results) == 0 {
+		ret += "v"
+	}
+	return ret
+}
+
+// structKey produces a canonical key for a struct type, e.g.
+// "struct{i32,mut i64,i8}".
+func structKey(fields []FieldType) string {
+	out := "struct{"
+	for i, f := range fields {
+		if i > 0 {
+			out += ","
+		}
+		out += f.String()
+	}
+	return out + "}"
+}
+
+// arrayKey produces a canonical key for an array type, e.g. "array(mut i32)".
+func arrayKey(elem FieldType) string {
+	return "array(" + elem.String() + ")"
 }
 
 // String implements fmt.Stringer.
@@ -1144,6 +1388,28 @@ const (
 	ValueTypeFuncref   ValueType = 0x70
 	ValueTypeExternref ValueType = 0x6f
 	ValueTypeExnref    ValueType = 0x69
+
+	// Wasm-3.0 / GC abstract heap-type shorthand bytes. These share the
+	// kind-byte space with the older funcref/externref constants. The
+	// values match the spec encoding (binary section 5.3.1).
+	ValueTypeAnyref    ValueType = 0x6E // (ref null any)
+	ValueTypeEqref     ValueType = 0x6D // (ref null eq)
+	ValueTypeI31ref    ValueType = 0x6C // (ref null i31)
+	ValueTypeStructref ValueType = 0x6B // (ref null struct)
+	ValueTypeArrayref  ValueType = 0x6A // (ref null array)
+	// Bottom abstract types.
+	ValueTypeNullref     ValueType = 0x71 // (ref null none)
+	ValueTypeNoFuncref   ValueType = 0x73 // (ref null nofunc)
+	ValueTypeNoExternref ValueType = 0x72 // (ref null noextern)
+	ValueTypeNoExnref    ValueType = 0x74 // (ref null noexn)
+)
+
+// Bit flags for the wider ValueType uint64 layout. See the layout
+// comment above. The kind byte sits in the low byte; the flags are in
+// bits 8-15; the concrete type index is in bits 32-63.
+const (
+	flagNonNullable ValueType = 1 << 8
+	flagConcreteRef ValueType = 1 << 9
 )
 
 const (
@@ -1163,13 +1429,84 @@ const (
 )
 
 // ValueTypeName is an alias of api.ValueTypeName defined to simplify imports.
+// ValueTypeName returns the spec-text name of a ValueType. For
+// concrete refs it renders as `(ref null N)` / `(ref N)` and for
+// non-nullable abstract refs it renders as `(ref kind)`.
 func ValueTypeName(t ValueType) string {
-	if t == ValueTypeFuncref {
-		return "funcref"
-	} else if t == ValueTypeV128 {
+	if t.IsConcreteRef() {
+		if t.IsNullable() {
+			return fmt.Sprintf("(ref null %d)", t.TypeIndex())
+		}
+		return fmt.Sprintf("(ref %d)", t.TypeIndex())
+	}
+	nullableName := func(kind ValueType) string {
+		switch kind {
+		case ValueTypeFuncref:
+			return "funcref"
+		case ValueTypeExternref:
+			return "externref"
+		case ValueTypeAnyref:
+			return "anyref"
+		case ValueTypeEqref:
+			return "eqref"
+		case ValueTypeI31ref:
+			return "i31ref"
+		case ValueTypeStructref:
+			return "structref"
+		case ValueTypeArrayref:
+			return "arrayref"
+		case ValueTypeExnref:
+			return "exnref"
+		case ValueTypeNullref:
+			return "nullref"
+		case ValueTypeNoFuncref:
+			return "nofuncref"
+		case ValueTypeNoExternref:
+			return "noexternref"
+		case ValueTypeNoExnref:
+			return "noexnref"
+		}
+		return ""
+	}
+	if t.IsRef() {
+		nullable := t.IsNullable()
+		bareName := nullableName(t.AsNullable())
+		if bareName == "" {
+			return "unknown"
+		}
+		if nullable {
+			return bareName
+		}
+		// (ref kind) non-nullable form.
+		switch t.AsNullable() {
+		case ValueTypeFuncref:
+			return "(ref func)"
+		case ValueTypeExternref:
+			return "(ref extern)"
+		case ValueTypeAnyref:
+			return "(ref any)"
+		case ValueTypeEqref:
+			return "(ref eq)"
+		case ValueTypeI31ref:
+			return "(ref i31)"
+		case ValueTypeStructref:
+			return "(ref struct)"
+		case ValueTypeArrayref:
+			return "(ref array)"
+		case ValueTypeExnref:
+			return "(ref exn)"
+		case ValueTypeNullref:
+			return "(ref none)"
+		case ValueTypeNoFuncref:
+			return "(ref nofunc)"
+		case ValueTypeNoExternref:
+			return "(ref noextern)"
+		case ValueTypeNoExnref:
+			return "(ref noexn)"
+		}
+	}
+	if t == ValueTypeV128 {
 		return "v128"
-	} else if t == ValueTypeExnref {
-		return "exnref"
 	}
 	return api.ValueTypeName(api.ValueType(t))
 }
@@ -1178,24 +1515,374 @@ func (v ValueType) Kind() byte {
 	return byte(v)
 }
 
+// IsNullable reports whether v is a nullable reference type. For
+// non-reference types, the result is meaningless (but defaults to
+// true since the flag is clear).
+func (v ValueType) IsNullable() bool { return v&flagNonNullable == 0 }
+
+// IsConcreteRef reports whether v is a concrete reference to a
+// type-section index (set via ConcreteRef).
+func (v ValueType) IsConcreteRef() bool { return v&flagConcreteRef != 0 }
+
+// TypeIndex returns the concrete type-section index (bits 32-63).
+// Meaningful only when IsConcreteRef() is true.
+func (v ValueType) TypeIndex() uint32 { return uint32(v >> 32) }
+
+// AsNonNullable returns a copy of v with the non-nullable flag set.
+func (v ValueType) AsNonNullable() ValueType { return v | flagNonNullable }
+
+// AsNullable returns a copy of v with the non-nullable flag cleared.
+func (v ValueType) AsNullable() ValueType { return v &^ flagNonNullable }
+
+// IsRef reports whether v denotes a reference type — either an abstract
+// heap-type shorthand byte (0x69..0x74) or a concrete-ref encoding.
+func (v ValueType) IsRef() bool {
+	if v.IsConcreteRef() {
+		return true
+	}
+	switch ValueType(v.Kind()) {
+	case ValueTypeFuncref, ValueTypeExternref, ValueTypeExnref,
+		ValueTypeAnyref, ValueTypeEqref, ValueTypeI31ref,
+		ValueTypeStructref, ValueTypeArrayref,
+		ValueTypeNullref, ValueTypeNoFuncref,
+		ValueTypeNoExternref, ValueTypeNoExnref:
+		return true
+	}
+	return false
+}
+
+// IsAbstract reports whether v is a non-concrete reference type
+// (i.e. an abstract heap-type shorthand byte).
+func (v ValueType) IsAbstract() bool {
+	return v.IsRef() && !v.IsConcreteRef()
+}
+
+// ConcreteRef builds a concrete reference value type. The byte stays
+// at ValueTypeFuncref as a placeholder; the concrete typeIdx and
+// nullability are stored in the flag bits.
+func ConcreteRef(typeIdx uint32, nullable bool) ValueType {
+	v := ValueTypeFuncref | flagConcreteRef | ValueType(typeIdx)<<32
+	if !nullable {
+		v |= flagNonNullable
+	}
+	return v
+}
+
+// AbstractRef builds an abstract reference value type from its
+// shorthand byte and nullability flag.
+func AbstractRef(kindByte byte, nullable bool) ValueType {
+	v := ValueType(kindByte)
+	if !nullable {
+		v |= flagNonNullable
+	}
+	return v
+}
+
+// IsAbstractByteSubtypeOf implements the wasm-gc abstract heap-type
+// subtype hierarchy on raw shorthand bytes:
+//
+//	nofunc <: func
+//	noextern <: extern
+//	noexn <: exn
+//	none <: i31 / struct / array
+//	i31 / struct / array <: eq <: any
+//
+// Returns true iff a value typed actual (without considering
+// nullability) can be used where a value typed expected is required.
+func IsAbstractByteSubtypeOf(actual, expected byte) bool {
+	if actual == expected {
+		return true
+	}
+	a, e := ValueType(actual), ValueType(expected)
+	// Bottoms.
+	if a == ValueTypeNoFuncref && e == ValueTypeFuncref {
+		return true
+	}
+	if a == ValueTypeNoExternref && e == ValueTypeExternref {
+		return true
+	}
+	if a == ValueTypeNoExnref && e == ValueTypeExnref {
+		return true
+	}
+	if a == ValueTypeNullref {
+		switch e {
+		case ValueTypeI31ref, ValueTypeStructref, ValueTypeArrayref,
+			ValueTypeEqref, ValueTypeAnyref:
+			return true
+		}
+	}
+	// any-hierarchy: i31 / struct / array <: eq <: any.
+	switch a {
+	case ValueTypeI31ref, ValueTypeStructref, ValueTypeArrayref:
+		return e == ValueTypeEqref || e == ValueTypeAnyref
+	case ValueTypeEqref:
+		return e == ValueTypeAnyref
+	}
+	return false
+}
+
+// HeapTypeKindFromBinary maps a signed s33 LEB heap-type encoding (as
+// produced by the binary decoder after a 0x63/0x64 ref prefix byte) to
+// (kindByte, typeIdx, isConcrete, ok). Non-negative encodings denote a
+// concrete type index; negative encodings denote an abstract heap type.
+//
+// kindByte uses the spec shorthand bytes (0x70 func, 0x6F extern, etc.).
+// For concrete refs, kindByte is set to ValueTypeFuncref as a
+// placeholder; the concrete typeIdx is the meaningful payload.
+func HeapTypeKindFromBinary(ht int64) (kindByte byte, typeIdx uint32, isConcrete bool, ok bool) {
+	if ht >= 0 {
+		return byte(ValueTypeFuncref), uint32(ht), true, true
+	}
+	switch ht {
+	case -13:
+		return byte(ValueTypeNoFuncref), 0, false, true
+	case -12:
+		return byte(ValueTypeNoExnref), 0, false, true
+	case -14:
+		return byte(ValueTypeNoExternref), 0, false, true
+	case -15:
+		return byte(ValueTypeNullref), 0, false, true
+	case -16:
+		return byte(ValueTypeFuncref), 0, false, true
+	case -17:
+		return byte(ValueTypeExternref), 0, false, true
+	case -18:
+		return byte(ValueTypeAnyref), 0, false, true
+	case -19:
+		return byte(ValueTypeEqref), 0, false, true
+	case -20:
+		return byte(ValueTypeI31ref), 0, false, true
+	case -21:
+		return byte(ValueTypeStructref), 0, false, true
+	case -22:
+		return byte(ValueTypeArrayref), 0, false, true
+	case -23:
+		return byte(ValueTypeExnref), 0, false, true
+	}
+	return 0, 0, false, false
+}
+
 func isReferenceValueType(vt ValueType) bool {
-	return vt == ValueTypeExternref || vt == ValueTypeFuncref || vt == ValueTypeExnref
+	return vt.IsRef()
 }
 
 // isRefSubtypeOf returns true if actual is assignment-compatible with expected.
 // Currently, non-nullable ref types are desugared to nullable at decode time,
 // so this reduces to equality. When non-nullable ref types are properly supported,
 // this function should allow non-nullable to match nullable and vice versa.
+// isRefSubtypeOf returns true if actual is assignment-compatible with
+// expected. Wasm-3.0 subtype relation: a non-nullable ref matches a
+// nullable ref of the same heap kind, but not vice versa. For concrete
+// refs we accept structural equality only; richer concrete-vs-concrete
+// subtype checks (via Store.IsSubtype) are wired through the validator
+// callers that have access to the module's Store.
 func isRefSubtypeOf(actual, expected ValueType) bool {
-	return actual == expected
+	return isRefSubtypeOfInModule(actual, expected, nil)
 }
 
-// isStrictRefSubtypeOf returns true if actual is a strict subtype of expected.
-// Currently, non-nullable ref types are desugared to nullable at decode time,
-// so this reduces to equality. When non-nullable ref types are properly supported,
-// non-nullable should be a subtype of nullable, but NOT vice versa.
+// isRefSubtypeOfInModule is the GC-aware variant: when both sides are
+// concrete refs and m is provided, it walks SuperTypeIndex chains so a
+// concrete (ref $sub) flows into (ref $super).
+func isRefSubtypeOfInModule(actual, expected ValueType, m *Module) bool {
+	if actual == expected {
+		return true
+	}
+	if !actual.IsRef() || !expected.IsRef() {
+		return false
+	}
+	// Nullability: a non-nullable ref can flow into a nullable slot,
+	// but not vice versa.
+	if !expected.IsNullable() && actual.IsNullable() {
+		return false
+	}
+	// Concrete (ref $i) and abstract refs: a concrete ref can flow
+	// into an abstract slot in the appropriate hierarchy.
+	if actual.IsConcreteRef() && expected.IsAbstract() {
+		// Without the module's type section here, we can't classify
+		// the concrete type's form precisely. Be permissive and accept
+		// any abstract target in the funcref / any hierarchy; the
+		// runtime ref.test / call_indirect path verifies the actual
+		// form precisely via Store.TypeForm.
+		switch ValueType(expected.Kind()) {
+		case ValueTypeFuncref, ValueTypeNoFuncref,
+			ValueTypeAnyref, ValueTypeEqref,
+			ValueTypeStructref, ValueTypeArrayref,
+			ValueTypeI31ref, ValueTypeNullref:
+			return true
+		}
+		return false
+	}
+	if actual.IsConcreteRef() && expected.IsConcreteRef() {
+		if actual.TypeIndex() == expected.TypeIndex() {
+			return true
+		}
+		if m == nil {
+			return false
+		}
+		// Iso-recursive equivalence: two concrete refs with structurally
+		// identical canonical keys (rec-relative supertype + rec-relative
+		// field/param/result types) refer to the same type.
+		if concreteCanonicalEqual(m.TypeSection, actual.TypeIndex(), expected.TypeIndex()) {
+			return true
+		}
+		// Walk SuperTypeIndex chain: actual <: ... <: expected.
+		expIdx := expected.TypeIndex()
+		idx := actual.TypeIndex()
+		ts := m.TypeSection
+		for steps := 0; steps < len(ts); steps++ {
+			if int(idx) >= len(ts) {
+				return false
+			}
+			t := &ts[idx]
+			if t.SuperTypeIndex == nil {
+				return false
+			}
+			if *t.SuperTypeIndex == expIdx {
+				return true
+			}
+			if concreteCanonicalEqual(ts, *t.SuperTypeIndex, expIdx) {
+				return true
+			}
+			idx = *t.SuperTypeIndex
+		}
+		return false
+	}
+	if actual.IsAbstract() && expected.IsAbstract() {
+		return IsAbstractByteSubtypeOf(actual.Kind(), expected.Kind())
+	}
+	return false
+}
+
+// isStrictRefSubtypeOf is retained for backwards compatibility with
+// callers that previously distinguished strict from lax matching.
+// Currently identical to isRefSubtypeOf.
 func isStrictRefSubtypeOf(actual, expected ValueType) bool {
-	return actual == expected
+	return isRefSubtypeOf(actual, expected)
+}
+
+// concreteCanonicalEqual reports whether the types at indices a and b
+// are structurally equivalent under iso-recursive equivalence: their
+// canonical (rec-relative, supertype-refined) keys match.
+func concreteCanonicalEqual(ts []FunctionType, a, b uint32) bool {
+	if a == b {
+		return true
+	}
+	if int(a) >= len(ts) || int(b) >= len(ts) {
+		return false
+	}
+	// Run a transient canonicalization on a copy so we don't mutate
+	// caller state mid-validation. The cached .string set by f.key() is
+	// a per-type partial key (no refinement) and can't be trusted for
+	// iso-recursive comparison.
+	copyTs := make([]FunctionType, len(ts))
+	copy(copyTs, ts)
+	for i := range copyTs {
+		copyTs[i].string = ""
+	}
+	canonicalizeForValidation(copyTs)
+	return copyTs[a].string == copyTs[b].string
+}
+
+// canonicalizeForValidation is a validation-time wrapper that mirrors
+// Store.canonicalizeRecGroupKeys but operates on a local slice copy.
+// Implemented as an indirect reference to keep the heavy logic in
+// store.go (where strings package is already imported).
+var canonicalizeForValidation = func(ts []FunctionType) {}
+
+// checkStructuralSubtype enforces the wasm-gc rule that when t declares
+// sup as its supertype, t's composite shape must structurally be a
+// subtype of sup's:
+//   - func: params contravariant (sup.Params <: t.Params), results
+//     covariant (t.Results <: sup.Results).
+//   - struct: t must have at least as many fields as sup; each common
+//     field must be field-subtype-equal (mutability matches; immut
+//     types covariant, mut types invariant).
+//   - array: the element field must be field-subtype-equal.
+func checkStructuralSubtype(t, sup *FunctionType, m *Module) error {
+	switch t.Form {
+	case CompositeFormFunc:
+		if len(t.Params) != len(sup.Params) {
+			return fmt.Errorf("function param count differs")
+		}
+		if len(t.Results) != len(sup.Results) {
+			return fmt.Errorf("function result count differs")
+		}
+		for i := range t.Params {
+			// Contravariant: sup.Params[i] <: t.Params[i].
+			if !isValueSubtypeAcrossForm(sup.Params[i], t.Params[i], m) {
+				return fmt.Errorf("param[%d] not contravariant", i)
+			}
+		}
+		for i := range t.Results {
+			// Covariant: t.Results[i] <: sup.Results[i].
+			if !isValueSubtypeAcrossForm(t.Results[i], sup.Results[i], m) {
+				return fmt.Errorf("result[%d] not covariant", i)
+			}
+		}
+	case CompositeFormStruct:
+		if len(t.Fields) < len(sup.Fields) {
+			return fmt.Errorf("struct fewer fields than supertype")
+		}
+		for i := range sup.Fields {
+			if err := checkFieldSubtype(t.Fields[i], sup.Fields[i], m); err != nil {
+				return fmt.Errorf("field[%d]: %v", i, err)
+			}
+		}
+	case CompositeFormArray:
+		if err := checkFieldSubtype(t.ArrayField, sup.ArrayField, m); err != nil {
+			return fmt.Errorf("array element: %v", err)
+		}
+	}
+	return nil
+}
+
+// checkFieldSubtype enforces wasm-gc field subtyping:
+//   - mutability must match exactly.
+//   - if mutable: value types must match exactly (invariant).
+//   - if immutable: src value type must be a subtype of dst.
+//   - packed storage must match exactly.
+func checkFieldSubtype(sub, sup FieldType, m *Module) error {
+	if sub.Mutable != sup.Mutable {
+		return fmt.Errorf("mutability mismatch")
+	}
+	if sub.Packed != sup.Packed {
+		return fmt.Errorf("packed storage mismatch")
+	}
+	if sub.Packed != PackedTypeNone {
+		return nil
+	}
+	if sub.Mutable {
+		// Invariant: types must match exactly (or be equivalent
+		// concrete refs).
+		if sub.ValueType == sup.ValueType {
+			return nil
+		}
+		if sub.ValueType.IsConcreteRef() && sup.ValueType.IsConcreteRef() {
+			if concreteCanonicalEqual(m.TypeSection, sub.ValueType.TypeIndex(), sup.ValueType.TypeIndex()) {
+				return nil
+			}
+		}
+		return fmt.Errorf("mutable field value type %s != %s",
+			ValueTypeName(sub.ValueType), ValueTypeName(sup.ValueType))
+	}
+	if !isValueSubtypeAcrossForm(sub.ValueType, sup.ValueType, m) {
+		return fmt.Errorf("immutable field value type %s not subtype of %s",
+			ValueTypeName(sub.ValueType), ValueTypeName(sup.ValueType))
+	}
+	return nil
+}
+
+// isValueSubtypeAcrossForm reports whether `sub` flows into `sup` for
+// type-section structural subtype checks. Non-ref types must equal;
+// ref types defer to isRefSubtypeOfInModule.
+func isValueSubtypeAcrossForm(sub, sup ValueType, m *Module) bool {
+	if sub == sup {
+		return true
+	}
+	if isReferenceValueType(sub) && isReferenceValueType(sup) {
+		return isRefSubtypeOfInModule(sub, sup, m)
+	}
+	return false
 }
 
 // ExternType is an alias of api.ExternType defined to simplify imports.

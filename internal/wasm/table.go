@@ -13,6 +13,11 @@ type Table struct {
 	Min  uint32
 	Max  *uint32
 	Type RefType
+	// InitExpr is the optional element-initializer constant expression
+	// introduced by the GC proposal: `(table N M T E)` desugars to a
+	// table of type T pre-filled by evaluating E. nil when the table
+	// uses the legacy form (where elements default to null refs).
+	InitExpr *ConstantExpression
 }
 
 // RefType is either RefTypeFuncref or RefTypeExternref as of WebAssembly core 2.0.
@@ -160,15 +165,8 @@ func (m *Module) validateTable(enabledFeatures api.CoreFeatures, tables []Table,
 				return err
 			}
 
-			switch elem.Type {
-			case RefTypeFuncref:
-				if initType != ValueTypeFuncref {
-					return fmt.Errorf("%s[%d].init[%d] must be funcref but was %s", SectionIDName(SectionIDElement), idx, ei, ValueTypeName(initType))
-				}
-			case RefTypeExternref:
-				if initType != ValueTypeExternref {
-					return fmt.Errorf("%s[%d].init[%d] must be externref but was %s", SectionIDName(SectionIDElement), idx, ei, ValueTypeName(initType))
-				}
+			if !isRefSubtypeOf(initType, elem.Type) {
+				return fmt.Errorf("%s[%d].init[%d] must be %s but was %s", SectionIDName(SectionIDElement), idx, ei, ValueTypeName(elem.Type), ValueTypeName(initType))
 			}
 		}
 
@@ -178,7 +176,7 @@ func (m *Module) validateTable(enabledFeatures api.CoreFeatures, tables []Table,
 			}
 
 			t := tables[elem.TableIndex]
-			if t.Type != elem.Type {
+			if t.Type != elem.Type && !isRefSubtypeOf(elem.Type, t.Type) {
 				return fmt.Errorf("element type mismatch: table has %s but element has %s",
 					RefTypeName(t.Type), RefTypeName(elem.Type),
 				)
@@ -238,9 +236,21 @@ func (m *ModuleInstance) buildTables(module *Module, skipBoundCheck bool) (err e
 	idx := module.ImportTableCount
 	for i := range module.TableSection {
 		tsec := &module.TableSection[i]
+		refs := make([]Reference, tsec.Min)
+		// GC table-with-initializer: pre-fill every entry by evaluating
+		// the table's init constant expression.
+		if tsec.InitExpr != nil {
+			initVals := evaluateConstExprInModuleInstance(tsec.InitExpr, m)
+			if len(initVals) > 0 {
+				v := Reference(initVals[0])
+				for j := range refs {
+					refs[j] = v
+				}
+			}
+		}
 		// The module defining the table is the one that sets its Min/Max etc.
 		m.Tables[idx] = &TableInstance{
-			References: make([]Reference, tsec.Min), Min: tsec.Min, Max: tsec.Max,
+			References: refs, Min: tsec.Min, Max: tsec.Max,
 			Type: tsec.Type,
 		}
 		idx++

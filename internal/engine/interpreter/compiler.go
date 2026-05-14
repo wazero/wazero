@@ -1724,6 +1724,358 @@ operatorSwitch:
 		c.emit(
 			newOperationEqz(unsignedInt64),
 		)
+	case wasm.OpcodeRefEq:
+		c.emit(newOperationRefEq())
+	case wasm.OpcodeRefAsNonNull:
+		c.emit(newOperationRefAsNonNull())
+	case wasm.OpcodeCallRef, wasm.OpcodeReturnCallRef:
+		c.pc++
+		typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+		if err != nil {
+			return fmt.Errorf("read call_ref type index: %v", err)
+		}
+		c.pc += n - 1
+		if !c.unreachableState.on {
+			ft := &c.types[typeIdx]
+			c.stackPop() // funcref
+			for range ft.Params {
+				c.stackPop()
+			}
+			for _, r := range ft.Results {
+				c.stackPush(wasmValueTypeTounsignedType(r))
+			}
+		}
+		if op == wasm.OpcodeCallRef {
+			c.emit(newOperationCallRef(typeIdx))
+		} else {
+			c.emit(newOperationReturnCallRef(typeIdx))
+			c.markUnreachable()
+		}
+	case wasm.OpcodeBrOnNull, wasm.OpcodeBrOnNonNull:
+		targetIndex, n, err := leb128.LoadUint32(c.body[c.pc+1:])
+		if err != nil {
+			return fmt.Errorf("read target for %s: %w", wasm.InstructionName(op), err)
+		}
+		c.pc += n
+		if c.unreachableState.on {
+			break operatorSwitch
+		}
+		// br_on_null pops a ref then maybe re-pushes it; br_on_non_null
+		// pops a ref then maybe re-pushes it. Both need the unsignedType
+		// pop tracked here (the validator handled the value-type stack).
+		c.stackPop()
+		targetFrame := c.controlFrames.get(int(targetIndex))
+		targetFrame.ensureContinuation()
+		drop := c.getFrameDropRange(targetFrame, false)
+		target := targetFrame.asLabel()
+		c.result.LabelCallers[target]++
+		continuationLabel := newLabel(labelKindHeader, c.nextFrameID())
+		c.result.LabelCallers[continuationLabel]++
+		if op == wasm.OpcodeBrOnNull {
+			c.emit(newOperationBrOnNull(target, continuationLabel, drop))
+			c.stackPush(unsignedTypeI64)
+		} else {
+			c.emit(newOperationBrOnNonNull(target, continuationLabel, drop))
+		}
+		c.emit(newOperationLabel(continuationLabel))
+	case wasm.OpcodeGCPrefix:
+		// applyToStack already consumed the LEB sub-opcode and stored it
+		// in `index`; c.pc points at the last byte of the LEB encoding.
+		switch index {
+		case wasm.OpcodeGCRefI31:
+			c.emit(newOperationRefI31())
+		case wasm.OpcodeGCI31GetS:
+			c.emit(newOperationI31GetS())
+		case wasm.OpcodeGCI31GetU:
+			c.emit(newOperationI31GetU())
+		case wasm.OpcodeGCAnyConvertExtern:
+			c.emit(newOperationAnyConvertExtern())
+		case wasm.OpcodeGCExternConvertAny:
+			c.emit(newOperationExternConvertAny())
+		case wasm.OpcodeGCStructNew, wasm.OpcodeGCStructNewDefault,
+			wasm.OpcodeGCStructGet, wasm.OpcodeGCStructGetS, wasm.OpcodeGCStructGetU,
+			wasm.OpcodeGCStructSet:
+			c.pc++
+			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read GC struct type index: %v", err)
+			}
+			c.pc += n - 1
+			st := &c.types[typeIdx]
+			fieldCount := uint32(len(st.Fields))
+
+			switch index {
+			case wasm.OpcodeGCStructNew:
+				if !c.unreachableState.on {
+					for i := uint32(0); i < fieldCount; i++ {
+						c.stackPop()
+					}
+					c.stackPush(unsignedTypeI64)
+				}
+				c.emit(newOperationStructNew(typeIdx, fieldCount))
+			case wasm.OpcodeGCStructNewDefault:
+				if !c.unreachableState.on {
+					c.stackPush(unsignedTypeI64)
+				}
+				c.emit(newOperationStructNewDefault(typeIdx, fieldCount))
+			case wasm.OpcodeGCStructGet, wasm.OpcodeGCStructGetS, wasm.OpcodeGCStructGetU:
+				c.pc++
+				fieldIdx, fn, err := leb128.LoadUint32(c.body[c.pc:])
+				if err != nil {
+					return fmt.Errorf("read struct.get field index: %v", err)
+				}
+				c.pc += fn - 1
+				if !c.unreachableState.on {
+					c.stackPop()
+					if st.Fields[fieldIdx].Packed != wasm.PackedTypeNone {
+						c.stackPush(unsignedTypeI32)
+					} else {
+						c.stackPush(wasmValueTypeTounsignedType(st.Fields[fieldIdx].ValueType))
+					}
+				}
+				switch index {
+				case wasm.OpcodeGCStructGet:
+					c.emit(newOperationStructGet(typeIdx, fieldIdx))
+				case wasm.OpcodeGCStructGetS:
+					c.emit(newOperationStructGetS(typeIdx, fieldIdx))
+				case wasm.OpcodeGCStructGetU:
+					c.emit(newOperationStructGetU(typeIdx, fieldIdx))
+				}
+			case wasm.OpcodeGCStructSet:
+				c.pc++
+				fieldIdx, fn, err := leb128.LoadUint32(c.body[c.pc:])
+				if err != nil {
+					return fmt.Errorf("read struct.set field index: %v", err)
+				}
+				c.pc += fn - 1
+				if !c.unreachableState.on {
+					c.stackPop()
+					c.stackPop()
+				}
+				c.emit(newOperationStructSet(typeIdx, fieldIdx))
+			}
+		case wasm.OpcodeGCArrayNew, wasm.OpcodeGCArrayNewDefault,
+			wasm.OpcodeGCArrayGet, wasm.OpcodeGCArrayGetS, wasm.OpcodeGCArrayGetU,
+			wasm.OpcodeGCArraySet:
+			c.pc++
+			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read GC array type index: %v", err)
+			}
+			c.pc += n - 1
+			at := &c.types[typeIdx]
+			switch index {
+			case wasm.OpcodeGCArrayNew:
+				if !c.unreachableState.on {
+					c.stackPop() // length
+					c.stackPop() // element value
+					c.stackPush(unsignedTypeI64)
+				}
+				c.emit(newOperationArrayNew(typeIdx))
+			case wasm.OpcodeGCArrayNewDefault:
+				if !c.unreachableState.on {
+					c.stackPop() // length
+					c.stackPush(unsignedTypeI64)
+				}
+				c.emit(newOperationArrayNewDefault(typeIdx))
+			case wasm.OpcodeGCArrayGet, wasm.OpcodeGCArrayGetS, wasm.OpcodeGCArrayGetU:
+				if !c.unreachableState.on {
+					c.stackPop() // index
+					c.stackPop() // array ref
+					if at.ArrayField.Packed != wasm.PackedTypeNone {
+						c.stackPush(unsignedTypeI32)
+					} else {
+						c.stackPush(wasmValueTypeTounsignedType(at.ArrayField.ValueType))
+					}
+				}
+				switch index {
+				case wasm.OpcodeGCArrayGet:
+					c.emit(newOperationArrayGet(typeIdx))
+				case wasm.OpcodeGCArrayGetS:
+					c.emit(newOperationArrayGetS(typeIdx))
+				case wasm.OpcodeGCArrayGetU:
+					c.emit(newOperationArrayGetU(typeIdx))
+				}
+			case wasm.OpcodeGCArraySet:
+				if !c.unreachableState.on {
+					c.stackPop() // value
+					c.stackPop() // index
+					c.stackPop() // array ref
+				}
+				c.emit(newOperationArraySet(typeIdx))
+			}
+		case wasm.OpcodeGCArrayLen:
+			c.emit(newOperationArrayLen())
+		case wasm.OpcodeGCRefTest, wasm.OpcodeGCRefTestNull,
+			wasm.OpcodeGCRefCast, wasm.OpcodeGCRefCastNull:
+			c.pc++
+			ht, n, err := leb128.LoadInt64(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read ref.test heap type: %v", err)
+			}
+			c.pc += n - 1
+			kindByte, typeIdx, isConcrete, ok := wasm.HeapTypeKindFromBinary(ht)
+			if !ok {
+				return fmt.Errorf("invalid heap type for ref.test/cast: %d", ht)
+			}
+			nullable := index == wasm.OpcodeGCRefTestNull || index == wasm.OpcodeGCRefCastNull
+			if !c.unreachableState.on {
+				c.stackPop()
+				switch index {
+				case wasm.OpcodeGCRefTest, wasm.OpcodeGCRefTestNull:
+					c.stackPush(unsignedTypeI32)
+				case wasm.OpcodeGCRefCast, wasm.OpcodeGCRefCastNull:
+					c.stackPush(unsignedTypeI64)
+				}
+			}
+			if index == wasm.OpcodeGCRefTest || index == wasm.OpcodeGCRefTestNull {
+				c.emit(newOperationRefTest(kindByte, nullable, isConcrete, typeIdx))
+			} else {
+				c.emit(newOperationRefCast(kindByte, nullable, isConcrete, typeIdx))
+			}
+		case wasm.OpcodeGCBrOnCast, wasm.OpcodeGCBrOnCastFail:
+			c.pc++
+			flags := c.body[c.pc]
+			c.pc++
+			labelIdx, ln, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read br_on_cast label: %v", err)
+			}
+			c.pc += ln
+			_, srcN, err := leb128.LoadInt64(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read br_on_cast src heap type: %v", err)
+			}
+			c.pc += srcN
+			dstHt, dstN, err := leb128.LoadInt64(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read br_on_cast dst heap type: %v", err)
+			}
+			c.pc += dstN - 1
+			dstKindByte, dstTypeIdx, dstIsConcrete, _ := wasm.HeapTypeKindFromBinary(dstHt)
+			dstNullable := flags&wasm.BrOnCastFlagDstNullable != 0
+			if c.unreachableState.on {
+				break operatorSwitch
+			}
+			c.stackPop()
+			targetFrame := c.controlFrames.get(int(labelIdx))
+			targetFrame.ensureContinuation()
+			drop := c.getFrameDropRange(targetFrame, false)
+			target := targetFrame.asLabel()
+			c.result.LabelCallers[target]++
+			continuationLabel := newLabel(labelKindHeader, c.nextFrameID())
+			c.result.LabelCallers[continuationLabel]++
+			if index == wasm.OpcodeGCBrOnCast {
+				c.emit(newOperationBrOnCast(target, continuationLabel, drop,
+					dstKindByte, dstNullable, dstIsConcrete, dstTypeIdx))
+			} else {
+				c.emit(newOperationBrOnCastFail(target, continuationLabel, drop,
+					dstKindByte, dstNullable, dstIsConcrete, dstTypeIdx))
+			}
+			c.stackPush(unsignedTypeI64)
+			c.emit(newOperationLabel(continuationLabel))
+		case wasm.OpcodeGCArrayNewFixed:
+			c.pc++
+			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.new_fixed type index: %v", err)
+			}
+			c.pc += n
+			count, n2, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.new_fixed count: %v", err)
+			}
+			c.pc += n2 - 1
+			if !c.unreachableState.on {
+				for i := uint32(0); i < count; i++ {
+					c.stackPop()
+				}
+				c.stackPush(unsignedTypeI64)
+			}
+			c.emit(newOperationArrayNewFixed(typeIdx, count))
+		case wasm.OpcodeGCArrayFill:
+			c.pc++
+			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.fill type index: %v", err)
+			}
+			c.pc += n - 1
+			if !c.unreachableState.on {
+				c.stackPop() // count
+				c.stackPop() // value
+				c.stackPop() // index
+				c.stackPop() // array ref
+			}
+			c.emit(newOperationArrayFill(typeIdx))
+		case wasm.OpcodeGCArrayCopy:
+			c.pc++
+			dstIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.copy dst type index: %v", err)
+			}
+			c.pc += n
+			srcIdx, n2, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.copy src type index: %v", err)
+			}
+			c.pc += n2 - 1
+			if !c.unreachableState.on {
+				c.stackPop() // count
+				c.stackPop() // src index
+				c.stackPop() // src ref
+				c.stackPop() // dst index
+				c.stackPop() // dst ref
+			}
+			c.emit(newOperationArrayCopy(dstIdx, srcIdx))
+		case wasm.OpcodeGCArrayNewData, wasm.OpcodeGCArrayNewElem:
+			c.pc++
+			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.new_data/elem type index: %v", err)
+			}
+			c.pc += n
+			segIdx, n2, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.new_data/elem seg index: %v", err)
+			}
+			c.pc += n2 - 1
+			if !c.unreachableState.on {
+				c.stackPop() // count
+				c.stackPop() // src offset
+				c.stackPush(unsignedTypeI64)
+			}
+			if index == wasm.OpcodeGCArrayNewData {
+				c.emit(newOperationArrayNewData(typeIdx, segIdx))
+			} else {
+				c.emit(newOperationArrayNewElem(typeIdx, segIdx))
+			}
+		case wasm.OpcodeGCArrayInitData, wasm.OpcodeGCArrayInitElem:
+			c.pc++
+			typeIdx, n, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.init_data/elem type index: %v", err)
+			}
+			c.pc += n
+			segIdx, n2, err := leb128.LoadUint32(c.body[c.pc:])
+			if err != nil {
+				return fmt.Errorf("read array.init_data/elem seg index: %v", err)
+			}
+			c.pc += n2 - 1
+			if !c.unreachableState.on {
+				c.stackPop() // count
+				c.stackPop() // src offset
+				c.stackPop() // dst offset
+				c.stackPop() // array ref
+			}
+			if index == wasm.OpcodeGCArrayInitData {
+				c.emit(newOperationArrayInitData(typeIdx, segIdx))
+			} else {
+				c.emit(newOperationArrayInitElem(typeIdx, segIdx))
+			}
+		default:
+			return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter",
+				wasm.GCInstructionName(index), index)
+		}
 	case wasm.OpcodeTableGet:
 		c.pc++
 		tableIndex, num, err := leb128.LoadUint32(c.body[c.pc:])
@@ -3593,7 +3945,11 @@ func (c *compiler) applyToStack(opcode wasm.Opcode) (index uint32, err error) {
 		wasm.OpcodeTailCallReturnCall,
 		wasm.OpcodeTailCallReturnCallIndirect,
 		// exception handling - throw reads tag index
-		wasm.OpcodeThrow:
+		wasm.OpcodeThrow,
+		// wasm-gc: the 0xfb prefix is followed by a uint32 LEB
+		// sub-opcode; we pass that sub-opcode as the index so the
+		// signature dispatch picks the right pop/push pattern.
+		wasm.OpcodeGCPrefix:
 		// Assumes that we are at the opcode now so skip it before read immediates.
 		v, num, err := leb128.LoadUint32(c.body[c.pc+1:])
 		if err != nil {
@@ -3609,7 +3965,11 @@ func (c *compiler) applyToStack(opcode wasm.Opcode) (index uint32, err error) {
 	}
 
 	if c.unreachableState.on {
-		return 0, nil
+		// Pass the consumed `index` back to the caller so the GC-prefix
+		// sub-opcode dispatch can still skip the right number of
+		// immediates in unreachable code. Returning 0 here would make
+		// the caller mis-dispatch to struct.new (sub-opcode 0).
+		return index, nil
 	}
 
 	// Retrieve the signature of the opcode.
@@ -3718,6 +4078,14 @@ func (c *compiler) emitDefaultValue(t wasm.ValueType) {
 	case wasm.ValueTypeV128:
 		c.stackPush(unsignedTypeV128)
 		c.emit(newOperationV128Const(0, 0))
+	default:
+		// GC abstract ref types (anyref, eqref, i31ref, structref,
+		// arrayref, nullref, nofuncref, noexternref, noexnref) and
+		// concrete (ref $t) — all stored as a single uint64 (null = 0).
+		if t.IsRef() {
+			c.stackPush(unsignedTypeI64)
+			c.emit(newOperationConstI64(0))
+		}
 	}
 }
 

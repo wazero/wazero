@@ -271,6 +271,52 @@ func (c *compiler) wasmOpcodeSignature(op wasm.Opcode, index uint32) (*signature
 	case wasm.OpcodeThrow, wasm.OpcodeThrowRef, wasm.OpcodeTryTable:
 		// Stack manipulation handled dynamically by the compiler.
 		return signature_None_None, nil
+	case wasm.OpcodeRefEq:
+		// Two refs (uint64) -> i32.
+		return signature_I64I64_I32, nil
+	case wasm.OpcodeRefAsNonNull:
+		// One ref -> same ref.
+		return signature_I64_I64, nil
+	case wasm.OpcodeBrOnNull, wasm.OpcodeBrOnNonNull:
+		// Stack manipulation handled dynamically by the compiler.
+		return signature_None_None, nil
+	case wasm.OpcodeCallRef, wasm.OpcodeReturnCallRef:
+		// Dynamic; compiler tracks params/results from the type index.
+		return signature_None_None, nil
+	case wasm.OpcodeGCPrefix:
+		// 0xfb-prefixed sub-opcodes have varying signatures. The caller
+		// passes the sub-opcode in index.
+		switch index {
+		case wasm.OpcodeGCRefI31:
+			return signature_I32_I64, nil
+		case wasm.OpcodeGCI31GetS, wasm.OpcodeGCI31GetU:
+			return signature_I64_I32, nil
+		case wasm.OpcodeGCAnyConvertExtern, wasm.OpcodeGCExternConvertAny:
+			return signature_I64_I64, nil
+		case wasm.OpcodeGCStructNew, wasm.OpcodeGCStructNewDefault,
+			wasm.OpcodeGCStructGet, wasm.OpcodeGCStructGetS, wasm.OpcodeGCStructGetU,
+			wasm.OpcodeGCStructSet,
+			wasm.OpcodeGCArrayNew, wasm.OpcodeGCArrayNewDefault,
+			wasm.OpcodeGCArrayGet, wasm.OpcodeGCArrayGetS, wasm.OpcodeGCArrayGetU,
+			wasm.OpcodeGCArraySet,
+			wasm.OpcodeGCArrayNewFixed, wasm.OpcodeGCArrayFill, wasm.OpcodeGCArrayCopy,
+			wasm.OpcodeGCArrayNewData, wasm.OpcodeGCArrayNewElem,
+			wasm.OpcodeGCArrayInitData, wasm.OpcodeGCArrayInitElem:
+			// Stack manipulation handled dynamically by the compiler.
+			return signature_None_None, nil
+		case wasm.OpcodeGCArrayLen:
+			// pop array ref (uint64), push i32 length.
+			return signature_I64_I32, nil
+		case wasm.OpcodeGCRefTest, wasm.OpcodeGCRefTestNull:
+			return signature_I64_I32, nil
+		case wasm.OpcodeGCRefCast, wasm.OpcodeGCRefCastNull:
+			return signature_I64_I64, nil
+		case wasm.OpcodeGCBrOnCast, wasm.OpcodeGCBrOnCastFail:
+			// Stack manipulation handled dynamically.
+			return signature_None_None, nil
+		default:
+			return nil, fmt.Errorf("unsupported GC sub-opcode in interpreterir: 0x%x", index)
+		}
 	case wasm.OpcodeBrIf, wasm.OpcodeBrTable:
 		return signature_I32_None, nil
 	case wasm.OpcodeReturn:
@@ -698,13 +744,13 @@ func (f *funcTypeToIRSignatures) get(typeIndex wasm.Index, indirect bool) *signa
 }
 
 func wasmValueTypeTounsignedType(vt wasm.ValueType) unsignedType {
+	if vt.IsRef() {
+		return unsignedTypeI64
+	}
 	switch vt {
 	case wasm.ValueTypeI32:
 		return unsignedTypeI32
-	case wasm.ValueTypeI64,
-		// From interpreterir layer, ref type values are opaque 64-bit pointers.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
-		wasm.ValueTypeExnref:
+	case wasm.ValueTypeI64:
 		return unsignedTypeI64
 	case wasm.ValueTypeF32:
 		return unsignedTypeF32
@@ -717,13 +763,13 @@ func wasmValueTypeTounsignedType(vt wasm.ValueType) unsignedType {
 }
 
 func wasmValueTypeToUnsignedOutSignature(vt wasm.ValueType) *signature {
+	if vt.IsRef() {
+		return signature_None_I64
+	}
 	switch vt {
 	case wasm.ValueTypeI32:
 		return signature_None_I32
-	case wasm.ValueTypeI64,
-		// From interpreterir layer, ref type values are opaque 64-bit pointers.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
-		wasm.ValueTypeExnref:
+	case wasm.ValueTypeI64:
 		return signature_None_I64
 	case wasm.ValueTypeF32:
 		return signature_None_F32
@@ -736,13 +782,13 @@ func wasmValueTypeToUnsignedOutSignature(vt wasm.ValueType) *signature {
 }
 
 func wasmValueTypeToUnsignedInSignature(vt wasm.ValueType) *signature {
+	if vt.IsRef() {
+		return signature_I64_None
+	}
 	switch vt {
 	case wasm.ValueTypeI32:
 		return signature_I32_None
-	case wasm.ValueTypeI64,
-		// From interpreterir layer, ref type values are opaque 64-bit pointers.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
-		wasm.ValueTypeExnref:
+	case wasm.ValueTypeI64:
 		return signature_I64_None
 	case wasm.ValueTypeF32:
 		return signature_F32_None
@@ -755,13 +801,13 @@ func wasmValueTypeToUnsignedInSignature(vt wasm.ValueType) *signature {
 }
 
 func wasmValueTypeToUnsignedInOutSignature(vt wasm.ValueType) *signature {
+	if vt.IsRef() {
+		return signature_I64_I64
+	}
 	switch vt {
 	case wasm.ValueTypeI32:
 		return signature_I32_I32
-	case wasm.ValueTypeI64,
-		// At interpreterir layer, ref type values are opaque 64-bit pointers.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
-		wasm.ValueTypeExnref:
+	case wasm.ValueTypeI64:
 		return signature_I64_I64
 	case wasm.ValueTypeF32:
 		return signature_F32_F32

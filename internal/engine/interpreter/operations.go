@@ -453,6 +453,76 @@ func (o operationKind) String() (ret string) {
 		ret = "operationKindThrow"
 	case operationKindThrowRef:
 		ret = "operationKindThrowRef"
+	case operationKindRefI31:
+		ret = "operationKindRefI31"
+	case operationKindI31GetS:
+		ret = "operationKindI31GetS"
+	case operationKindI31GetU:
+		ret = "operationKindI31GetU"
+	case operationKindRefEq:
+		ret = "operationKindRefEq"
+	case operationKindRefAsNonNull:
+		ret = "operationKindRefAsNonNull"
+	case operationKindAnyConvertExtern:
+		ret = "operationKindAnyConvertExtern"
+	case operationKindExternConvertAny:
+		ret = "operationKindExternConvertAny"
+	case operationKindBrOnNull:
+		ret = "operationKindBrOnNull"
+	case operationKindBrOnNonNull:
+		ret = "operationKindBrOnNonNull"
+	case operationKindCallRef:
+		ret = "operationKindCallRef"
+	case operationKindReturnCallRef:
+		ret = "operationKindReturnCallRef"
+	case operationKindStructNew:
+		ret = "operationKindStructNew"
+	case operationKindStructNewDefault:
+		ret = "operationKindStructNewDefault"
+	case operationKindStructGet:
+		ret = "operationKindStructGet"
+	case operationKindStructGetS:
+		ret = "operationKindStructGetS"
+	case operationKindStructGetU:
+		ret = "operationKindStructGetU"
+	case operationKindStructSet:
+		ret = "operationKindStructSet"
+	case operationKindArrayNew:
+		ret = "operationKindArrayNew"
+	case operationKindArrayNewDefault:
+		ret = "operationKindArrayNewDefault"
+	case operationKindArrayGet:
+		ret = "operationKindArrayGet"
+	case operationKindArrayGetS:
+		ret = "operationKindArrayGetS"
+	case operationKindArrayGetU:
+		ret = "operationKindArrayGetU"
+	case operationKindArraySet:
+		ret = "operationKindArraySet"
+	case operationKindArrayLen:
+		ret = "operationKindArrayLen"
+	case operationKindArrayNewFixed:
+		ret = "operationKindArrayNewFixed"
+	case operationKindArrayFill:
+		ret = "operationKindArrayFill"
+	case operationKindArrayCopy:
+		ret = "operationKindArrayCopy"
+	case operationKindRefTest:
+		ret = "operationKindRefTest"
+	case operationKindRefCast:
+		ret = "operationKindRefCast"
+	case operationKindBrOnCast:
+		ret = "operationKindBrOnCast"
+	case operationKindBrOnCastFail:
+		ret = "operationKindBrOnCastFail"
+	case operationKindArrayNewData:
+		ret = "operationKindArrayNewData"
+	case operationKindArrayNewElem:
+		ret = "operationKindArrayNewElem"
+	case operationKindArrayInitData:
+		ret = "operationKindArrayInitData"
+	case operationKindArrayInitElem:
+		ret = "operationKindArrayInitElem"
 	default:
 		panic(fmt.Errorf("unknown operation %d", o))
 	}
@@ -785,6 +855,102 @@ const (
 	operationKindThrow
 	// operationKindThrowRef is the Kind for throw_ref instruction.
 	operationKindThrowRef
+
+	// operationKindRefI31 is the Kind for ref.i31: pop i32, push *I31Ref.
+	operationKindRefI31
+	// operationKindI31GetS is the Kind for i31.get_s: pop *I31Ref, push sign-extended i32.
+	operationKindI31GetS
+	// operationKindI31GetU is the Kind for i31.get_u: pop *I31Ref, push zero-extended i32.
+	operationKindI31GetU
+	// operationKindRefEq is the Kind for ref.eq: pop two refs, push i32 (1 if equal else 0).
+	operationKindRefEq
+
+	// operationKindRefAsNonNull is the Kind for ref.as_non_null: pop a ref,
+	// trap if it is null, otherwise push it back unchanged.
+	operationKindRefAsNonNull
+
+	// operationKindAnyConvertExtern is the Kind for any.convert_extern.
+	// Runtime representation is identical so this is a no-op.
+	operationKindAnyConvertExtern
+
+	// operationKindExternConvertAny is the Kind for extern.convert_any.
+	// Runtime representation is identical so this is a no-op.
+	operationKindExternConvertAny
+
+	// operationKindBrOnNull is the Kind for br_on_null l. Pops a ref; if
+	// null, branches to label l (U1=thenLabel, U2=elseLabel, U3=drop
+	// range). If non-null, pushes the ref back and falls through.
+	operationKindBrOnNull
+
+	// operationKindBrOnNonNull is the Kind for br_on_non_null l. Pops a
+	// ref; if non-null, pushes it back AND branches to label l (the
+	// label's last param is the ref). If null, the ref is consumed and
+	// we fall through.
+	operationKindBrOnNonNull
+
+	// operationKindCallRef is the Kind for call_ref t.
+	operationKindCallRef
+	// operationKindReturnCallRef is the Kind for return_call_ref t.
+	operationKindReturnCallRef
+
+	// operationKindStructNew is the Kind for struct.new: U1=typeIdx, U2=fieldCount.
+	operationKindStructNew
+	// operationKindStructNewDefault is the Kind for struct.new_default: U1=typeIdx, U2=fieldCount.
+	operationKindStructNewDefault
+	// operationKindStructGet is the Kind for struct.get: U1=typeIdx, U2=fieldIdx.
+	operationKindStructGet
+	// operationKindStructGetS is the Kind for struct.get_s on packed fields.
+	operationKindStructGetS
+	// operationKindStructGetU is the Kind for struct.get_u on packed fields.
+	operationKindStructGetU
+	// operationKindStructSet is the Kind for struct.set: U1=typeIdx, U2=fieldIdx.
+	operationKindStructSet
+
+	// Array operation kinds. U1 = module-local type index.
+	operationKindArrayNew
+	operationKindArrayNewDefault
+	operationKindArrayGet
+	operationKindArrayGetS
+	operationKindArrayGetU
+	operationKindArraySet
+	operationKindArrayLen
+
+	// operationKindArrayNewFixed is the Kind for array.new_fixed t N.
+	// U1 = type index. U2 = element count N.
+	operationKindArrayNewFixed
+	// operationKindArrayFill is the Kind for array.fill t. U1 = type index.
+	operationKindArrayFill
+	// operationKindArrayCopy is the Kind for array.copy. U1 = dst type
+	// index, U2 = src type index.
+	operationKindArrayCopy
+
+	// operationKindRefTest is the Kind for ref.test / ref.test null.
+	//   B1 = target heap-type kind byte (e.g. 0x70 funcref, 0x6C i31ref)
+	//   B3 = nullable target (true if `null` variant)
+	//   U1 = target concrete type index (only meaningful when B1 is
+	//        ValueTypeFuncref byte and the target is a concrete type)
+	//   U2 = 1 if target is concrete, 0 otherwise
+	operationKindRefTest
+	// operationKindRefCast is the Kind for ref.cast / ref.cast null. Same
+	// immediates as RefTest.
+	operationKindRefCast
+
+	// operationKindBrOnCast: branch when popped ref's type matches the
+	// target heap-type. Immediates:
+	//   U1 = thenLabel, U2 = elseLabel, U3 = drop range
+	//   B1 = dst heap-type kind byte
+	//   B3 = dst nullable
+	//   Us[0] = dst concrete type index (only when concrete)
+	//   Us[1] = 1 if concrete, 0 otherwise
+	operationKindBrOnCast
+	// operationKindBrOnCastFail: inverse — branches when the cast fails.
+	operationKindBrOnCastFail
+
+	// Array data/element-segment ops. U1 = array type index, U2 = segment index.
+	operationKindArrayNewData
+	operationKindArrayNewElem
+	operationKindArrayInitData
+	operationKindArrayInitElem
 
 	// operationKindEnd is always placed at the bottom of this iota definition to be used in the test.
 	operationKindEnd
@@ -1126,6 +1292,39 @@ func (o unionOperation) String() string {
 
 	case operationKindThrowRef:
 		return o.Kind.String()
+
+	case operationKindRefI31, operationKindI31GetS, operationKindI31GetU, operationKindRefEq,
+		operationKindRefAsNonNull, operationKindAnyConvertExtern, operationKindExternConvertAny:
+		return o.Kind.String()
+	case operationKindBrOnNull, operationKindBrOnNonNull:
+		return fmt.Sprintf("%s thenLabel=%d elseLabel=%d drop=%#x", o.Kind, o.U1, o.U2, o.U3)
+	case operationKindCallRef, operationKindReturnCallRef:
+		return fmt.Sprintf("%s typeIdx=%d", o.Kind, o.U1)
+	case operationKindStructNew, operationKindStructNewDefault:
+		return fmt.Sprintf("%s typeIdx=%d fieldCount=%d", o.Kind, o.U1, o.U2)
+	case operationKindStructGet, operationKindStructGetS, operationKindStructGetU,
+		operationKindStructSet:
+		return fmt.Sprintf("%s typeIdx=%d fieldIdx=%d", o.Kind, o.U1, o.U2)
+	case operationKindArrayNew, operationKindArrayNewDefault,
+		operationKindArrayGet, operationKindArrayGetS, operationKindArrayGetU,
+		operationKindArraySet:
+		return fmt.Sprintf("%s typeIdx=%d", o.Kind, o.U1)
+	case operationKindArrayLen:
+		return o.Kind.String()
+	case operationKindArrayNewFixed:
+		return fmt.Sprintf("%s typeIdx=%d count=%d", o.Kind, o.U1, o.U2)
+	case operationKindArrayFill:
+		return fmt.Sprintf("%s typeIdx=%d", o.Kind, o.U1)
+	case operationKindArrayCopy:
+		return fmt.Sprintf("%s dstTypeIdx=%d srcTypeIdx=%d", o.Kind, o.U1, o.U2)
+	case operationKindRefTest, operationKindRefCast:
+		return fmt.Sprintf("%s heapKind=%#x nullable=%v concrete=%v typeIdx=%d", o.Kind, o.B1, o.B3, o.U2 != 0, o.U1)
+	case operationKindBrOnCast, operationKindBrOnCastFail:
+		return fmt.Sprintf("%s thenLabel=%d elseLabel=%d drop=%#x heapKind=%#x nullable=%v",
+			o.Kind, o.U1, o.U2, o.U3, o.B1, o.B3)
+	case operationKindArrayNewData, operationKindArrayNewElem,
+		operationKindArrayInitData, operationKindArrayInitElem:
+		return fmt.Sprintf("%s typeIdx=%d segIdx=%d", o.Kind, o.U1, o.U2)
 
 	default:
 		panic(fmt.Sprintf("TODO: %v", o.Kind))
@@ -2900,4 +3099,213 @@ type pendingCatchClause struct {
 	tagIndex         uint32
 	targetLabel      label // unresolved label, resolved in lowerIR
 	targetStackDepth int   // = targetFrame.originalStackLenWithoutParamUint64
+}
+
+// newOperationRefI31 constructs the operation for ref.i31.
+func newOperationRefI31() unionOperation {
+	return unionOperation{Kind: operationKindRefI31}
+}
+
+// newOperationI31GetS constructs the operation for i31.get_s.
+func newOperationI31GetS() unionOperation {
+	return unionOperation{Kind: operationKindI31GetS}
+}
+
+// newOperationI31GetU constructs the operation for i31.get_u.
+func newOperationI31GetU() unionOperation {
+	return unionOperation{Kind: operationKindI31GetU}
+}
+
+// newOperationRefEq constructs the operation for ref.eq.
+func newOperationRefEq() unionOperation {
+	return unionOperation{Kind: operationKindRefEq}
+}
+
+// newOperationRefAsNonNull constructs the operation for ref.as_non_null.
+func newOperationRefAsNonNull() unionOperation {
+	return unionOperation{Kind: operationKindRefAsNonNull}
+}
+
+// newOperationAnyConvertExtern constructs the operation for any.convert_extern.
+func newOperationAnyConvertExtern() unionOperation {
+	return unionOperation{Kind: operationKindAnyConvertExtern}
+}
+
+// newOperationExternConvertAny constructs the operation for extern.convert_any.
+func newOperationExternConvertAny() unionOperation {
+	return unionOperation{Kind: operationKindExternConvertAny}
+}
+
+// newOperationBrOnNull constructs the operation for br_on_null.
+func newOperationBrOnNull(thenTarget, elseTarget label, thenDrop inclusiveRange) unionOperation {
+	return unionOperation{
+		Kind: operationKindBrOnNull,
+		U1:   uint64(thenTarget),
+		U2:   uint64(elseTarget),
+		U3:   thenDrop.AsU64(),
+	}
+}
+
+// newOperationBrOnNonNull constructs the operation for br_on_non_null.
+func newOperationBrOnNonNull(thenTarget, elseTarget label, thenDrop inclusiveRange) unionOperation {
+	return unionOperation{
+		Kind: operationKindBrOnNonNull,
+		U1:   uint64(thenTarget),
+		U2:   uint64(elseTarget),
+		U3:   thenDrop.AsU64(),
+	}
+}
+
+// newOperationStructNew constructs the operation for struct.new.
+func newOperationStructNew(typeIdx, fieldCount uint32) unionOperation {
+	return unionOperation{Kind: operationKindStructNew, U1: uint64(typeIdx), U2: uint64(fieldCount)}
+}
+
+// newOperationStructNewDefault constructs the operation for struct.new_default.
+func newOperationStructNewDefault(typeIdx, fieldCount uint32) unionOperation {
+	return unionOperation{Kind: operationKindStructNewDefault, U1: uint64(typeIdx), U2: uint64(fieldCount)}
+}
+
+// newOperationStructGet constructs the operation for struct.get.
+func newOperationStructGet(typeIdx, fieldIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindStructGet, U1: uint64(typeIdx), U2: uint64(fieldIdx)}
+}
+
+// newOperationStructGetS constructs the operation for struct.get_s on a packed field.
+func newOperationStructGetS(typeIdx, fieldIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindStructGetS, U1: uint64(typeIdx), U2: uint64(fieldIdx)}
+}
+
+// newOperationStructGetU constructs the operation for struct.get_u on a packed field.
+func newOperationStructGetU(typeIdx, fieldIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindStructGetU, U1: uint64(typeIdx), U2: uint64(fieldIdx)}
+}
+
+// newOperationStructSet constructs the operation for struct.set.
+func newOperationStructSet(typeIdx, fieldIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindStructSet, U1: uint64(typeIdx), U2: uint64(fieldIdx)}
+}
+
+// Array operation constructors.
+
+func newOperationArrayNew(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayNew, U1: uint64(typeIdx)}
+}
+
+func newOperationArrayNewDefault(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayNewDefault, U1: uint64(typeIdx)}
+}
+
+func newOperationArrayGet(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayGet, U1: uint64(typeIdx)}
+}
+
+func newOperationArrayGetS(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayGetS, U1: uint64(typeIdx)}
+}
+
+func newOperationArrayGetU(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayGetU, U1: uint64(typeIdx)}
+}
+
+func newOperationArraySet(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArraySet, U1: uint64(typeIdx)}
+}
+
+func newOperationArrayLen() unionOperation {
+	return unionOperation{Kind: operationKindArrayLen}
+}
+
+func newOperationArrayNewFixed(typeIdx, count uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayNewFixed, U1: uint64(typeIdx), U2: uint64(count)}
+}
+
+func newOperationArrayFill(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayFill, U1: uint64(typeIdx)}
+}
+
+func newOperationArrayCopy(dstTypeIdx, srcTypeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayCopy, U1: uint64(dstTypeIdx), U2: uint64(srcTypeIdx)}
+}
+
+func newOperationCallRef(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindCallRef, U1: uint64(typeIdx)}
+}
+
+func newOperationReturnCallRef(typeIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindReturnCallRef, U1: uint64(typeIdx)}
+}
+
+// newOperationRefTest constructs the operation for ref.test / ref.test null.
+// heapKind is the spec shorthand byte (e.g. 0x6C i31ref). isConcrete=true
+// indicates U1 holds a module-local type index.
+func newOperationRefTest(heapKind byte, nullable, isConcrete bool, typeIdx uint32) unionOperation {
+	op := unionOperation{Kind: operationKindRefTest, B1: heapKind, B3: nullable, U1: uint64(typeIdx)}
+	if isConcrete {
+		op.U2 = 1
+	}
+	return op
+}
+
+// newOperationRefCast constructs the operation for ref.cast / ref.cast null.
+func newOperationRefCast(heapKind byte, nullable, isConcrete bool, typeIdx uint32) unionOperation {
+	op := unionOperation{Kind: operationKindRefCast, B1: heapKind, B3: nullable, U1: uint64(typeIdx)}
+	if isConcrete {
+		op.U2 = 1
+	}
+	return op
+}
+
+// newOperationBrOnCast constructs the operation for br_on_cast.
+func newOperationBrOnCast(thenTarget, elseTarget label, thenDrop inclusiveRange,
+	heapKind byte, nullable, isConcrete bool, typeIdx uint32,
+) unionOperation {
+	op := unionOperation{
+		Kind: operationKindBrOnCast,
+		U1:   uint64(thenTarget),
+		U2:   uint64(elseTarget),
+		U3:   thenDrop.AsU64(),
+		B1:   heapKind,
+		B3:   nullable,
+		Us:   []uint64{uint64(typeIdx), 0},
+	}
+	if isConcrete {
+		op.Us[1] = 1
+	}
+	return op
+}
+
+// newOperationBrOnCastFail constructs the operation for br_on_cast_fail.
+func newOperationBrOnCastFail(thenTarget, elseTarget label, thenDrop inclusiveRange,
+	heapKind byte, nullable, isConcrete bool, typeIdx uint32,
+) unionOperation {
+	op := unionOperation{
+		Kind: operationKindBrOnCastFail,
+		U1:   uint64(thenTarget),
+		U2:   uint64(elseTarget),
+		U3:   thenDrop.AsU64(),
+		B1:   heapKind,
+		B3:   nullable,
+		Us:   []uint64{uint64(typeIdx), 0},
+	}
+	if isConcrete {
+		op.Us[1] = 1
+	}
+	return op
+}
+
+func newOperationArrayNewData(typeIdx, segIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayNewData, U1: uint64(typeIdx), U2: uint64(segIdx)}
+}
+
+func newOperationArrayNewElem(typeIdx, segIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayNewElem, U1: uint64(typeIdx), U2: uint64(segIdx)}
+}
+
+func newOperationArrayInitData(typeIdx, segIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayInitData, U1: uint64(typeIdx), U2: uint64(segIdx)}
+}
+
+func newOperationArrayInitElem(typeIdx, segIdx uint32) unionOperation {
+	return unionOperation{Kind: operationKindArrayInitElem, U1: uint64(typeIdx), U2: uint64(segIdx)}
 }

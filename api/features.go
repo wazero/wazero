@@ -211,7 +211,8 @@ func featureName(f CoreFeatures) string {
 		return "simd"
 	// The cases below cover features defined in the experimental package
 	// (experimental.CoreFeaturesThreads, CoreFeaturesTailCall,
-	// experimental.CoreFeaturesExtendedConst, experimental.CoreFeaturesExceptionHandling).
+	// experimental.CoreFeaturesExtendedConst, experimental.CoreFeaturesExceptionHandling,
+	// experimental.CoreFeaturesGC).
 	// They cannot be imported here (circular dependency), so we match by value.
 	case CoreFeatureSIMD << 1: // experimental.CoreFeaturesThreads
 		return "threads"
@@ -221,6 +222,8 @@ func featureName(f CoreFeatures) string {
 		return "extended-const"
 	case CoreFeatureSIMD << 4: // experimental.CoreFeaturesExceptionHandling
 		return "exception-handling"
+	case CoreFeatureSIMD << 5: // experimental.CoreFeaturesGC
+		return "gc"
 	}
 	return ""
 }

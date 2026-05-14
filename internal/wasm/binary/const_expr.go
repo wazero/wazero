@@ -55,12 +55,22 @@ func decodeConstantExpression(r *bytes.Reader, enabledFeatures api.CoreFeatures,
 			if err := enabledFeatures.RequireEnabled(api.CoreFeatureBulkMemoryOperations); err != nil {
 				return fmt.Errorf("ref.null is not supported as %w", err)
 			}
-			b, err := r.ReadByte()
-			reftype := wasm.ValueType(b)
-			if err != nil {
-				return fmt.Errorf("read reference type for ref.null: %w", err)
-			} else if reftype != wasm.RefTypeFuncref && reftype != wasm.RefTypeExternref {
-				return fmt.Errorf("invalid type for ref.null: 0x%x", reftype)
+			// Heap type is encoded as s33 LEB. Positive: concrete type
+			// index. Negative: abstract heap-type byte.
+			ht, _, hErr := leb128.DecodeInt33AsInt64(r)
+			if hErr != nil {
+				return fmt.Errorf("read reference type for ref.null: %w", hErr)
+			}
+			if ht < 0 {
+				switch wasm.ValueType(byte(ht & 0x7F)) {
+				case wasm.RefTypeFuncref, wasm.RefTypeExternref,
+					wasm.ValueTypeExnref,
+					wasm.ValueTypeAnyref, wasm.ValueTypeEqref, wasm.ValueTypeI31ref,
+					wasm.ValueTypeStructref, wasm.ValueTypeArrayref, wasm.ValueTypeNullref,
+					wasm.ValueTypeNoFuncref, wasm.ValueTypeNoExternref, wasm.ValueTypeNoExnref:
+				default:
+					return fmt.Errorf("invalid type for ref.null: %d", ht)
+				}
 			}
 		case wasm.OpcodeRefFunc:
 			if err := enabledFeatures.RequireEnabled(api.CoreFeatureBulkMemoryOperations); err != nil {
@@ -68,6 +78,36 @@ func decodeConstantExpression(r *bytes.Reader, enabledFeatures api.CoreFeatures,
 			}
 			// Parsing index.
 			_, _, err = leb128.DecodeUint32(r)
+		case wasm.OpcodeGCPrefix:
+			// GC sub-opcodes in const expressions. The decoder accepts
+			// every sub-opcode the evaluator can run; the evaluator does
+			// the type-checking once it has the module's TypeSection.
+			sub, _, lerr := leb128.DecodeUint32(r)
+			if lerr != nil {
+				return fmt.Errorf("read GC sub-opcode for const expression: %w", lerr)
+			}
+			switch sub {
+			case wasm.OpcodeGCRefI31:
+				// No immediate.
+			case wasm.OpcodeGCAnyConvertExtern, wasm.OpcodeGCExternConvertAny:
+				// No immediate.
+			case wasm.OpcodeGCStructNew, wasm.OpcodeGCStructNewDefault,
+				wasm.OpcodeGCArrayNew, wasm.OpcodeGCArrayNewDefault:
+				// Single type-index immediate.
+				if _, _, lerr := leb128.DecodeUint32(r); lerr != nil {
+					return fmt.Errorf("read GC type index: %w", lerr)
+				}
+			case wasm.OpcodeGCArrayNewFixed:
+				// Type-index + count immediates.
+				if _, _, lerr := leb128.DecodeUint32(r); lerr != nil {
+					return fmt.Errorf("read array.new_fixed type index: %w", lerr)
+				}
+				if _, _, lerr := leb128.DecodeUint32(r); lerr != nil {
+					return fmt.Errorf("read array.new_fixed count: %w", lerr)
+				}
+			default:
+				return fmt.Errorf("GC sub-opcode 0x%x is not yet supported in const expressions", sub)
+			}
 		case wasm.OpcodeVecPrefix:
 			if err := enabledFeatures.RequireEnabled(api.CoreFeatureSIMD); err != nil {
 				return fmt.Errorf("vector instructions are not supported as %w", err)

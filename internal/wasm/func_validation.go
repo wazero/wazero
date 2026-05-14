@@ -81,6 +81,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 
 	sts.reset(functionType)
 	valueTypeStack := &sts.vs
+	valueTypeStack.types = m.TypeSection
 	// We start with the outermost control block which is for function return if the code branches into it.
 	controlBlockStack := &sts.cs
 
@@ -624,7 +625,8 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					var catchTypes []ValueType
 					catchTypes = append(catchTypes, tagType.Params...)
 					if catchKind == CatchKindCatchRef {
-						catchTypes = append(catchTypes, ValueTypeExnref)
+						// catch_ref delivers a non-null exception.
+						catchTypes = append(catchTypes, ValueTypeExnref.AsNonNullable())
 					}
 					if len(catchTypes) != len(expectedTypes) {
 						return fmt.Errorf("catch clause type mismatch: catch delivers %d values but label expects %d", len(catchTypes), len(expectedTypes))
@@ -653,14 +655,15 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					}
 					var catchTypes []ValueType
 					if catchKind == CatchKindCatchAllRef {
-						catchTypes = append(catchTypes, ValueTypeExnref)
+						// catch_all_ref delivers a non-null exception.
+						catchTypes = append(catchTypes, ValueTypeExnref.AsNonNullable())
 					}
 					if len(catchTypes) != len(expectedTypes) {
 						return fmt.Errorf("catch_all clause type mismatch: catch delivers %d values but label expects %d", len(catchTypes), len(expectedTypes))
 					}
 					for j := range catchTypes {
-						if catchTypes[j] != expectedTypes[j] {
-							return fmt.Errorf("catch_all clause type mismatch at index %d", j)
+						if !isStrictRefSubtypeOf(catchTypes[j], expectedTypes[j]) {
+							return fmt.Errorf("catch_all clause type mismatch at index %d: %v is not a subtype of %v", j, catchTypes[j], expectedTypes[j])
 						}
 					}
 				default:
@@ -749,7 +752,11 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			}
 
 			table := tables[tableIndex]
-			if table.Type != RefTypeFuncref {
+			// Accept any table whose element type lies in the func-ref
+			// hierarchy: plain funcref, nofuncref, or a concrete-ref
+			// type (which carries the funcref kind byte placeholder).
+			tableKind := table.Type.Kind()
+			if tableKind != byte(ValueTypeFuncref) && tableKind != byte(ValueTypeNoFuncref) {
 				return fmt.Errorf("table is not funcref type but was %s for %s", RefTypeName(table.Type), opcodeName)
 			}
 
@@ -997,13 +1004,48 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			switch op {
 			case OpcodeRefNull:
 				pc++
-				switch reftype := body[pc]; ValueType(reftype) {
-				case ValueTypeExternref:
-					valueTypeStack.push(ValueTypeExternref)
-				case ValueTypeFuncref:
-					valueTypeStack.push(ValueTypeFuncref)
-				default:
-					return fmt.Errorf("unknown type for ref.null: 0x%x", reftype)
+				// Heap type is encoded as a signed s33 LEB: positive values
+				// are concrete type indices, negative values map to the
+				// abstract heap-type shorthand bytes.
+				ht, htNum, hErr := leb128.DecodeInt33AsInt64(bytes.NewReader(body[pc:]))
+				if hErr != nil {
+					return fmt.Errorf("read ref.null heap type: %w", hErr)
+				}
+				pc += htNum - 1
+				if ht >= 0 {
+					if uint64(ht) >= uint64(len(m.TypeSection)) {
+						return fmt.Errorf("ref.null type index %d out of range", ht)
+					}
+					valueTypeStack.push(ConcreteRef(uint32(ht), true))
+				} else {
+					switch ValueType(byte(ht & 0x7F)) {
+					case ValueTypeExternref:
+						valueTypeStack.push(ValueTypeExternref)
+					case ValueTypeFuncref:
+						valueTypeStack.push(ValueTypeFuncref)
+					case ValueTypeExnref:
+						valueTypeStack.push(ValueTypeExnref)
+					case ValueTypeAnyref:
+						valueTypeStack.push(ValueTypeAnyref)
+					case ValueTypeEqref:
+						valueTypeStack.push(ValueTypeEqref)
+					case ValueTypeI31ref:
+						valueTypeStack.push(ValueTypeI31ref)
+					case ValueTypeStructref:
+						valueTypeStack.push(ValueTypeStructref)
+					case ValueTypeArrayref:
+						valueTypeStack.push(ValueTypeArrayref)
+					case ValueTypeNullref:
+						valueTypeStack.push(ValueTypeNullref)
+					case ValueTypeNoFuncref:
+						valueTypeStack.push(ValueTypeNoFuncref)
+					case ValueTypeNoExternref:
+						valueTypeStack.push(ValueTypeNoExternref)
+					case ValueTypeNoExnref:
+						valueTypeStack.push(ValueTypeNoExnref)
+					default:
+						return fmt.Errorf("unknown type for ref.null: %d", ht)
+					}
 				}
 			case OpcodeRefIsNull:
 				tp, err := valueTypeStack.pop()
@@ -1023,8 +1065,17 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					return fmt.Errorf("undeclared function index %d for ref.func", index)
 				}
 				pc += num - 1
-				// ref.func always produces a non-null reference.
-				valueTypeStack.push(ValueTypeFuncref)
+				// ref.func produces a non-null reference. If we can
+				// resolve the function's type index in the module's
+				// TypeSection, encode the concrete-ref so a downstream
+				// `(ref $t)` consumer can match it precisely. Otherwise
+				// fall back to plain funcref (e.g. host functions whose
+				// type index isn't visible here).
+				if typeIdx, ok := m.typeIndexOfFunction(index); ok {
+					valueTypeStack.push(ConcreteRef(typeIdx, false))
+				} else {
+					valueTypeStack.push(ValueTypeFuncref)
+				}
 			}
 		} else if op == OpcodeTableGet || op == OpcodeTableSet {
 			if err := enabledFeatures.RequireEnabled(api.CoreFeatureReferenceTypes); err != nil {
@@ -1178,7 +1229,8 @@ func (m *Module) validateFunctionWithMaxStackValues(
 						return fmt.Errorf("table of index %d not found", tableIndex)
 					}
 
-					if m.ElementSection[elementIndex].Type != tables[tableIndex].Type {
+					if m.ElementSection[elementIndex].Type != tables[tableIndex].Type &&
+						!isRefSubtypeOf(m.ElementSection[elementIndex].Type, tables[tableIndex].Type) {
 						return fmt.Errorf("type mismatch for table.init: element type %s does not match table type %s",
 							RefTypeName(m.ElementSection[elementIndex].Type),
 							RefTypeName(tables[tableIndex].Type),
@@ -2112,6 +2164,719 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			// unreachable instruction is stack-polymorphic.
 			valueTypeStack.unreachable()
 		} else if op == OpcodeNop {
+		} else if op == OpcodeGCPrefix {
+			// WebAssembly GC sub-opcodes are encoded as a uint32 LEB after
+			// the 0xfb prefix. Validate the supported ones; the rest still
+			// surface as an actionable error.
+			if pc+1 >= uint64(len(body)) {
+				return fmt.Errorf("truncated GC instruction at pc=%#x", pc)
+			}
+			sub, subN, lebErr := leb128.LoadUint32(body[pc+1:])
+			if lebErr != nil {
+				return fmt.Errorf("cannot read GC sub-opcode at pc=%#x: %v", pc, lebErr)
+			}
+			pc += subN
+			switch sub {
+			case OpcodeGCRefI31:
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("cannot pop the operand for ref.i31: %v", err)
+				}
+				// ref.i31 produces a non-null i31 reference.
+				valueTypeStack.push(ValueTypeI31ref.AsNonNullable())
+			case OpcodeGCI31GetS, OpcodeGCI31GetU:
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI31ref); err != nil {
+					return fmt.Errorf("cannot pop the operand for %s: %v", GCInstructionName(sub), err)
+				}
+				valueTypeStack.push(ValueTypeI32)
+			case OpcodeGCAnyConvertExtern:
+				if err := valueTypeStack.popAndVerifyType(ValueTypeExternref); err != nil {
+					return fmt.Errorf("cannot pop the operand for any.convert_extern: %v", err)
+				}
+				valueTypeStack.push(ValueTypeAnyref)
+			case OpcodeGCExternConvertAny:
+				if err := valueTypeStack.popAndVerifyType(ValueTypeAnyref); err != nil {
+					return fmt.Errorf("cannot pop the operand for extern.convert_any: %v", err)
+				}
+				valueTypeStack.push(ValueTypeExternref)
+			case OpcodeGCStructNew, OpcodeGCStructNewDefault:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read struct.new type index: %v", err)
+				}
+				pc += n
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("struct.new type index %d out of range", typeIdx)
+				}
+				st := &m.TypeSection[typeIdx]
+				if st.Form != CompositeFormStruct {
+					return fmt.Errorf("struct.new type %d is not a struct", typeIdx)
+				}
+				if sub == OpcodeGCStructNew {
+					for i := len(st.Fields) - 1; i >= 0; i-- {
+						vt, err := fieldOperandType(st.Fields[i])
+						if err != nil {
+							return fmt.Errorf("struct.new field %d: %v", i, err)
+						}
+						if err := valueTypeStack.popAndVerifyType(vt); err != nil {
+							return fmt.Errorf("struct.new: cannot pop field[%d]: %v", i, err)
+						}
+					}
+				}
+				// struct.new produces a non-null concrete ref so a
+				// downstream (ref $T) consumer can match precisely.
+				valueTypeStack.push(ConcreteRef(typeIdx, false))
+			case OpcodeGCStructGet, OpcodeGCStructGetS, OpcodeGCStructGetU:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read struct.get type index: %v", err)
+				}
+				pc += n
+				fieldIdx, n2, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read struct.get field index: %v", err)
+				}
+				pc += n2
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("struct.get type index %d out of range", typeIdx)
+				}
+				st := &m.TypeSection[typeIdx]
+				if st.Form != CompositeFormStruct {
+					return fmt.Errorf("struct.get type %d is not a struct", typeIdx)
+				}
+				if fieldIdx >= uint32(len(st.Fields)) {
+					return fmt.Errorf("struct.get field index %d out of range for type %d", fieldIdx, typeIdx)
+				}
+				field := st.Fields[fieldIdx]
+				packed := field.Packed != PackedTypeNone
+				if sub == OpcodeGCStructGet && packed {
+					return fmt.Errorf("struct.get on packed field requires _s or _u")
+				}
+				if (sub == OpcodeGCStructGetS || sub == OpcodeGCStructGetU) && !packed {
+					return fmt.Errorf("struct.get_s/u on non-packed field")
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("struct.get: cannot pop struct ref: %v", err)
+				}
+				if packed {
+					valueTypeStack.push(ValueTypeI32)
+				} else {
+					valueTypeStack.push(field.ValueType)
+				}
+			case OpcodeGCStructSet:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read struct.set type index: %v", err)
+				}
+				pc += n
+				fieldIdx, n2, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read struct.set field index: %v", err)
+				}
+				pc += n2
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("struct.set type index %d out of range", typeIdx)
+				}
+				st := &m.TypeSection[typeIdx]
+				if st.Form != CompositeFormStruct {
+					return fmt.Errorf("struct.set type %d is not a struct", typeIdx)
+				}
+				if fieldIdx >= uint32(len(st.Fields)) {
+					return fmt.Errorf("struct.set field index %d out of range for type %d", fieldIdx, typeIdx)
+				}
+				field := st.Fields[fieldIdx]
+				if !field.Mutable {
+					return fmt.Errorf("struct.set on immutable field %d of type %d", fieldIdx, typeIdx)
+				}
+				vt, err := fieldOperandType(field)
+				if err != nil {
+					return fmt.Errorf("struct.set field %d: %v", fieldIdx, err)
+				}
+				if err := valueTypeStack.popAndVerifyType(vt); err != nil {
+					return fmt.Errorf("struct.set: cannot pop value: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("struct.set: cannot pop struct ref: %v", err)
+				}
+			case OpcodeGCArrayNew, OpcodeGCArrayNewDefault:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.new type index: %v", err)
+				}
+				pc += n
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.new type index %d out of range", typeIdx)
+				}
+				at := &m.TypeSection[typeIdx]
+				if at.Form != CompositeFormArray {
+					return fmt.Errorf("array.new type %d is not an array", typeIdx)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.new: cannot pop length: %v", err)
+				}
+				if sub == OpcodeGCArrayNew {
+					vt, err := fieldOperandType(at.ArrayField)
+					if err != nil {
+						return fmt.Errorf("array.new element: %v", err)
+					}
+					if err := valueTypeStack.popAndVerifyType(vt); err != nil {
+						return fmt.Errorf("array.new: cannot pop element: %v", err)
+					}
+				}
+				valueTypeStack.push(ConcreteRef(typeIdx, false))
+			case OpcodeGCArrayGet, OpcodeGCArrayGetS, OpcodeGCArrayGetU:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.get type index: %v", err)
+				}
+				pc += n
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.get type index %d out of range", typeIdx)
+				}
+				at := &m.TypeSection[typeIdx]
+				if at.Form != CompositeFormArray {
+					return fmt.Errorf("array.get type %d is not an array", typeIdx)
+				}
+				packed := at.ArrayField.Packed != PackedTypeNone
+				if sub == OpcodeGCArrayGet && packed {
+					return fmt.Errorf("array.get on packed array requires _s or _u")
+				}
+				if (sub == OpcodeGCArrayGetS || sub == OpcodeGCArrayGetU) && !packed {
+					return fmt.Errorf("array.get_s/u on non-packed array")
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.get: cannot pop index: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.get: cannot pop array ref: %v", err)
+				}
+				if packed {
+					valueTypeStack.push(ValueTypeI32)
+				} else {
+					valueTypeStack.push(at.ArrayField.ValueType)
+				}
+			case OpcodeGCArraySet:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.set type index: %v", err)
+				}
+				pc += n
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.set type index %d out of range", typeIdx)
+				}
+				at := &m.TypeSection[typeIdx]
+				if at.Form != CompositeFormArray {
+					return fmt.Errorf("array.set type %d is not an array", typeIdx)
+				}
+				if !at.ArrayField.Mutable {
+					return fmt.Errorf("array.set on immutable array %d", typeIdx)
+				}
+				vt, err := fieldOperandType(at.ArrayField)
+				if err != nil {
+					return fmt.Errorf("array.set element: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(vt); err != nil {
+					return fmt.Errorf("array.set: cannot pop value: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.set: cannot pop index: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.set: cannot pop array ref: %v", err)
+				}
+			case OpcodeGCArrayLen:
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.len: cannot pop array ref: %v", err)
+				}
+				valueTypeStack.push(ValueTypeI32)
+			case OpcodeGCArrayNewFixed:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.new_fixed type index: %v", err)
+				}
+				pc += n
+				count, n2, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.new_fixed count: %v", err)
+				}
+				pc += n2
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.new_fixed type index %d out of range", typeIdx)
+				}
+				at := &m.TypeSection[typeIdx]
+				if at.Form != CompositeFormArray {
+					return fmt.Errorf("array.new_fixed type %d is not an array", typeIdx)
+				}
+				vt, err := fieldOperandType(at.ArrayField)
+				if err != nil {
+					return fmt.Errorf("array.new_fixed element: %v", err)
+				}
+				for i := uint32(0); i < count; i++ {
+					if err := valueTypeStack.popAndVerifyType(vt); err != nil {
+						return fmt.Errorf("array.new_fixed: cannot pop element[%d]: %v", count-1-i, err)
+					}
+				}
+				valueTypeStack.push(ConcreteRef(typeIdx, false))
+			case OpcodeGCArrayFill:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.fill type index: %v", err)
+				}
+				pc += n
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.fill type index %d out of range", typeIdx)
+				}
+				at := &m.TypeSection[typeIdx]
+				if at.Form != CompositeFormArray {
+					return fmt.Errorf("array.fill type %d is not an array", typeIdx)
+				}
+				if !at.ArrayField.Mutable {
+					return fmt.Errorf("array.fill on immutable array %d", typeIdx)
+				}
+				vt, err := fieldOperandType(at.ArrayField)
+				if err != nil {
+					return fmt.Errorf("array.fill element: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.fill: cannot pop count: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(vt); err != nil {
+					return fmt.Errorf("array.fill: cannot pop value: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.fill: cannot pop index: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.fill: cannot pop array ref: %v", err)
+				}
+			case OpcodeGCArrayCopy:
+				dstIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.copy dst type index: %v", err)
+				}
+				pc += n
+				srcIdx, n2, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.copy src type index: %v", err)
+				}
+				pc += n2
+				if dstIdx >= uint32(len(m.TypeSection)) || srcIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.copy type index out of range")
+				}
+				dst := &m.TypeSection[dstIdx]
+				src := &m.TypeSection[srcIdx]
+				if dst.Form != CompositeFormArray || src.Form != CompositeFormArray {
+					return fmt.Errorf("array.copy types must both be arrays")
+				}
+				if !dst.ArrayField.Mutable {
+					return fmt.Errorf("array.copy destination array %d is immutable", dstIdx)
+				}
+				// src element type must be a subtype of dst element type.
+				if !isFieldElementSubtypeOf(src.ArrayField, dst.ArrayField, m) {
+					return fmt.Errorf("array.copy: array types do not match: src %d not subtype of dst %d", srcIdx, dstIdx)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.copy: cannot pop count: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.copy: cannot pop src index: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.copy: cannot pop src ref: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.copy: cannot pop dst index: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.copy: cannot pop dst ref: %v", err)
+				}
+			case OpcodeGCArrayNewData, OpcodeGCArrayNewElem:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.new_data/elem type index: %v", err)
+				}
+				pc += n
+				_, n2, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.new_data/elem segment index: %v", err)
+				}
+				pc += n2
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.new_data/elem type index %d out of range", typeIdx)
+				}
+				if m.TypeSection[typeIdx].Form != CompositeFormArray {
+					return fmt.Errorf("array.new_data/elem type %d is not an array", typeIdx)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.new_data/elem: cannot pop count: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.new_data/elem: cannot pop src offset: %v", err)
+				}
+				valueTypeStack.push(ConcreteRef(typeIdx, false))
+			case OpcodeGCArrayInitData, OpcodeGCArrayInitElem:
+				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.init_data/elem type index: %v", err)
+				}
+				pc += n
+				segIdx, n2, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read array.init_data/elem segment index: %v", err)
+				}
+				pc += n2
+				if typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("array.init_data/elem type index %d out of range", typeIdx)
+				}
+				at := &m.TypeSection[typeIdx]
+				if at.Form != CompositeFormArray {
+					return fmt.Errorf("array.init_data/elem type %d is not an array", typeIdx)
+				}
+				if !at.ArrayField.Mutable {
+					return fmt.Errorf("array.init_data/elem on immutable array %d", typeIdx)
+				}
+				if sub == OpcodeGCArrayInitData {
+					// Element type must be numeric or vector (not a ref).
+					ef := at.ArrayField
+					numericOK := ef.Packed != PackedTypeNone
+					if !numericOK {
+						switch ef.ValueType {
+						case ValueTypeI32, ValueTypeI64, ValueTypeF32, ValueTypeF64, ValueTypeV128:
+							numericOK = true
+						}
+					}
+					if !numericOK {
+						return fmt.Errorf("array.init_data: array type %d is not numeric or vector", typeIdx)
+					}
+				} else {
+					// OpcodeGCArrayInitElem: element segment's type must be a
+					// subtype of the array's element type.
+					if int(segIdx) >= len(m.ElementSection) {
+						return fmt.Errorf("array.init_elem: segment %d out of range", segIdx)
+					}
+					seg := &m.ElementSection[segIdx]
+					if !isRefSubtypeOfInModule(seg.Type, at.ArrayField.ValueType, m) {
+						return fmt.Errorf("array.init_elem: array element type does not match: %s vs %s",
+							ValueTypeName(at.ArrayField.ValueType), ValueTypeName(seg.Type))
+					}
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.init_data/elem: cannot pop count: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.init_data/elem: cannot pop src offset: %v", err)
+				}
+				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
+					return fmt.Errorf("array.init_data/elem: cannot pop dst offset: %v", err)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("array.init_data/elem: cannot pop array ref: %v", err)
+				}
+			case OpcodeGCRefTest, OpcodeGCRefTestNull, OpcodeGCRefCast, OpcodeGCRefCastNull:
+				ht, n, err := leb128.LoadInt64(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read ref.test heap type: %v", err)
+				}
+				pc += n
+				kindByte, typeIdx, isConcrete, ok := HeapTypeKindFromBinary(ht)
+				if !ok {
+					return fmt.Errorf("invalid heap type for %s: %d", GCInstructionName(sub), ht)
+				}
+				if isConcrete && typeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("ref.test concrete type index %d out of range", typeIdx)
+				}
+				if err := valueTypeStack.popReferenceType(); err != nil {
+					return fmt.Errorf("%s: cannot pop ref: %v", GCInstructionName(sub), err)
+				}
+				if sub == OpcodeGCRefTest || sub == OpcodeGCRefTestNull {
+					valueTypeStack.push(ValueTypeI32)
+				} else {
+					// ref.cast pushes a ref of the target heap type so
+					// a subsequent i31.get_u / struct.get / etc. validates.
+					nullable := sub == OpcodeGCRefCastNull
+					var resultType ValueType
+					if isConcrete {
+						resultType = ConcreteRef(typeIdx, nullable)
+					} else {
+						resultType = AbstractRef(kindByte, nullable)
+					}
+					valueTypeStack.push(resultType)
+				}
+			case OpcodeGCBrOnCast, OpcodeGCBrOnCastFail:
+				pc++
+				if int(pc) >= len(body) {
+					return fmt.Errorf("truncated %s", GCInstructionName(sub))
+				}
+				flags := body[pc]
+				srcNullable := flags&0x1 != 0
+				dstNullable := flags&0x2 != 0
+				labelIdx, ln, err := leb128.LoadUint32(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read %s label: %v", GCInstructionName(sub), err)
+				}
+				pc += ln
+				if int(labelIdx) >= len(controlBlockStack.stack) {
+					return fmt.Errorf("invalid label index for %s", GCInstructionName(sub))
+				}
+				srcHt, srcN, err := leb128.LoadInt64(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read %s src heap type: %v", GCInstructionName(sub), err)
+				}
+				pc += srcN
+				dstHt, dstN, err := leb128.LoadInt64(body[pc+1:])
+				if err != nil {
+					return fmt.Errorf("read %s dst heap type: %v", GCInstructionName(sub), err)
+				}
+				pc += dstN
+				srcKind, srcTypeIdx, srcIsConcrete, sok := HeapTypeKindFromBinary(srcHt)
+				if !sok {
+					return fmt.Errorf("invalid src heap type for %s: %d", GCInstructionName(sub), srcHt)
+				}
+				if srcIsConcrete && srcTypeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("br_on_cast concrete src type index out of range")
+				}
+				dstKind, dstTypeIdx, dstIsConcrete, ok := HeapTypeKindFromBinary(dstHt)
+				if !ok {
+					return fmt.Errorf("invalid dst heap type for %s: %d", GCInstructionName(sub), dstHt)
+				}
+				if dstIsConcrete && dstTypeIdx >= uint32(len(m.TypeSection)) {
+					return fmt.Errorf("br_on_cast concrete dst type index out of range")
+				}
+				var srcType, dstType ValueType
+				if srcIsConcrete {
+					srcType = ConcreteRef(srcTypeIdx, srcNullable)
+				} else {
+					srcType = AbstractRef(srcKind, srcNullable)
+				}
+				if dstIsConcrete {
+					dstType = ConcreteRef(dstTypeIdx, dstNullable)
+				} else {
+					dstType = AbstractRef(dstKind, dstNullable)
+				}
+				// dst must be a subtype of src (including nullability).
+				if !isRefSubtypeOfInModule(dstType, srcType, m) {
+					return fmt.Errorf("%s dst type %s is not a subtype of src %s",
+						GCInstructionName(sub), ValueTypeName(dstType), ValueTypeName(srcType))
+				}
+				refTy, _, ok := valueTypeStack.tryPop()
+				if !ok {
+					return fmt.Errorf("reference type missing for %s", GCInstructionName(sub))
+				}
+				if refTy != valueTypeUnknown {
+					if !isReferenceValueType(refTy) {
+						return fmt.Errorf("type mismatch: expected reference type for %s, but was %s",
+							GCInstructionName(sub), ValueTypeName(refTy))
+					}
+					if !isRefSubtypeOfInModule(refTy, srcType, m) {
+						return fmt.Errorf("%s: operand type %s is not a subtype of src %s",
+							GCInstructionName(sub), ValueTypeName(refTy), ValueTypeName(srcType))
+					}
+				}
+				target := &controlBlockStack.stack[len(controlBlockStack.stack)-int(labelIdx)-1]
+				var targetTypes []ValueType
+				if target.op == OpcodeLoop {
+					targetTypes = target.blockType.Params
+				} else {
+					targetTypes = target.blockType.Results
+				}
+				if len(targetTypes) == 0 {
+					return fmt.Errorf("%s target label expects no values; needs a trailing ref", GCInstructionName(sub))
+				}
+				lastTarget := targetTypes[len(targetTypes)-1]
+				if !isReferenceValueType(lastTarget) && lastTarget != valueTypeUnknown {
+					return fmt.Errorf("%s target label's last type is not a reference", GCInstructionName(sub))
+				}
+				head := targetTypes[:len(targetTypes)-1]
+				if err := valueTypeStack.popParams(op, head, false); err != nil {
+					return err
+				}
+				for _, t := range head {
+					valueTypeStack.push(t)
+				}
+				// Compute the type to leave on the fall-through stack.
+				// br_on_cast: fall-through is "src minus dst" — non-null if
+				// src and dst were both nullable (since null branched).
+				// br_on_cast_fail: fall-through is "dst" (cast succeeded).
+				var fallThrough ValueType
+				if sub == OpcodeGCBrOnCast {
+					if srcNullable && dstNullable {
+						fallThrough = srcType.AsNonNullable()
+					} else {
+						fallThrough = srcType
+					}
+					// Verify branch carries dstType compatible with target.
+					if lastTarget != valueTypeUnknown && !isRefSubtypeOfInModule(dstType, lastTarget, m) {
+						return fmt.Errorf("%s: cast result %s does not match label %s",
+							GCInstructionName(sub), ValueTypeName(dstType), ValueTypeName(lastTarget))
+					}
+				} else {
+					fallThrough = dstType
+					// Verify branch carries srcType (minus dst) compatible with target.
+					branchTy := srcType
+					if srcNullable && dstNullable {
+						branchTy = srcType.AsNonNullable()
+					}
+					if lastTarget != valueTypeUnknown && !isRefSubtypeOfInModule(branchTy, lastTarget, m) {
+						return fmt.Errorf("%s: fall type %s does not match label %s",
+							GCInstructionName(sub), ValueTypeName(branchTy), ValueTypeName(lastTarget))
+					}
+				}
+				valueTypeStack.push(fallThrough)
+			default:
+				if name := GCInstructionName(sub); name != "" {
+					return fmt.Errorf("GC instruction %s (0xfb 0x%x) is not yet supported by the interpreter", name, sub)
+				}
+				return fmt.Errorf("unknown GC sub-opcode 0xfb 0x%x", sub)
+			}
+		} else if op == OpcodeRefEq {
+			// ref.eq operands must lie in the eqref hierarchy.
+			popEqRef := func(which string) error {
+				have, _, ok := valueTypeStack.tryPop()
+				if !ok {
+					return fmt.Errorf("cannot pop the %s operand for ref.eq: reference missing", which)
+				}
+				if have == valueTypeUnknown {
+					return nil
+				}
+				if !isReferenceValueType(have) {
+					return fmt.Errorf("cannot pop the %s operand for ref.eq: type mismatch: expected eqref, but was %s", which, ValueTypeName(have))
+				}
+				// Accept eqref and its subtypes; reject funcref/externref/
+				// anyref (anyref is the supertype of eq but eq <: any).
+				switch ValueType(have.Kind()) {
+				case ValueTypeEqref, ValueTypeI31ref, ValueTypeStructref, ValueTypeArrayref,
+					ValueTypeNullref:
+					return nil
+				}
+				if have.IsConcreteRef() {
+					// Concrete refs (struct/array) are in the eq hierarchy.
+					return nil
+				}
+				return fmt.Errorf("cannot pop the %s operand for ref.eq: type mismatch: expected eqref, but was %s", which, ValueTypeName(have))
+			}
+			if err := popEqRef("second"); err != nil {
+				return err
+			}
+			if err := popEqRef("first"); err != nil {
+				return err
+			}
+			valueTypeStack.push(ValueTypeI32)
+		} else if op == OpcodeRefAsNonNull {
+			// ref.as_non_null: pop a ref (any ref type), push back the
+			// same ref. Runtime traps if it was the null reference.
+			have, _, ok := valueTypeStack.tryPop()
+			if !ok {
+				return fmt.Errorf("reference type missing for ref.as_non_null")
+			}
+			if have != valueTypeUnknown && !isReferenceValueType(have) {
+				return fmt.Errorf("type mismatch: expected reference type for ref.as_non_null, but was %s", ValueTypeName(have))
+			}
+			// AsNonNullable marks the result as non-nullable so a
+			// downstream (ref $t) consumer can accept it.
+			valueTypeStack.push(have.AsNonNullable())
+		} else if op == OpcodeBrOnNull {
+			// br_on_null l: pop a ref. If null, branch to l. Else push
+			// back and fall through. The target label's expected types
+			// must match the stack WITHOUT the ref.
+			pc++
+			labelIdx, n, err := leb128.LoadUint32(body[pc:])
+			if err != nil {
+				return fmt.Errorf("read br_on_null label: %v", err)
+			} else if int(labelIdx) >= len(controlBlockStack.stack) {
+				return fmt.Errorf("invalid label index %d for br_on_null", labelIdx)
+			}
+			pc += n - 1
+			refTy, _, ok := valueTypeStack.tryPop()
+			if !ok {
+				return fmt.Errorf("reference type missing for br_on_null")
+			}
+			if refTy != valueTypeUnknown && !isReferenceValueType(refTy) {
+				return fmt.Errorf("type mismatch: expected reference type for br_on_null, but was %s", ValueTypeName(refTy))
+			}
+			target := &controlBlockStack.stack[len(controlBlockStack.stack)-int(labelIdx)-1]
+			var targetTypes []ValueType
+			if target.op == OpcodeLoop {
+				targetTypes = target.blockType.Params
+			} else {
+				targetTypes = target.blockType.Results
+			}
+			if err := valueTypeStack.popParams(op, targetTypes, false); err != nil {
+				return err
+			}
+			for _, t := range targetTypes {
+				valueTypeStack.push(t)
+			}
+			// Re-push the ref for the fall-through path.
+			valueTypeStack.push(refTy)
+		} else if op == OpcodeBrOnNonNull {
+			// br_on_non_null l: pop a ref. If non-null, push it back AND
+			// branch (label's last param is the ref). Else fall through
+			// (the ref is consumed).
+			pc++
+			labelIdx, n, err := leb128.LoadUint32(body[pc:])
+			if err != nil {
+				return fmt.Errorf("read br_on_non_null label: %v", err)
+			} else if int(labelIdx) >= len(controlBlockStack.stack) {
+				return fmt.Errorf("invalid label index %d for br_on_non_null", labelIdx)
+			}
+			pc += n - 1
+			refTy, _, ok := valueTypeStack.tryPop()
+			if !ok {
+				return fmt.Errorf("reference type missing for br_on_non_null")
+			}
+			if refTy != valueTypeUnknown && !isReferenceValueType(refTy) {
+				return fmt.Errorf("type mismatch: expected reference type for br_on_non_null, but was %s", ValueTypeName(refTy))
+			}
+			target := &controlBlockStack.stack[len(controlBlockStack.stack)-int(labelIdx)-1]
+			var targetTypes []ValueType
+			if target.op == OpcodeLoop {
+				targetTypes = target.blockType.Params
+			} else {
+				targetTypes = target.blockType.Results
+			}
+			if len(targetTypes) == 0 {
+				return fmt.Errorf("br_on_non_null target label expects no values; needs a trailing ref")
+			}
+			if !isReferenceValueType(targetTypes[len(targetTypes)-1]) && targetTypes[len(targetTypes)-1] != valueTypeUnknown {
+				return fmt.Errorf("br_on_non_null target label's last type %s is not a reference", ValueTypeName(targetTypes[len(targetTypes)-1]))
+			}
+			head := targetTypes[:len(targetTypes)-1]
+			if err := valueTypeStack.popParams(op, head, false); err != nil {
+				return err
+			}
+			for _, t := range head {
+				valueTypeStack.push(t)
+			}
+			// On fall-through the ref is consumed; do NOT push back.
+		} else if op == OpcodeCallRef || op == OpcodeReturnCallRef {
+			// call_ref / return_call_ref t: pop a funcref of type $t,
+			// pop the function's params, push the function's results.
+			pc++
+			typeIdx, n, err := leb128.LoadUint32(body[pc:])
+			if err != nil {
+				return fmt.Errorf("read call_ref type index: %v", err)
+			}
+			pc += n - 1
+			if int(typeIdx) >= len(m.TypeSection) {
+				return fmt.Errorf("call_ref type index %d out of range", typeIdx)
+			}
+			ft := &m.TypeSection[typeIdx]
+			if ft.Form != CompositeFormFunc {
+				return fmt.Errorf("call_ref type %d is not a function type", typeIdx)
+			}
+			if err := valueTypeStack.popReferenceType(); err != nil {
+				return fmt.Errorf("call_ref: cannot pop funcref: %v", err)
+			}
+			for i := len(ft.Params) - 1; i >= 0; i-- {
+				if err := valueTypeStack.popAndVerifyType(ft.Params[i]); err != nil {
+					return fmt.Errorf("call_ref: cannot pop param[%d]: %v", i, err)
+				}
+			}
+			for _, r := range ft.Results {
+				valueTypeStack.push(r)
+			}
+			if op == OpcodeReturnCallRef {
+				valueTypeStack.unreachable()
+			}
 		} else if enabledFeatures.IsEnabled(experimental.CoreFeaturesExceptionHandling) &&
 			(op == OpcodeLegacyTry || op == OpcodeLegacyCatch || op == OpcodeLegacyRethrow ||
 				op == OpcodeLegacyDelegate || op == OpcodeLegacyCatchAll) {
@@ -2230,6 +2995,12 @@ type valueTypeStack struct {
 	maximumStackPointer int
 	// requireStackValuesTmp is used in requireStackValues function to reduce the allocation.
 	requireStackValuesTmp []ValueType
+	// types is a reference to the module's TypeSection. Used by
+	// popAndVerifyType to resolve concrete-to-concrete ref subtype
+	// checks via SuperTypeIndex chain walking; nil for callers that
+	// don't yet plumb the module through (the byte-level subtype
+	// check still works in that case).
+	types []FunctionType
 }
 
 // Only used in the analyzeFunction below.
@@ -2268,8 +3039,88 @@ func (s *valueTypeStack) popAndVerifyType(expected ValueType) error {
 	if !ok {
 		return fmt.Errorf("%s missing", ValueTypeName(expected))
 	}
-	if have != expected && have != valueTypeUnknown && expected != valueTypeUnknown && !isRefSubtypeOf(have, expected) {
-		return fmt.Errorf("type mismatch: expected %s, but was %s", ValueTypeName(expected), ValueTypeName(have))
+	if have == expected || have == valueTypeUnknown || expected == valueTypeUnknown {
+		return nil
+	}
+	if isRefSubtypeOf(have, expected) {
+		return nil
+	}
+	// Concrete-to-concrete subtype: walk the SuperTypeIndex chain on
+	// the module's TypeSection. Two concrete refs match if one's
+	// supertype chain contains the other's typeIdx.
+	if have.IsConcreteRef() && expected.IsConcreteRef() && s.types != nil {
+		if concreteSubtype(s.types, have.TypeIndex(), expected.TypeIndex()) {
+			// Honour nullability: non-nullable can flow into nullable
+			// but not the reverse.
+			if expected.IsNullable() || !have.IsNullable() {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("type mismatch: expected %s, but was %s", ValueTypeName(expected), ValueTypeName(have))
+}
+
+// isFieldElementSubtypeOf reports whether a value of type `src` (an
+// array element / struct field) can flow into a slot of type `dst`,
+// honouring packed-storage equality and ref-type subtyping.
+func isFieldElementSubtypeOf(src, dst FieldType, m *Module) bool {
+	if src.Packed != PackedTypeNone || dst.Packed != PackedTypeNone {
+		// Packed fields must match exactly: both i8 or both i16.
+		return src.Packed == dst.Packed
+	}
+	if src.ValueType == dst.ValueType {
+		return true
+	}
+	if isReferenceValueType(src.ValueType) && isReferenceValueType(dst.ValueType) {
+		return isRefSubtypeOfInModule(src.ValueType, dst.ValueType, m)
+	}
+	return false
+}
+
+// concreteSubtype reports whether the type at module-local index sub
+// is a subtype of the type at index sup, by walking the SuperTypeIndex
+// chain on the module's TypeSection. Equality counts as subtype.
+func concreteSubtype(types []FunctionType, sub, sup uint32) bool {
+	if sub == sup {
+		return true
+	}
+	if int(sub) >= len(types) {
+		return false
+	}
+	cur := sub
+	for {
+		t := &types[cur]
+		if t.SuperTypeIndex == nil {
+			return false
+		}
+		next := *t.SuperTypeIndex
+		if next == sup {
+			return true
+		}
+		if int(next) >= len(types) {
+			return false
+		}
+		if next == cur {
+			return false
+		}
+		cur = next
+	}
+}
+
+// popReferenceType pops a value from the stack and verifies it is some
+// reference type (funcref / externref / exnref / i31ref / anyref / etc.,
+// or valueTypeUnknown). Used by polymorphic ref-typed instructions like
+// ref.eq where the operands can be any pair of refs.
+func (s *valueTypeStack) popReferenceType() error {
+	have, _, ok := s.tryPop()
+	if !ok {
+		return fmt.Errorf("reference type missing")
+	}
+	if have == valueTypeUnknown {
+		return nil
+	}
+	if !isReferenceValueType(have) {
+		return fmt.Errorf("type mismatch: expected reference type, but was %s", ValueTypeName(have))
 	}
 	return nil
 }
@@ -2350,9 +3201,21 @@ func (s *valueTypeStack) requireStackValues(
 	// Finally, check the types of the values:
 	for i, v := range s.requireStackValuesTmp {
 		nextWant := want[countWanted-i-1] // have is in reverse order (stack)
-		if v != nextWant && v != valueTypeUnknown && nextWant != valueTypeUnknown && !isRefSubtypeOf(v, nextWant) {
-			return typeMismatchError(isParam, context, v, nextWant, i)
+		if v == nextWant || v == valueTypeUnknown || nextWant == valueTypeUnknown {
+			continue
 		}
+		if isRefSubtypeOf(v, nextWant) {
+			continue
+		}
+		// Concrete-concrete subtype: walk SuperTypeIndex chain.
+		if v.IsConcreteRef() && nextWant.IsConcreteRef() && s.types != nil {
+			if concreteSubtype(s.types, v.TypeIndex(), nextWant.TypeIndex()) {
+				if nextWant.IsNullable() || !v.IsNullable() {
+					continue
+				}
+			}
+		}
+		return typeMismatchError(isParam, context, v, nextWant, i)
 	}
 	return nil
 }
@@ -2481,21 +3344,64 @@ func DecodeBlockType(types []FunctionType, r *bytes.Reader, enabledFeatures api.
 		ret = blockType_v_externref
 	case -23: // 0x69 in original byte = exnref
 		ret = blockType_v_exnref
+	case -13: // 0x73 = nofuncref
+		ret = &FunctionType{Results: []ValueType{ValueTypeNoFuncref}, ResultNumInUint64: 1}
+	case -12: // 0x74 = noexnref
+		ret = &FunctionType{Results: []ValueType{ValueTypeNoExnref}, ResultNumInUint64: 1}
+	case -14: // 0x72 = noexternref
+		ret = &FunctionType{Results: []ValueType{ValueTypeNoExternref}, ResultNumInUint64: 1}
+	case -15: // 0x71 = nullref (none)
+		ret = &FunctionType{Results: []ValueType{ValueTypeNullref}, ResultNumInUint64: 1}
+	case -18: // 0x6e = anyref
+		ret = &FunctionType{Results: []ValueType{ValueTypeAnyref}, ResultNumInUint64: 1}
+	case -19: // 0x6d = eqref
+		ret = &FunctionType{Results: []ValueType{ValueTypeEqref}, ResultNumInUint64: 1}
+	case -20: // 0x6c = i31ref
+		ret = &FunctionType{Results: []ValueType{ValueTypeI31ref}, ResultNumInUint64: 1}
+	case -21: // 0x6b = structref
+		ret = &FunctionType{Results: []ValueType{ValueTypeStructref}, ResultNumInUint64: 1}
+	case -22: // 0x6a = arrayref
+		ret = &FunctionType{Results: []ValueType{ValueTypeArrayref}, ResultNumInUint64: 1}
 	case -29: // 0x63 = ref null (nullable) — GC proposal
 		ht, htNum, err := leb128.DecodeInt33AsInt64(r)
 		if err != nil {
 			return nil, 0, fmt.Errorf("read ref heap type in block: %w", err)
 		}
 		num += htNum
-		switch ht {
-		case -23: // exn
-			ret = blockType_v_exnref
-		case -16: // func
-			ret = blockType_v_funcref
-		case -17: // extern
-			ret = blockType_v_externref
-		default: // concrete type index — treat as nullable funcref
-			ret = blockType_v_funcref
+		if ht >= 0 {
+			// Concrete type index. Construct a fresh FunctionType with
+			// the typed concrete-ref result.
+			vt := ConcreteRef(uint32(ht), true)
+			ret = &FunctionType{Results: []ValueType{vt}, ResultNumInUint64: 1}
+		} else {
+			switch ht {
+			case -23: // exn
+				ret = blockType_v_exnref
+			case -16: // func
+				ret = blockType_v_funcref
+			case -17: // extern
+				ret = blockType_v_externref
+			case -12: // noexn
+				ret = &FunctionType{Results: []ValueType{ValueTypeNoExnref}, ResultNumInUint64: 1}
+			case -13: // nofunc
+				ret = &FunctionType{Results: []ValueType{ValueTypeNoFuncref}, ResultNumInUint64: 1}
+			case -14: // noextern
+				ret = &FunctionType{Results: []ValueType{ValueTypeNoExternref}, ResultNumInUint64: 1}
+			case -15: // none
+				ret = &FunctionType{Results: []ValueType{ValueTypeNullref}, ResultNumInUint64: 1}
+			case -18: // any
+				ret = &FunctionType{Results: []ValueType{ValueTypeAnyref}, ResultNumInUint64: 1}
+			case -19: // eq
+				ret = &FunctionType{Results: []ValueType{ValueTypeEqref}, ResultNumInUint64: 1}
+			case -20: // i31
+				ret = &FunctionType{Results: []ValueType{ValueTypeI31ref}, ResultNumInUint64: 1}
+			case -21: // struct
+				ret = &FunctionType{Results: []ValueType{ValueTypeStructref}, ResultNumInUint64: 1}
+			case -22: // array
+				ret = &FunctionType{Results: []ValueType{ValueTypeArrayref}, ResultNumInUint64: 1}
+			default:
+				return nil, 0, fmt.Errorf("invalid heap type in block: %d", ht)
+			}
 		}
 	case -28: // 0x64 = ref (non-nullable) — GC proposal
 		ht, htNum, err := leb128.DecodeInt33AsInt64(r)
@@ -2503,11 +3409,40 @@ func DecodeBlockType(types []FunctionType, r *bytes.Reader, enabledFeatures api.
 			return nil, 0, fmt.Errorf("read ref heap type in block: %w", err)
 		}
 		num += htNum
-		switch ht {
-		case -23: // exn
-			ret = blockType_v_exnref // TODO: non-null exnref
-		default:
-			ret = blockType_v_funcref
+		if ht >= 0 {
+			vt := ConcreteRef(uint32(ht), false)
+			ret = &FunctionType{Results: []ValueType{vt}, ResultNumInUint64: 1}
+		} else {
+			var kindByte byte
+			switch ht {
+			case -23:
+				kindByte = ValueTypeExnref.Kind()
+			case -16:
+				kindByte = ValueTypeFuncref.Kind()
+			case -17:
+				kindByte = ValueTypeExternref.Kind()
+			case -12:
+				kindByte = ValueTypeNoExnref.Kind()
+			case -13:
+				kindByte = ValueTypeNoFuncref.Kind()
+			case -14:
+				kindByte = ValueTypeNoExternref.Kind()
+			case -15:
+				kindByte = ValueTypeNullref.Kind()
+			case -18:
+				kindByte = ValueTypeAnyref.Kind()
+			case -19:
+				kindByte = ValueTypeEqref.Kind()
+			case -20:
+				kindByte = ValueTypeI31ref.Kind()
+			case -21:
+				kindByte = ValueTypeStructref.Kind()
+			case -22:
+				kindByte = ValueTypeArrayref.Kind()
+			default:
+				return nil, 0, fmt.Errorf("invalid heap type in block: %d", ht)
+			}
+			ret = &FunctionType{Results: []ValueType{AbstractRef(kindByte, false)}, ResultNumInUint64: 1}
 		}
 	default:
 		if err = enabledFeatures.RequireEnabled(api.CoreFeatureMultiValue); err != nil {
@@ -2533,6 +3468,26 @@ var (
 	blockType_v_externref = &FunctionType{Results: []ValueType{ValueTypeExternref}, ResultNumInUint64: 1}
 	blockType_v_exnref    = &FunctionType{Results: []ValueType{ValueTypeExnref}, ResultNumInUint64: 1}
 )
+
+// fieldOperandType returns the value-type the wasm operand stack
+// carries for a struct/array field's storage type. Packed fields
+// (i8, i16) take their value in the unpacked i32 representation per the
+// spec; numeric and vector fields take their declared type. Reference
+// fields take their declared ref ValueType (carries nullability +
+// concrete-type info via the wider ValueType encoding).
+func fieldOperandType(f FieldType) (ValueType, error) {
+	if f.Packed != PackedTypeNone {
+		return ValueTypeI32, nil
+	}
+	switch f.ValueType {
+	case ValueTypeI32, ValueTypeI64, ValueTypeF32, ValueTypeF64, ValueTypeV128:
+		return f.ValueType, nil
+	}
+	if isReferenceValueType(f.ValueType) {
+		return f.ValueType, nil
+	}
+	return 0, fmt.Errorf("unsupported struct/array field type %#x", f.ValueType)
+}
 
 // SplitCallStack returns the input stack resliced to the count of params and
 // results, or errors if it isn't long enough for either.

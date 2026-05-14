@@ -305,11 +305,13 @@ func TestValidateConstExpression(t *testing.T) {
 				&expr,
 				ValueTypeExternref)
 			require.NoError(t, err)
-			expr = NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{0xff})
+			// 0x65 is a one-byte negative s33 (-27) that doesn't map to
+			// any defined heap-type shorthand byte.
+			expr = NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{0x65})
 			err = validateConstExpression(nil, 0,
 				&expr,
 				ValueTypeExternref)
-			require.EqualError(t, err, "invalid type for ref.null: 0xff")
+			require.EqualError(t, err, "invalid type for ref.null: -27")
 		})
 	})
 	t.Run("global expr", func(t *testing.T) {

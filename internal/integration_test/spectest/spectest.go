@@ -107,15 +107,20 @@ func (c commandActionVal) String() string {
 			v = "null"
 		} else {
 			original, _ := strconv.ParseUint(c.Value.(string), 10, 64)
-			// In wazero, externref is opaque pointer, so "0" is considered as null.
-			// So in order to treat "externref 0" in spectest non nullref, we increment the value.
-			v = fmt.Sprintf("%d", original+1)
+			// Shift to keep low bits clear so the synthetic externref
+			// integer never aliases the i31 / extern-as-any tag patterns.
+			v = fmt.Sprintf("%d", (original+1)<<8)
 		}
 	case "funcref":
 		// All the in and out funcref params are null in spectest (cannot represent non-null as it depends on runtime impl).
 		v = "null"
 	case "exnref":
 		v = "null"
+	case "anyref", "eqref", "i31ref", "structref", "arrayref", "nullref",
+		"nofuncref", "noexternref", "noexnref":
+		// GC abstract ref types: spec tests typically assert only the type,
+		// not a specific value. Treat as opaque "any value of this ref type".
+		v = "ref"
 	case "v128":
 		simdValues, ok := c.Value.([]interface{})
 		if !ok {
@@ -268,14 +273,17 @@ func (c commandActionVal) toUint64() (ret uint64) {
 	strValue := c.Value.(string)
 	if strings.Contains(strValue, "nan") {
 		ret = getNaNBits(strValue, c.ValType == "f32")
-	} else if c.ValType == "externref" {
+	} else if c.ValType == "externref" || c.ValType == "anyref" || c.ValType == "eqref" {
 		if c.Value == "null" {
 			ret = 0
 		} else {
 			original, _ := strconv.ParseUint(strValue, 10, 64)
-			// In wazero, externref is opaque pointer, so "0" is considered as null.
-			// So in order to treat "externref 0" in spectest non nullref, we increment the value.
-			ret = original + 1
+			// In wazero, externref / host anyref / eqref are opaque
+			// pointers. Use a left-shifted encoding so the synthetic
+			// integer never aliases the i31 tag (low 2 bits = 0b01)
+			// nor the externref-as-anyref tag (low 2 bits = 0b11), and
+			// is non-zero (so "0" is non-null).
+			ret = (original + 1) << 8
 		}
 	} else if strings.Contains(c.ValType, "32") {
 		// wasm-tools may output signed decimals (e.g. "-1"); handle both.
@@ -323,6 +331,15 @@ func (c command) expectedError() (err error) {
 		err = wasmruntime.ErrRuntimeUnreachable
 	case "uncaught exception":
 		err = wasmruntime.ErrRuntimeUncaughtException
+	case "null i31 reference", "null struct reference", "null structure reference",
+		"null array reference", "null function reference",
+		"null reference", "null ref":
+		// wasm-gc trap text variants for the null-deref family.
+		err = wasmruntime.ErrRuntimeNullReference
+	case "out of bounds array access", "array out of bounds":
+		err = wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess
+	case "cast failure", "ref.cast failure":
+		err = wasmruntime.ErrRuntimeInvalidConversionToInteger
 	default:
 		if strings.HasPrefix(c.Text, "uninitialized") {
 			err = wasmruntime.ErrRuntimeInvalidTableAccess
@@ -415,7 +432,16 @@ func RunCase(t *testing.T, testDataFS embed.FS, f string, ctx context.Context, c
 						i++ // Skip the entire "register" command.
 					}
 					mod, err := r.InstantiateWithConfig(ctx, buf, wazero.NewModuleConfig().WithName(registeredName))
-					require.NoError(t, err, msg)
+					if err != nil {
+						// Continue running subsequent commands so the test
+						// suite reports the full set of failures rather than
+						// panicking on a nil module reference. Mark the
+						// last-instantiated slot as nil so action commands
+						// can detect and skip.
+						t.Errorf("expected no error, but was %v: %s", err, msg)
+						lastInstantiatedModule = nil
+						return
+					}
 					if c.Name != "" {
 						modules[c.Name] = mod
 					}
@@ -424,6 +450,11 @@ func RunCase(t *testing.T, testDataFS embed.FS, f string, ctx context.Context, c
 					m := lastInstantiatedModule
 					if c.Action.Module != "" {
 						m = modules[c.Action.Module]
+					}
+					if m == nil {
+						// Skip when the prior module failed to instantiate.
+						t.Skipf("skipping: prior module did not instantiate")
+						return
 					}
 					switch c.Action.ActionType {
 					case "invoke":
@@ -443,8 +474,13 @@ func RunCase(t *testing.T, testDataFS embed.FS, f string, ctx context.Context, c
 								laneTypes[i] = expV.LaneType
 							}
 							// When value is nil for ref types, it means "any ref" — skip comparison.
-							if expV.Value == nil && (expV.ValType == "funcref" || expV.ValType == "externref" || expV.ValType == "exnref") {
-								skipIndices[i] = true
+							switch expV.ValType {
+							case "funcref", "externref", "exnref",
+								"anyref", "eqref", "i31ref", "structref", "arrayref",
+								"nullref", "nofuncref", "noexternref", "noexnref":
+								if expV.Value == nil {
+									skipIndices[i] = true
+								}
 							}
 						}
 						matched, valuesMsg := valuesEq(results, exps, wasm.FromApiValueType(fn.Definition().ResultTypes()), laneTypes, skipIndices)
@@ -475,6 +511,10 @@ func RunCase(t *testing.T, testDataFS embed.FS, f string, ctx context.Context, c
 					if c.Action.Module != "" {
 						m = modules[c.Action.Module]
 					}
+					if m == nil {
+						t.Skipf("skipping: prior module did not instantiate")
+						return
+					}
 					switch c.Action.ActionType {
 					case "invoke":
 						args := c.getAssertReturnArgs()
@@ -497,6 +537,10 @@ func RunCase(t *testing.T, testDataFS embed.FS, f string, ctx context.Context, c
 					_, err = r.InstantiateWithConfig(ctx, buf, wazero.NewModuleConfig())
 					require.Error(t, err, msg)
 				case "assert_exhaustion":
+					if lastInstantiatedModule == nil {
+						t.Skipf("skipping: prior module did not instantiate")
+						return
+					}
 					switch c.Action.ActionType {
 					case "invoke":
 						args := c.getAssertReturnArgs()
@@ -522,6 +566,10 @@ func RunCase(t *testing.T, testDataFS embed.FS, f string, ctx context.Context, c
 					m := lastInstantiatedModule
 					if c.Action.Module != "" {
 						m = modules[c.Action.Module]
+					}
+					if m == nil {
+						t.Skipf("skipping: prior module did not instantiate")
+						return
 					}
 					switch c.Action.ActionType {
 					case "invoke":
@@ -602,10 +650,23 @@ func valuesEq(actual, exps []uint64, valTypes []wasm.ValueType, laneTypes map[in
 			msgActualValuesStrs = append(msgActualValuesStrs, fmt.Sprintf("%d", uint32(actual[uint64RepPos])))
 			matched = matched && uint32(exps[uint64RepPos]) == uint32(actual[uint64RepPos])
 			uint64RepPos++
-		case wasm.ValueTypeI64, wasm.ValueTypeExternref, wasm.ValueTypeFuncref:
+		case wasm.ValueTypeI64, wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
+			wasm.ValueTypeExnref,
+			wasm.ValueTypeAnyref, wasm.ValueTypeEqref, wasm.ValueTypeI31ref,
+			wasm.ValueTypeStructref, wasm.ValueTypeArrayref, wasm.ValueTypeNullref,
+			wasm.ValueTypeNoFuncref, wasm.ValueTypeNoExternref, wasm.ValueTypeNoExnref:
+			a := actual[uint64RepPos]
+			// Internalized externrefs are tagged via PackExternAsAny so
+			// ref.test can distinguish them. Untag before comparison so
+			// the runner sees the original externref payload. Only for
+			// ref types — i64 values can naturally have those bit
+			// patterns.
+			if tp != wasm.ValueTypeI64 && a != 0 && wasm.IsTaggedExternAsAny(uintptr(a)) {
+				a = uint64(wasm.UnpackExternAsAny(uintptr(a)))
+			}
 			msgExpValuesStrs = append(msgExpValuesStrs, fmt.Sprintf("%d", exps[uint64RepPos]))
-			msgActualValuesStrs = append(msgActualValuesStrs, fmt.Sprintf("%d", actual[uint64RepPos]))
-			matched = matched && exps[uint64RepPos] == actual[uint64RepPos]
+			msgActualValuesStrs = append(msgActualValuesStrs, fmt.Sprintf("%d", a))
+			matched = matched && exps[uint64RepPos] == a
 			uint64RepPos++
 		case wasm.ValueTypeF32:
 			a := math.Float32frombits(uint32(actual[uint64RepPos]))

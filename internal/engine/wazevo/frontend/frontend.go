@@ -475,13 +475,16 @@ func (c *Compiler) declareWasmGlobal(typ wasm.ValueType, mutable bool) {
 
 // WasmTypeToSSAType converts wasm.ValueType to ssa.Type.
 func WasmTypeToSSAType(vt wasm.ValueType) ssa.Type {
+	if vt.IsRef() {
+		// All reference types — abstract or concrete, nullable or
+		// non-nullable — fit in a single 64-bit register on the
+		// 64-bit platforms wazevo targets.
+		return ssa.TypeI64
+	}
 	switch vt {
 	case wasm.ValueTypeI32:
 		return ssa.TypeI32
-	case wasm.ValueTypeI64,
-		// externref, funcref, and exnref are represented as I64 since we only support 64-bit platforms.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref,
-		wasm.ValueTypeExnref:
+	case wasm.ValueTypeI64:
 		return ssa.TypeI64
 	case wasm.ValueTypeF32:
 		return ssa.TypeF32

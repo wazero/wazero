@@ -11,18 +11,14 @@ func encodeSection(sectionID wasm.SectionID, contents []byte) []byte {
 	return append([]byte{sectionID}, encodeSizePrefixed(contents)...)
 }
 
-// encodeTypeSection encodes a wasm.SectionIDType for the given imports in WebAssembly 1.0 (20191205) Binary
-// Format.
+// encodeTypeSection encodes a wasm.SectionIDType for the given imports in WebAssembly Binary
+// Format. Consecutive entries with RecGroupSize > 1 (and matching RecGroupPosition) are
+// folded into a 0x4E rec group prefix.
 //
 // See EncodeFunctionType
 // See https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#type-section%E2%91%A0
 func encodeTypeSection(types []wasm.FunctionType) []byte {
-	contents := leb128.EncodeUint32(uint32(len(types)))
-	for i := range types {
-		t := &types[i]
-		contents = append(contents, EncodeFunctionType(t)...)
-	}
-	return encodeSection(wasm.SectionIDType, contents)
+	return encodeSection(wasm.SectionIDType, EncodeTypeSection(types))
 }
 
 // encodeImportSection encodes a wasm.SectionIDImport for the given imports in WebAssembly 1.0 (20191205) Binary

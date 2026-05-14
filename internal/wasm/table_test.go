@@ -453,7 +453,7 @@ func TestModule_validateTable_Errors(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: "element[0].init[0] must be externref but was funcref",
+			expectedErr: "element[0].init[0] must be externref but was (ref func)",
 		},
 		{
 			name: "constant derived element offset - decode error",

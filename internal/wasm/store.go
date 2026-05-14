@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -54,6 +55,12 @@ type (
 		// do type-checks on indirect function calls.
 		typeIDs map[string]FunctionTypeID
 
+		// subtypes is index-correlated with typeIDs (a FunctionTypeID is
+		// the slice index): subtypes[id] holds the Cohen-style subtype
+		// display for the type, plus its CompositeForm. Populated lazily
+		// by computeSubtypeDisplays after each GetFunctionTypeIDs call.
+		subtypes []subtypeInfo
+
 		// functionMaxTypes represents the limit on the number of function types in a store.
 		// Note: this is fixed to 2^27 but have this a field for testability.
 		functionMaxTypes uint32
@@ -85,6 +92,12 @@ type (
 		// TypeIDs is index-correlated with types and holds typeIDs which is uniquely assigned to a type by store.
 		// This is necessary to achieve fast runtime type checking for indirect function calls at runtime.
 		TypeIDs []FunctionTypeID
+
+		// GCRoots keeps Go-allocated WasmStruct / WasmArray / I31Ref
+		// pointers alive for the lifetime of the module instance. The
+		// operand-stack and globals store uintptr casts that the Go GC
+		// cannot trace; this slice provides the missing trace edge.
+		GCRoots []any
 
 		// DataInstances holds data segments bytes of the module.
 		// This is only used by bulk memory operations.
@@ -180,16 +193,27 @@ func (m *ModuleInstance) GetFunctionTypeID(t *FunctionType) FunctionTypeID {
 func (m *ModuleInstance) buildElementInstances(elements []ElementSegment) {
 	m.ElementInstances = make([][]Reference, len(elements))
 	for i, elm := range elements {
-		if elm.Type == RefTypeFuncref && elm.Mode == ElementModePassive {
-			// Only passive elements can be access as element instances.
-			// See https://www.w3.org/TR/2022/WD-wasm-core-2-20220419/syntax/modules.html#element-segments
-			inits := elm.Init
-			inst := make([]Reference, len(inits))
-			m.ElementInstances[i] = inst
-			for j, idx := range inits {
-				initExprResults := evaluateConstExprInModuleInstance(&idx, m)
-				inst[j] = Reference(initExprResults[0])
-			}
+		if elm.Mode != ElementModePassive {
+			continue
+		}
+		// Only passive elements are exposed as instances.
+		// See https://www.w3.org/TR/2022/WD-wasm-core-2-20220419/syntax/modules.html#element-segments
+		switch elm.Type {
+		case RefTypeFuncref, RefTypeExternref,
+			ValueTypeExnref,
+			ValueTypeAnyref, ValueTypeEqref, ValueTypeI31ref,
+			ValueTypeStructref, ValueTypeArrayref, ValueTypeNullref,
+			ValueTypeNoFuncref, ValueTypeNoExternref, ValueTypeNoExnref:
+		default:
+			// Unsupported ref type for passive element instance.
+			continue
+		}
+		inits := elm.Init
+		inst := make([]Reference, len(inits))
+		m.ElementInstances[i] = inst
+		for j, idx := range inits {
+			initExprResults := evaluateConstExprInModuleInstance(&idx, m)
+			inst[j] = Reference(initExprResults[0])
 		}
 	}
 }
@@ -275,6 +299,9 @@ func (m *ModuleInstance) applyData(data []DataSegment) error {
 		d := &data[i]
 		m.DataInstances[i] = d.Init
 		if !d.IsPassive() {
+			if m.MemoryInstance == nil {
+				return fmt.Errorf("%s[%d]: active data segment requires memory", SectionIDName(SectionIDData), i)
+			}
 			offsetExprResults := evaluateConstExprInModuleInstance(&d.OffsetExpression, m)
 			offset := int(offsetExprResults[0])
 			if offset < 0 || offset+len(d.Init) > len(m.MemoryInstance.Buffer) {
@@ -444,7 +471,12 @@ func (m *ModuleInstance) resolveImports(ctx context.Context, module *Module) (er
 				expectedType := &module.TypeSection[i.DescFunc]
 				src := importedModule.Source
 				actual := src.typeOfFunction(imported.Index)
-				if !actual.EqualsSignature(expectedType.Params, expectedType.Results) {
+				// Compatible if the actual function's type is a subtype
+				// of (or equal to) the import's declared type. With the
+				// canonicalised .string keys this covers iso-recursive
+				// equivalence; the Store's subtype displays cover
+				// declared (nominal) sub-type chains.
+				if !importCompatibleFunc(m.s, module, expectedType, src, actual, imported.Index) {
 					err = errorInvalidImport(i, fmt.Errorf("signature mismatch: %s != %s", expectedType, actual))
 					return
 				}
@@ -548,8 +580,12 @@ func errorInvalidImport(i *Import, err error) error {
 //
 // Global initialization constant expression can only reference the imported globals.
 // See the note on https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#constant-expressions%E2%91%A0
-func (g *GlobalInstance) initialize(importedGlobals []*GlobalInstance, expr *ConstantExpression, funcRefResolver func(funcIndex Index) Reference) {
-	result, _, _ := evaluateConstExpr(
+//
+// gcCtx, when non-nil, provides the TypeSection / TypeIDs / KeepAlive
+// hooks needed to evaluate GC opcodes (struct.new, array.new, ref.i31)
+// in the init expression.
+func (g *GlobalInstance) initialize(importedGlobals []*GlobalInstance, expr *ConstantExpression, funcRefResolver func(funcIndex Index) Reference, gcCtx gcModuleCtx) {
+	result, _, _ := evaluateConstExprWithModule(
 		expr,
 		func(globalIndex Index) (ValueType, uint64, uint64, error) {
 			g := importedGlobals[globalIndex]
@@ -558,6 +594,7 @@ func (g *GlobalInstance) initialize(importedGlobals []*GlobalInstance, expr *Con
 		func(funcIndex Index) (Reference, error) {
 			return funcRefResolver(funcIndex), nil
 		},
+		gcCtx,
 	)
 	switch len(result) {
 	case 1:
@@ -597,6 +634,13 @@ func (g *GlobalInstance) SetValue(lo, hi uint64) {
 }
 
 func (s *Store) GetFunctionTypeIDs(ts []FunctionType) ([]FunctionTypeID, error) {
+	// Rewrite each type's cached key so that supertype references and
+	// concrete-ref Field/Param/Result types inside the same rec group
+	// are encoded rec-relatively. Two modules declaring the same
+	// structural rec group then produce the same canonical key and
+	// share a FunctionTypeID — required for iso-recursive type
+	// equivalence per the spec.
+	canonicalizeRecGroupKeys(ts)
 	ret := make([]FunctionTypeID, len(ts))
 	for i := range ts {
 		t := &ts[i]
@@ -606,7 +650,369 @@ func (s *Store) GetFunctionTypeIDs(ts []FunctionType) ([]FunctionTypeID, error) 
 		}
 		ret[i] = inst
 	}
+	// Populate Cohen-style subtype displays for the assigned IDs so
+	// ref.test / ref.cast / call_ref can answer subtype queries in O(1).
+	s.computeSubtypeDisplays(ts, ret)
 	return ret, nil
+}
+
+func init() {
+	canonicalizeForValidation = canonicalizeRecGroupKeys
+}
+
+// canonicalizeRecGroupKeys updates each FunctionType.string with a
+// canonical key whose in-rec-group SuperTypeIndex / concrete-ref
+// references are emitted as "rec.N" instead of an absolute module-
+// level index. Out-of-group references keep the absolute index.
+//
+// Each member's canonical key additionally includes a digest of all
+// rec-group members (in declaration order). This enforces iso-recursive
+// equivalence: two rec groups whose members have identical pairwise
+// structural keys are equivalent; otherwise they are distinct.
+//
+// After computing initial keys, we iteratively refine them: any
+// `|sup=N` (out-of-group absolute) reference is rewritten to
+// `|sup=key(N)` so that two types whose supertypes are themselves
+// canonically equivalent share a canonical key. The process is
+// fixed-point — repeat until keys stabilise.
+func canonicalizeRecGroupKeys(ts []FunctionType) {
+	// Step 1: compute initial keys with absolute supertype indices.
+	computeInitialKeys(ts)
+	// Step 2: refine — substitute supertype absolute indices with the
+	// canonical key of the target type. Repeat until no key changes.
+	for round := 0; round < len(ts)+1; round++ {
+		changed := false
+		newKeys := make([]string, len(ts))
+		for i := range ts {
+			t := &ts[i]
+			k := refinedKey(ts, t, i)
+			newKeys[i] = k
+		}
+		for i := range ts {
+			if newKeys[i] != ts[i].string {
+				ts[i].string = newKeys[i]
+				changed = true
+			}
+		}
+		if !changed {
+			return
+		}
+	}
+}
+
+func computeInitialKeys(ts []FunctionType) {
+	i := 0
+	for i < len(ts) {
+		t := &ts[i]
+		groupSize := t.RecGroupSize
+		if groupSize < 1 {
+			groupSize = 1
+		}
+		groupStart := uint32(i - t.RecGroupPosition)
+		groupEnd := groupStart + uint32(groupSize)
+		memberKeys := make([]string, groupSize)
+		for j := 0; j < groupSize; j++ {
+			idx := groupStart + uint32(j)
+			if int(idx) >= len(ts) {
+				memberKeys[j] = ""
+				continue
+			}
+			memberKeys[j] = canonicalKey(&ts[idx], groupStart, groupEnd)
+		}
+		var groupSuffix string
+		if groupSize > 1 {
+			groupSuffix = "|grp=[" + strings.Join(memberKeys, "|") + "]"
+		}
+		for j := 0; j < groupSize; j++ {
+			idx := groupStart + uint32(j)
+			if int(idx) >= len(ts) {
+				break
+			}
+			ts[idx].string = memberKeys[j] + groupSuffix
+		}
+		i += groupSize
+	}
+}
+
+// refinedKey recomputes a type's canonical key, replacing each
+// `|sup=N` absolute reference with `|sup=(<key of ts[N]>)`. This makes
+// structurally-equivalent supertypes produce identical keys regardless
+// of the absolute module-level index they originally pointed at.
+func refinedKey(ts []FunctionType, t *FunctionType, idx int) string {
+	groupSize := t.RecGroupSize
+	if groupSize < 1 {
+		groupSize = 1
+	}
+	groupStart := uint32(idx - t.RecGroupPosition)
+	groupEnd := groupStart + uint32(groupSize)
+
+	own := refinedSingleKey(t, groupStart, groupEnd, ts)
+	if groupSize <= 1 {
+		return own
+	}
+	parts := make([]string, 0, groupSize)
+	for j := 0; j < groupSize; j++ {
+		k := groupStart + uint32(j)
+		if int(k) >= len(ts) {
+			break
+		}
+		parts = append(parts, refinedSingleKey(&ts[k], groupStart, groupEnd, ts))
+	}
+	return own + "|grp=[" + strings.Join(parts, "|") + "]"
+}
+
+func refinedSingleKey(t *FunctionType, groupStart, groupEnd uint32, ts []FunctionType) string {
+	var ret string
+	switch t.Form {
+	case CompositeFormStruct:
+		ret = structKeyWithGroupRefined(t.Fields, groupStart, groupEnd, ts)
+	case CompositeFormArray:
+		ret = "array(" + fieldKeyWithGroupRefined(t.ArrayField, groupStart, groupEnd, ts) + ")"
+	default:
+		ret = funcKeyWithGroupRefined(t.Params, t.Results, groupStart, groupEnd, ts)
+	}
+	if t.SuperTypeIndex != nil {
+		sup := *t.SuperTypeIndex
+		if sup >= groupStart && sup < groupEnd {
+			ret += fmt.Sprintf("|sup=rec.%d", sup-groupStart)
+		} else if int(sup) < len(ts) {
+			// Substitute the supertype's canonical key.
+			ret += "|sup=(" + ts[sup].string + ")"
+		} else {
+			ret += fmt.Sprintf("|sup=%d", sup)
+		}
+	}
+	if t.Final {
+		ret += "|final"
+	}
+	if t.RecGroupSize > 1 {
+		ret += fmt.Sprintf("|rec%d/%d", t.RecGroupPosition, t.RecGroupSize)
+	}
+	return ret
+}
+
+func valueTypeKeyWithGroupRefined(vt ValueType, groupStart, groupEnd uint32, ts []FunctionType) string {
+	if vt.IsConcreteRef() {
+		idxv := vt.TypeIndex()
+		prefix := "(ref "
+		if vt.IsNullable() {
+			prefix = "(ref null "
+		}
+		if idxv >= groupStart && idxv < groupEnd {
+			return fmt.Sprintf("%srec.%d)", prefix, idxv-groupStart)
+		}
+		if int(idxv) < len(ts) {
+			return prefix + "(" + ts[idxv].string + "))"
+		}
+		return fmt.Sprintf("%s%d)", prefix, idxv)
+	}
+	return ValueTypeName(vt)
+}
+
+func fieldKeyWithGroupRefined(f FieldType, groupStart, groupEnd uint32, ts []FunctionType) string {
+	var prefix string
+	if f.Mutable {
+		prefix = "mut "
+	}
+	if f.Packed != PackedTypeNone {
+		return prefix + f.Packed.String()
+	}
+	return prefix + valueTypeKeyWithGroupRefined(f.ValueType, groupStart, groupEnd, ts)
+}
+
+func structKeyWithGroupRefined(fields []FieldType, groupStart, groupEnd uint32, ts []FunctionType) string {
+	out := "struct{"
+	for i, f := range fields {
+		if i > 0 {
+			out += ","
+		}
+		out += fieldKeyWithGroupRefined(f, groupStart, groupEnd, ts)
+	}
+	return out + "}"
+}
+
+func funcKeyWithGroupRefined(params, results []ValueType, groupStart, groupEnd uint32, ts []FunctionType) string {
+	var ret string
+	for _, b := range params {
+		ret += valueTypeKeyWithGroupRefined(b, groupStart, groupEnd, ts)
+	}
+	if len(params) == 0 {
+		ret += "v_"
+	} else {
+		ret += "_"
+	}
+	for _, b := range results {
+		ret += valueTypeKeyWithGroupRefined(b, groupStart, groupEnd, ts)
+	}
+	if len(results) == 0 {
+		ret += "v"
+	}
+	return ret
+}
+
+// sameFunctionSignature compares two FunctionTypes structurally. After
+// canonicalizeRecGroupKeys (run by GetFunctionTypeIDs), iso-recursively
+// equivalent types have identical .string canonical keys, so a string
+// compare suffices for both ordinary and GC-typed signatures.
+func sameFunctionSignature(s *Store, a, b *FunctionType) bool {
+	if a == b {
+		return true
+	}
+	if a.string != "" && a.string == b.string {
+		return true
+	}
+	if a.string != "" && b.string != "" {
+		// Both canonicalised but different: definitively distinct.
+		return false
+	}
+	// Fall back to a value-by-value comparison for the non-GC case
+	// where the canonical key wasn't precomputed (e.g. tag types).
+	return a.EqualsSignature(b.Params, b.Results)
+}
+
+// importCompatibleFunc checks whether `actual` (the function being
+// imported from `actualMod`) satisfies the import declaration
+// `expected` from `importerMod`. Compatible means actual <: expected:
+// either canonical-key equivalence or the actual's declared
+// SuperTypeIndex chain reaches a type equivalent to the expected.
+func importCompatibleFunc(s *Store, importerMod *Module, expected *FunctionType, actualMod *Module, actual *FunctionType, actualFuncIdx Index) bool {
+	if sameFunctionSignature(s, expected, actual) {
+		return true
+	}
+	// Walk the actual function's declared SuperTypeIndex chain: every
+	// intermediate type compared against `expected` via canonical key.
+	// Find the type idx of the actual function within actualMod.
+	actualTypeIdx, ok := funcTypeIndex(actualMod, actualFuncIdx)
+	if !ok {
+		return false
+	}
+	for steps := 0; steps < len(actualMod.TypeSection); steps++ {
+		t := &actualMod.TypeSection[actualTypeIdx]
+		if t.SuperTypeIndex == nil {
+			return false
+		}
+		sup := *t.SuperTypeIndex
+		if int(sup) >= len(actualMod.TypeSection) {
+			return false
+		}
+		supType := &actualMod.TypeSection[sup]
+		if sameFunctionSignature(s, expected, supType) {
+			return true
+		}
+		actualTypeIdx = sup
+	}
+	return false
+}
+
+// funcTypeIndex returns the module-local type index of the function at
+// funcIdx, walking the import section to count imported functions.
+func funcTypeIndex(m *Module, funcIdx Index) (uint32, bool) {
+	imported := uint32(m.ImportFunctionCount)
+	if funcIdx < imported {
+		var fi uint32
+		for i := range m.ImportSection {
+			imp := &m.ImportSection[i]
+			if imp.Type != ExternTypeFunc {
+				continue
+			}
+			if fi == funcIdx {
+				return imp.DescFunc, true
+			}
+			fi++
+		}
+		return 0, false
+	}
+	local := funcIdx - imported
+	if int(local) >= len(m.FunctionSection) {
+		return 0, false
+	}
+	return m.FunctionSection[local], true
+}
+
+// references and SuperTypeIndex values that point inside the rec
+// group at [groupStart, groupEnd) are encoded as "rec.N" relative to
+// the group start.
+func canonicalKey(t *FunctionType, groupStart, groupEnd uint32) string {
+	var ret string
+	switch t.Form {
+	case CompositeFormStruct:
+		ret = structKeyWithGroup(t.Fields, groupStart, groupEnd)
+	case CompositeFormArray:
+		ret = "array(" + fieldKeyWithGroup(t.ArrayField, groupStart, groupEnd) + ")"
+	default:
+		ret = funcKeyWithGroup(t.Params, t.Results, groupStart, groupEnd)
+	}
+	if t.SuperTypeIndex != nil {
+		sup := *t.SuperTypeIndex
+		if sup >= groupStart && sup < groupEnd {
+			ret += fmt.Sprintf("|sup=rec.%d", sup-groupStart)
+		} else {
+			ret += fmt.Sprintf("|sup=%d", sup)
+		}
+	}
+	if t.Final {
+		ret += "|final"
+	}
+	if t.RecGroupSize > 1 {
+		ret += fmt.Sprintf("|rec%d/%d", t.RecGroupPosition, t.RecGroupSize)
+	}
+	return ret
+}
+
+func valueTypeKeyWithGroup(vt ValueType, groupStart, groupEnd uint32) string {
+	if vt.IsConcreteRef() {
+		idx := vt.TypeIndex()
+		prefix := "(ref "
+		if vt.IsNullable() {
+			prefix = "(ref null "
+		}
+		if idx >= groupStart && idx < groupEnd {
+			return fmt.Sprintf("%srec.%d)", prefix, idx-groupStart)
+		}
+		return fmt.Sprintf("%s%d)", prefix, idx)
+	}
+	return ValueTypeName(vt)
+}
+
+func fieldKeyWithGroup(f FieldType, groupStart, groupEnd uint32) string {
+	var prefix string
+	if f.Mutable {
+		prefix = "mut "
+	}
+	if f.Packed != PackedTypeNone {
+		return prefix + f.Packed.String()
+	}
+	return prefix + valueTypeKeyWithGroup(f.ValueType, groupStart, groupEnd)
+}
+
+func structKeyWithGroup(fields []FieldType, groupStart, groupEnd uint32) string {
+	out := "struct{"
+	for i, f := range fields {
+		if i > 0 {
+			out += ","
+		}
+		out += fieldKeyWithGroup(f, groupStart, groupEnd)
+	}
+	return out + "}"
+}
+
+func funcKeyWithGroup(params, results []ValueType, groupStart, groupEnd uint32) string {
+	var ret string
+	for _, b := range params {
+		ret += valueTypeKeyWithGroup(b, groupStart, groupEnd)
+	}
+	if len(params) == 0 {
+		ret += "v_"
+	} else {
+		ret += "_"
+	}
+	for _, b := range results {
+		ret += valueTypeKeyWithGroup(b, groupStart, groupEnd)
+	}
+	if len(results) == 0 {
+		ret += "v"
+	}
+	return ret
 }
 
 func (s *Store) GetFunctionTypeID(t *FunctionType) (FunctionTypeID, error) {
@@ -648,4 +1054,195 @@ func (s *Store) CloseWithExitCode(ctx context.Context, exitCode uint32) error {
 	s.nameToModuleCap = 0
 	s.typeIDs = nil
 	return errors.Join(errs...)
+}
+
+// TypeSection returns the module's composite type entries.
+// Implements gcModuleCtx for the GC-aware const-expression evaluator.
+func (m *ModuleInstance) TypeSection() []FunctionType {
+	return m.Source.TypeSection
+}
+
+// TypeID returns the engine-wide FunctionTypeID for the given
+// module-local type index. Implements gcModuleCtx.
+func (m *ModuleInstance) TypeID(typeIdx uint32) FunctionTypeID {
+	if int(typeIdx) >= len(m.TypeIDs) {
+		return 0
+	}
+	return m.TypeIDs[typeIdx]
+}
+
+// KeepAlive records v on the module instance's GCRoots so the Go GC
+// traces it for the module's lifetime. Implements gcModuleCtx.
+func (m *ModuleInstance) KeepAlive(v any) {
+	m.GCRoots = append(m.GCRoots, v)
+}
+
+// FunctionTypeIndex returns the module-local type index of the function
+// at funcIdx (covering both imported and module-defined functions), or
+// ok=false if funcIdx is out of range. Implements gcModuleCtx so const
+// expressions evaluating ref.func can push a typed concrete-ref result.
+func (m *ModuleInstance) FunctionTypeIndex(funcIdx Index) (uint32, bool) {
+	src := m.Source
+	if src == nil {
+		return 0, false
+	}
+	imported := uint32(src.ImportFunctionCount)
+	if funcIdx < imported {
+		// Walk the import section to find the typeIdx of the funcIdx-th
+		// imported function. Imports are interleaved with other kinds.
+		var fi uint32
+		for i := range src.ImportSection {
+			imp := &src.ImportSection[i]
+			if imp.Type != ExternTypeFunc {
+				continue
+			}
+			if fi == funcIdx {
+				return imp.DescFunc, true
+			}
+			fi++
+			if fi > funcIdx {
+				break
+			}
+		}
+		return 0, false
+	}
+	local := funcIdx - imported
+	if int(local) >= len(src.FunctionSection) {
+		return 0, false
+	}
+	return src.FunctionSection[local], true
+}
+
+// subtypeInfo records the Cohen-style subtype display for a given
+// FunctionTypeID together with its composite form. Resolved is true
+// once the display has been filled in by computeSubtypeDisplays.
+//
+// Cohen displays let Store.IsSubtype answer "is `sub` a subtype of
+// `sup`?" in O(1) time: the answer is sub.Display[sup.Depth] == sup.
+type subtypeInfo struct {
+	Depth    uint32
+	Display  []FunctionTypeID
+	Resolved bool
+	Form     CompositeForm
+}
+
+// computeSubtypeDisplays fills in the Cohen subtype display for each of
+// the freshly-assigned FunctionTypeIDs in ids (parallel to ts). Types
+// without a SuperTypeIndex get a single-element display containing
+// themselves at depth 0. Types with a supertype inherit the supertype's
+// display and extend it by one. The walk is iterative so it tolerates
+// forward references inside a rec group.
+func (s *Store) computeSubtypeDisplays(ts []FunctionType, ids []FunctionTypeID) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	// Ensure the subtypes slice can index all known IDs.
+	maxID := FunctionTypeID(0)
+	for _, id := range ids {
+		if id > maxID {
+			maxID = id
+		}
+	}
+	if int(maxID) >= len(s.subtypes) {
+		grown := make([]subtypeInfo, maxID+1)
+		copy(grown, s.subtypes)
+		s.subtypes = grown
+	}
+	// Iterate until fixed point. Each iteration resolves any ID whose
+	// supertype is already resolved (or whose supertype is "outside the
+	// batch" — i.e., already in s.subtypes from a previous call).
+	for {
+		progressed := false
+		for i := range ts {
+			id := ids[i]
+			if s.subtypes[id].Resolved {
+				continue
+			}
+			t := &ts[i]
+			if t.SuperTypeIndex == nil {
+				s.subtypes[id] = subtypeInfo{
+					Depth:    0,
+					Display:  []FunctionTypeID{id},
+					Resolved: true,
+					Form:     t.Form,
+				}
+				progressed = true
+				continue
+			}
+			// Resolve supertype's display.
+			supIdx := *t.SuperTypeIndex
+			if int(supIdx) >= len(ids) {
+				// Out of range — leave unresolved.
+				continue
+			}
+			supID := ids[supIdx]
+			if int(supID) >= len(s.subtypes) || !s.subtypes[supID].Resolved {
+				continue
+			}
+			supInfo := s.subtypes[supID]
+			display := make([]FunctionTypeID, len(supInfo.Display)+1)
+			copy(display, supInfo.Display)
+			display[len(supInfo.Display)] = id
+			s.subtypes[id] = subtypeInfo{
+				Depth:    supInfo.Depth + 1,
+				Display:  display,
+				Resolved: true,
+				Form:     t.Form,
+			}
+			progressed = true
+		}
+		if !progressed {
+			break
+		}
+	}
+}
+
+// IsSubtype reports whether `sub` is a subtype of `sup` per the
+// declared SuperTypeIndex chain (transitive). Equality counts as a
+// subtype. O(1) by indexing into sub's Cohen display at sup's depth.
+func (s *Store) IsSubtype(sub, sup FunctionTypeID) bool {
+	if sub == sup {
+		return true
+	}
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	if int(sub) >= len(s.subtypes) || int(sup) >= len(s.subtypes) {
+		return false
+	}
+	subInfo, supInfo := s.subtypes[sub], s.subtypes[sup]
+	if !subInfo.Resolved || !supInfo.Resolved {
+		return false
+	}
+	if supInfo.Depth >= uint32(len(subInfo.Display)) {
+		return false
+	}
+	return subInfo.Display[supInfo.Depth] == sup
+}
+
+// TypeForm returns the composite form registered for the given
+// FunctionTypeID. Returns CompositeFormFunc as the zero value default.
+func (s *Store) TypeForm(id FunctionTypeID) CompositeForm {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	if int(id) >= len(s.subtypes) {
+		return CompositeFormFunc
+	}
+	return s.subtypes[id].Form
+}
+
+// IsResolvedType reports whether the given FunctionTypeID has been
+// registered and its subtype display computed.
+func (s *Store) IsResolvedType(id FunctionTypeID) bool {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	if int(id) >= len(s.subtypes) {
+		return false
+	}
+	return s.subtypes[id].Resolved
+}
+
+// GetStore returns the Store on which this module is instantiated.
+// Used by interpreter handlers (e.g., ref.test, ref.cast) to look up
+// engine-wide subtype info at runtime.
+func (m *ModuleInstance) GetStore() *Store {
+	return m.s
 }
