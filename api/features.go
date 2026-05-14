@@ -221,6 +221,8 @@ func featureName(f CoreFeatures) string {
 		return "extended-const"
 	case CoreFeatureSIMD << 4: // experimental.CoreFeaturesExceptionHandling
 		return "exception-handling"
+	case CoreFeatureSIMD << 5: // experimental.CoreFeaturesTypedFunctionReferences
+		return "typed-function-references"
 	}
 	return ""
 }

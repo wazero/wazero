@@ -3380,7 +3380,12 @@ func (c *Compiler) lowerCurrentOpcode() {
 		state.push(refFuncRet)
 
 	case wasm.OpcodeRefNull:
-		c.loweringState.pc++ // skips the reference type as we treat both of them as i64(0).
+		switch reftype := c.wasmFunctionBody[c.loweringState.pc+1]; wasm.ValueType(reftype) {
+		case wasm.ValueTypeFuncref, wasm.ValueTypeExternref, wasm.ValueTypeExnref:
+			c.loweringState.pc++
+		default:
+			c.readI32u()
+		}
 		if state.unreachable {
 			break
 		}
@@ -3681,6 +3686,151 @@ func (c *Compiler) lowerCurrentOpcode() {
 			blockType:                    bt,
 		})
 
+	case wasm.OpcodeRefAsNonNull:
+		if state.unreachable {
+			break
+		}
+		r := state.pop()
+		zero := builder.AllocateInstruction().AsIconst64(0).Insert(builder)
+		checkNull := builder.AllocateInstruction().
+			AsIcmp(r, zero.Return(), ssa.IntegerCmpCondEqual).
+			Insert(builder).Return()
+		exitIfNull := builder.AllocateInstruction()
+		exitIfNull.AsExitIfTrueWithCode(c.execCtxPtrValue, checkNull, wazevoapi.ExitCodeNullReference)
+		builder.InsertInstruction(exitIfNull)
+		state.push(r)
+
+	case wasm.OpcodeBrOnNull:
+		labelIndex := c.readI32u()
+		if state.unreachable {
+			break
+		}
+
+		r := state.pop()
+		zero := builder.AllocateInstruction().AsIconst64(0).Insert(builder)
+		isNull := builder.AllocateInstruction().
+			AsIcmp(r, zero.Return(), ssa.IntegerCmpCondEqual).
+			Insert(builder).Return()
+
+		targetBlk, argNum := state.brTargetArgNumFor(labelIndex)
+		args := c.nPeekDup(argNum)
+		var sealTargetBlk bool
+
+		if c.branchExitsTryTable(int(labelIndex)) {
+			current := builder.CurrentBlock()
+			trampolineBlk := builder.AllocateBasicBlock()
+			builder.SetCurrentBlock(trampolineBlk)
+			c.emitTryTableLeaves(int(labelIndex))
+			c.insertJumpToBlock(args, targetBlk)
+			builder.SetCurrentBlock(current)
+			targetBlk = trampolineBlk
+			sealTargetBlk = true
+			args = ssa.ValuesNil
+		}
+
+		if c.needListener && targetBlk.ReturnBlock() {
+			current := builder.CurrentBlock()
+			targetBlk = builder.AllocateBasicBlock()
+			builder.SetCurrentBlock(targetBlk)
+			sealTargetBlk = true
+			c.callListenerAfter()
+			instr := builder.AllocateInstruction()
+			instr.AsReturn(args)
+			builder.InsertInstruction(instr)
+			args = ssa.ValuesNil
+			builder.SetCurrentBlock(current)
+		}
+
+		brnz := builder.AllocateInstruction()
+		brnz.AsBrnz(isNull, args, targetBlk)
+		builder.InsertInstruction(brnz)
+
+		if sealTargetBlk {
+			builder.Seal(targetBlk)
+		}
+
+		// Fall-through: ref is non-null, push it back.
+		elseBlk := builder.AllocateBasicBlock()
+		c.insertJumpToBlock(ssa.ValuesNil, elseBlk)
+		builder.Seal(elseBlk)
+		builder.SetCurrentBlock(elseBlk)
+		state.push(r)
+
+	case wasm.OpcodeBrOnNonNull:
+		labelIndex := c.readI32u()
+		if state.unreachable {
+			break
+		}
+
+		r := state.pop()
+		zero := builder.AllocateInstruction().AsIconst64(0).Insert(builder)
+		isNonNull := builder.AllocateInstruction().
+			AsIcmp(r, zero.Return(), ssa.IntegerCmpCondNotEqual).
+			Insert(builder).Return()
+
+		// When non-null, branch to label with args + the non-null ref.
+		targetBlk, argNum := state.brTargetArgNumFor(labelIndex)
+		// The branch delivers argNum-1 values from the stack plus the ref.
+		// The ref is the last value delivered to the label target.
+		args := c.nPeekDup(argNum - 1)
+		args = args.Append(builder.VarLengthPool(), r)
+		var sealTargetBlk bool
+
+		if c.branchExitsTryTable(int(labelIndex)) {
+			current := builder.CurrentBlock()
+			trampolineBlk := builder.AllocateBasicBlock()
+			builder.SetCurrentBlock(trampolineBlk)
+			c.emitTryTableLeaves(int(labelIndex))
+			c.insertJumpToBlock(args, targetBlk)
+			builder.SetCurrentBlock(current)
+			targetBlk = trampolineBlk
+			sealTargetBlk = true
+			args = ssa.ValuesNil
+		}
+
+		if c.needListener && targetBlk.ReturnBlock() {
+			current := builder.CurrentBlock()
+			targetBlk = builder.AllocateBasicBlock()
+			builder.SetCurrentBlock(targetBlk)
+			sealTargetBlk = true
+			c.callListenerAfter()
+			instr := builder.AllocateInstruction()
+			instr.AsReturn(args)
+			builder.InsertInstruction(instr)
+			args = ssa.ValuesNil
+			builder.SetCurrentBlock(current)
+		}
+
+		brnz := builder.AllocateInstruction()
+		brnz.AsBrnz(isNonNull, args, targetBlk)
+		builder.InsertInstruction(brnz)
+
+		if sealTargetBlk {
+			builder.Seal(targetBlk)
+		}
+
+		// Fall-through: ref is null, nothing extra pushed.
+		elseBlk := builder.AllocateBasicBlock()
+		c.insertJumpToBlock(ssa.ValuesNil, elseBlk)
+		builder.Seal(elseBlk)
+		builder.SetCurrentBlock(elseBlk)
+
+	case wasm.OpcodeCallRef:
+		typeIndex := c.readI32u()
+		if state.unreachable {
+			break
+		}
+		c.lowerCallRef(typeIndex)
+
+	case wasm.OpcodeReturnCallRef:
+		typeIndex := c.readI32u()
+		if state.unreachable {
+			break
+		}
+		c.emitTryTableLeaves(len(c.state().controlFrames))
+		c.lowerTailCallReturnCallRef(typeIndex)
+		state.unreachable = true
+
 	default:
 		panic("TODO: unsupported in wazevo yet: " + wasm.InstructionName(op))
 	}
@@ -3963,6 +4113,91 @@ func (c *Compiler) lowerTailCallReturnCallIndirect(typeIndex, tableIndex uint32)
 	builder := c.ssaBuilder
 	state := c.state()
 	executablePtr, typ, args := c.prepareCallIndirect(typeIndex, tableIndex)
+
+	call := builder.AllocateInstruction()
+	call.AsTailCallReturnCallIndirect(executablePtr, c.signatures[typ], args)
+	builder.InsertInstruction(call)
+
+	// In a proper tail call, the following code is unreachable since execution
+	// transfers to the callee. However, sometimes the backend might need to fall back to
+	// a regular call, so we include return handling and let the backend delete it
+	// when redundant.
+	// For details, see internal/engine/RATIONALE.md
+	first, rest := call.Returns()
+	if first.Valid() {
+		state.push(first)
+	}
+	for _, v := range rest {
+		state.push(v)
+	}
+
+	c.reloadAfterCall()
+	c.lowerReturn(builder)
+}
+
+func (c *Compiler) prepareCallRef(typeIndex uint32) (ssa.Value, *wasm.FunctionType, ssa.Values) {
+	builder := c.ssaBuilder
+	state := c.state()
+
+	functionInstancePtr := state.pop()
+
+	// Check if it is not the null pointer.
+	zero := builder.AllocateInstruction()
+	zero.AsIconst64(0)
+	builder.InsertInstruction(zero)
+	checkNull := builder.AllocateInstruction()
+	checkNull.AsIcmp(functionInstancePtr, zero.Return(), ssa.IntegerCmpCondEqual)
+	builder.InsertInstruction(checkNull)
+	exitIfNull := builder.AllocateInstruction()
+	exitIfNull.AsExitIfTrueWithCode(c.execCtxPtrValue, checkNull.Return(), wazevoapi.ExitCodeNullReference)
+	builder.InsertInstruction(exitIfNull)
+
+	// Load the executable and moduleContextOpaquePtr from the function instance.
+	loadExecutablePtr := builder.AllocateInstruction()
+	loadExecutablePtr.AsLoad(functionInstancePtr, wazevoapi.FunctionInstanceExecutableOffset, ssa.TypeI64)
+	builder.InsertInstruction(loadExecutablePtr)
+	executablePtr := loadExecutablePtr.Return()
+	loadModuleContextOpaquePtr := builder.AllocateInstruction()
+	loadModuleContextOpaquePtr.AsLoad(functionInstancePtr, wazevoapi.FunctionInstanceModuleContextOpaquePtrOffset, ssa.TypeI64)
+	builder.InsertInstruction(loadModuleContextOpaquePtr)
+	moduleContextOpaquePtr := loadModuleContextOpaquePtr.Return()
+
+	typ := &c.m.TypeSection[typeIndex]
+	tail := len(state.values) - len(typ.Params)
+	vs := state.values[tail:]
+	state.values = state.values[:tail]
+	args := c.allocateVarLengthValues(2+len(vs), c.execCtxPtrValue, moduleContextOpaquePtr)
+	args = args.Append(builder.VarLengthPool(), vs...)
+
+	c.storeCallerModuleContext()
+
+	return executablePtr, typ, args
+}
+
+func (c *Compiler) lowerCallRef(typeIndex uint32) {
+	builder := c.ssaBuilder
+	state := c.state()
+	executablePtr, typ, args := c.prepareCallRef(typeIndex)
+
+	call := builder.AllocateInstruction()
+	call.AsCallIndirect(executablePtr, c.signatures[typ], args)
+	builder.InsertInstruction(call)
+
+	first, rest := call.Returns()
+	if first.Valid() {
+		state.push(first)
+	}
+	for _, v := range rest {
+		state.push(v)
+	}
+
+	c.reloadAfterCall()
+}
+
+func (c *Compiler) lowerTailCallReturnCallRef(typeIndex uint32) {
+	builder := c.ssaBuilder
+	state := c.state()
+	executablePtr, typ, args := c.prepareCallRef(typeIndex)
 
 	call := builder.AllocateInstruction()
 	call.AsTailCallReturnCallIndirect(executablePtr, c.signatures[typ], args)

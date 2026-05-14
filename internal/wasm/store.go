@@ -180,7 +180,7 @@ func (m *ModuleInstance) GetFunctionTypeID(t *FunctionType) FunctionTypeID {
 func (m *ModuleInstance) buildElementInstances(elements []ElementSegment) {
 	m.ElementInstances = make([][]Reference, len(elements))
 	for i, elm := range elements {
-		if elm.Type == RefTypeFuncref && elm.Mode == ElementModePassive {
+		if elm.Type.Kind() == RefTypeFuncref.Kind() && elm.Mode == ElementModePassive {
 			// Only passive elements can be access as element instances.
 			// See https://www.w3.org/TR/2022/WD-wasm-core-2-20220419/syntax/modules.html#element-segments
 			inits := elm.Init
@@ -444,7 +444,15 @@ func (m *ModuleInstance) resolveImports(ctx context.Context, module *Module) (er
 				expectedType := &module.TypeSection[i.DescFunc]
 				src := importedModule.Source
 				actual := src.typeOfFunction(imported.Index)
-				if !actual.EqualsSignature(expectedType.Params, expectedType.Results) {
+				matched := false
+				if m.TypeIDs != nil && importedModule.TypeIDs != nil {
+					// Use structural type IDs for comparison (handles concrete ref types across modules).
+					actualTypeIdx, ok := src.typeIndexOfFunction(imported.Index)
+					matched = ok && importedModule.TypeIDs[actualTypeIdx] == m.TypeIDs[i.DescFunc]
+				} else {
+					matched = actual.EqualsSignature(expectedType.Params, expectedType.Results)
+				}
+				if !matched {
 					err = errorInvalidImport(i, fmt.Errorf("signature mismatch: %s != %s", expectedType, actual))
 					return
 				}
@@ -506,7 +514,8 @@ func (m *ModuleInstance) resolveImports(ctx context.Context, module *Module) (er
 					return
 				}
 
-				if expected.ValType != importedGlobal.Type.ValType {
+				if expected.Mutable && expected.ValType != importedGlobal.Type.ValType ||
+					!expected.Mutable && !isRefSubtypeOf(importedGlobal.Type.ValType, expected.ValType) {
 					err = errorInvalidImport(i, fmt.Errorf("value type mismatch: %s != %s",
 						ValueTypeName(expected.ValType), ValueTypeName(importedGlobal.Type.ValType)))
 					return
@@ -600,18 +609,84 @@ func (s *Store) GetFunctionTypeIDs(ts []FunctionType) ([]FunctionTypeID, error) 
 	ret := make([]FunctionTypeID, len(ts))
 	for i := range ts {
 		t := &ts[i]
-		inst, err := s.GetFunctionTypeID(t)
+		key := structuralTypeKey(t, ret)
+		id, err := s.getFunctionTypeIDByKey(key)
 		if err != nil {
 			return nil, err
 		}
-		ret[i] = inst
+		ret[i] = id
 	}
 	return ret, nil
 }
 
+// structuralValueTypeName returns a string representation of a ValueType where
+// concrete ref type indices are replaced with their FunctionTypeID. This makes
+// the name independent of module-local type index numbering.
+func structuralValueTypeName(vt ValueType, typeIDs []FunctionTypeID) string {
+	if vt.IsConcreteRef() {
+		idx := vt.TypeIndex()
+		if int(idx) < len(typeIDs) {
+			if vt.IsNullable() {
+				return fmt.Sprintf("(ref null tid=%d)", typeIDs[idx])
+			}
+			return fmt.Sprintf("(ref tid=%d)", typeIDs[idx])
+		}
+	}
+	return ValueTypeName(vt)
+}
+
+// structuralTypeKey returns a string key for a FunctionType that is stable
+// across modules. For signatures without concrete ref types it falls back to
+// FunctionType.key(). When concrete refs are present, local type indices are
+// replaced with their already-assigned FunctionTypeID so that two modules
+// defining structurally identical types at different indices produce the same
+// key and share a single FunctionTypeID.
+func structuralTypeKey(ft *FunctionType, typeIDs []FunctionTypeID) string {
+	hasConcreteRef := false
+	for _, p := range ft.Params {
+		if p.IsConcreteRef() {
+			hasConcreteRef = true
+			break
+		}
+	}
+	if !hasConcreteRef {
+		for _, r := range ft.Results {
+			if r.IsConcreteRef() {
+				hasConcreteRef = true
+				break
+			}
+		}
+	}
+	if !hasConcreteRef {
+		return ft.key()
+	}
+	var ret string
+	for _, b := range ft.Params {
+		ret += structuralValueTypeName(b, typeIDs)
+	}
+	if len(ft.Params) == 0 {
+		ret += "v_"
+	} else {
+		ret += "_"
+	}
+	for _, b := range ft.Results {
+		ret += structuralValueTypeName(b, typeIDs)
+	}
+	if len(ft.Results) == 0 {
+		ret += "v"
+	}
+	if ft.RecGroupSize > 1 {
+		ret += fmt.Sprintf("|rec%d/%d", ft.RecGroupPosition, ft.RecGroupSize)
+	}
+	return ret
+}
+
 func (s *Store) GetFunctionTypeID(t *FunctionType) (FunctionTypeID, error) {
+	return s.getFunctionTypeIDByKey(t.key())
+}
+
+func (s *Store) getFunctionTypeIDByKey(key string) (FunctionTypeID, error) {
 	s.mux.RLock()
-	key := t.key()
 	id, ok := s.typeIDs[key]
 	s.mux.RUnlock()
 	if !ok {

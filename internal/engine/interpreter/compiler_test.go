@@ -3716,3 +3716,11 @@ func TestCompiler_threads(t *testing.T) {
 		})
 	}
 }
+
+func TestEmitDefaultValue_PanicsOnUnknownType(t *testing.T) {
+	defer func() {
+		require.Contains(t, fmt.Sprintf("%v", recover()), "unsupported value type for default value")
+	}()
+	c := &compiler{}
+	c.emitDefaultValue(0xFF)
+}

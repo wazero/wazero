@@ -118,7 +118,15 @@ func TestDecodeConstantExpression_errors(t *testing.T) {
 				0xff,
 				wasm.OpcodeEnd,
 			},
-			expectedErr: "invalid type for ref.null: 0xff",
+			expectedErr: "read const expression opcode: EOF",
+			features:    api.CoreFeatureBulkMemoryOperations,
+		},
+		{
+			in: []byte{
+				wasm.OpcodeRefNull,
+				0x80, // LEB128 continuation bit set with no following byte
+			},
+			expectedErr: "invalid type for ref.null: 0x80",
 			features:    api.CoreFeatureBulkMemoryOperations,
 		},
 		{
