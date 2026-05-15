@@ -185,3 +185,63 @@ func testBrStaleHandler(t *testing.T, cfg wazero.RuntimeConfig) {
 	require.NoError(t, err)
 	require.Equal(t, int32(1), api.DecodeI32(res[0]))
 }
+
+// TestExceptionHandlingCompilationCache verifies that
+// the compilation cache round-trips the catchClauseTable correctly.
+func TestExceptionHandlingCompilationCache(t *testing.T) {
+	if !platform.CompilerSupported() {
+		t.Skip()
+	}
+
+	cacheDir := t.TempDir()
+
+	for _, tc := range []struct {
+		name string
+		wasm []byte
+		fn   string
+		args []uint64
+		want int32
+	}{
+		{"cross_frame_catch", ehCrossCallnativeWasm, "test_cross_frame_catch", nil, 1},
+		{"pdfium_rethrow", ehPdfiumWasm, "test_one_level_rethrow", nil, 1},
+		{"br_exits_try_table", ehBrOrphanWasm, "test", nil, 1},
+		{"br_stale_handler", ehBrStaleHandlerWasm, "test", nil, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			// First: compile fresh and populate the file cache.
+			cache1, err := wazero.NewCompilationCacheWithDir(cacheDir)
+			require.NoError(t, err)
+			cfg1 := wazero.NewRuntimeConfigCompiler().
+				WithCoreFeatures(api.CoreFeaturesV2 | experimental.CoreFeaturesExceptionHandling).
+				WithCompilationCache(cache1)
+			r1 := wazero.NewRuntimeWithConfig(ctx, cfg1)
+			mod1, err := r1.InstantiateWithConfig(ctx, tc.wasm,
+				wazero.NewModuleConfig().WithStartFunctions())
+			require.NoError(t, err)
+			res, err := mod1.ExportedFunction(tc.fn).Call(ctx, tc.args...)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, api.DecodeI32(res[0]))
+			r1.Close(ctx)
+			cache1.Close(ctx)
+
+			// Second: new runtime loading from file cache.
+			// Without the fix, catchClauseTable is empty → panic.
+			cache2, err := wazero.NewCompilationCacheWithDir(cacheDir)
+			require.NoError(t, err)
+			cfg2 := wazero.NewRuntimeConfigCompiler().
+				WithCoreFeatures(api.CoreFeaturesV2 | experimental.CoreFeaturesExceptionHandling).
+				WithCompilationCache(cache2)
+			r2 := wazero.NewRuntimeWithConfig(ctx, cfg2)
+			mod2, err := r2.InstantiateWithConfig(ctx, tc.wasm,
+				wazero.NewModuleConfig().WithStartFunctions())
+			require.NoError(t, err)
+			res, err = mod2.ExportedFunction(tc.fn).Call(ctx, tc.args...)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, api.DecodeI32(res[0]))
+			r2.Close(ctx)
+			cache2.Close(ctx)
+		})
+	}
+}
