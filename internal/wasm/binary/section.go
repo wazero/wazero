@@ -67,14 +67,14 @@ func decodeTypeSection(enabledFeatures api.CoreFeatures, r *bytes.Reader) ([]was
 // types decoded so far; for rec groups, it is the index after the last member,
 // allowing mutual references within the group.
 func validateTypeForwardRefs(ft *wasm.FunctionType, maxTypeIndex uint32) error {
-	for _, vt := range ft.Params {
+	for i, vt := range ft.Params {
 		if vt.IsConcreteRef() && vt.TypeIndex() >= maxTypeIndex {
-			return fmt.Errorf("unknown type")
+			return fmt.Errorf("unknown type index %d in param[%d]", vt.TypeIndex(), i)
 		}
 	}
-	for _, vt := range ft.Results {
+	for i, vt := range ft.Results {
 		if vt.IsConcreteRef() && vt.TypeIndex() >= maxTypeIndex {
-			return fmt.Errorf("unknown type")
+			return fmt.Errorf("unknown type index %d in result[%d]", vt.TypeIndex(), i)
 		}
 	}
 	return nil

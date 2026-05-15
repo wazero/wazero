@@ -537,7 +537,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				}
 				for i := range defaultLabelType {
 					if defaultLabelType[i] != valueTypeUnknown && !areRefTypesCompatible(defaultLabelType[i], tableLabelType[i]) {
-						return fmt.Errorf("incosistent block type for %s at %d", OpcodeBrTableName, l)
+						return fmt.Errorf("inconsistent block type for %s at %d", OpcodeBrTableName, l)
 					}
 				}
 			}
