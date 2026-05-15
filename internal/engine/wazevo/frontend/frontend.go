@@ -447,23 +447,7 @@ func (c *Compiler) declareNecessaryVariables() {
 }
 
 func (c *Compiler) declareWasmGlobal(typ wasm.ValueType, mutable bool) {
-	var st ssa.Type
-	switch typ {
-	case wasm.ValueTypeI32:
-		st = ssa.TypeI32
-	case wasm.ValueTypeI64,
-		// externref, funcref, and exnref are represented as I64 since we only support 64-bit platforms.
-		wasm.ValueTypeExternref, wasm.ValueTypeFuncref, wasm.ValueTypeExnref:
-		st = ssa.TypeI64
-	case wasm.ValueTypeF32:
-		st = ssa.TypeF32
-	case wasm.ValueTypeF64:
-		st = ssa.TypeF64
-	case wasm.ValueTypeV128:
-		st = ssa.TypeV128
-	default:
-		panic("TODO: " + wasm.ValueTypeName(typ))
-	}
+	st := WasmTypeToSSAType(typ)
 	v := c.ssaBuilder.DeclareVariable(st)
 	index := wasm.Index(len(c.globalVariables))
 	c.globalVariables = append(c.globalVariables, v)
@@ -490,6 +474,10 @@ func WasmTypeToSSAType(vt wasm.ValueType) ssa.Type {
 	case wasm.ValueTypeV128:
 		return ssa.TypeV128
 	default:
+		// Concrete ref types (ref $t) have variable bit patterns.
+		if vt.IsRef() {
+			return ssa.TypeI64
+		}
 		panic("TODO: " + wasm.ValueTypeName(vt))
 	}
 }

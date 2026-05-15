@@ -367,6 +367,38 @@ func TestModule_validateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "concrete ref type element with ref.func init",
+			input: &Module{
+				TypeSection:     []FunctionType{{}},
+				TableSection:    []Table{{Min: 1, Type: ValueTypeConcreteRef(0, true)}},
+				FunctionSection: []Index{0},
+				CodeSection:     []Code{codeEnd},
+				ElementSection: []ElementSegment{
+					{
+						OffsetExpr: NewConstantExpressionFromI32(0),
+						Init:       []ConstantExpression{NewConstantExpressionFromOpcode(OpcodeRefFunc, const0)},
+						Type:       ValueTypeConcreteRef(0, true),
+					},
+				},
+			},
+		},
+		{
+			name: "concrete ref type element with ref.null init",
+			input: &Module{
+				TypeSection:     []FunctionType{{}},
+				TableSection:    []Table{{Min: 1, Type: ValueTypeConcreteRef(0, true)}},
+				FunctionSection: []Index{0},
+				CodeSection:     []Code{codeEnd},
+				ElementSection: []ElementSegment{
+					{
+						OffsetExpr: NewConstantExpressionFromI32(0),
+						Init:       []ConstantExpression{NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{0x00})},
+						Type:       ValueTypeConcreteRef(0, true),
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -454,6 +486,23 @@ func TestModule_validateTable_Errors(t *testing.T) {
 				},
 			},
 			expectedErr: "element[0].init[0] must be externref but was funcref",
+		},
+		{
+			name: "concrete ref type element with incompatible externref init",
+			input: &Module{
+				TypeSection:  []FunctionType{{}},
+				TableSection: []Table{{Type: ValueTypeConcreteRef(0, true)}},
+				ElementSection: []ElementSegment{
+					{
+						OffsetExpr: NewConstantExpressionFromOpcode(OpcodeI32Const, leb128.EncodeUint64(math.MaxUint64)),
+						Type:       ValueTypeConcreteRef(0, true),
+						Init: []ConstantExpression{
+							NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{ValueTypeExternref.Kind()}),
+						},
+					},
+				},
+			},
+			expectedErr: "element[0].init[0] must be (ref null 0) but was externref",
 		},
 		{
 			name: "constant derived element offset - decode error",

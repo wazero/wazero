@@ -619,6 +619,14 @@ func (e *engine) lowerIR(ir *compilationResult, ret *compiledFunction) error {
 			}
 		case operationKindTailCallReturnCallIndirect:
 			e.setLabelAddress(&op.Us[1], label(op.Us[1]), labelAddressResolutions)
+		case operationKindBrOnNull:
+			e.setLabelAddress(&op.U1, label(op.U1), labelAddressResolutions)
+			e.setLabelAddress(&op.U2, label(op.U2), labelAddressResolutions)
+		case operationKindBrOnNonNull:
+			e.setLabelAddress(&op.U1, label(op.U1), labelAddressResolutions)
+			e.setLabelAddress(&op.U2, label(op.U2), labelAddressResolutions)
+		case operationKindReturnCallRef:
+			e.setLabelAddress(&op.Us[1], label(op.Us[1]), labelAddressResolutions)
 		}
 	}
 
@@ -4588,6 +4596,73 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 
 			ce.dropForTailCall(frame, tf)
 			body, bodyLen = ce.resetPc(frame, tf)
+
+		case operationKindCallRef:
+			ref := ce.popValue()
+			if ref == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			tf := functionFromUintptr(uintptr(ref))
+
+			frameUnwound := ce.callWithUnwind(ctx, f.moduleInstance, tf)
+			if frameUnwound {
+				frame = ce.frames[len(ce.frames)-1]
+				body = frame.f.parent.body
+				bodyLen = uint64(len(body))
+				continue
+			}
+			frame.pc++
+
+		case operationKindReturnCallRef:
+			ref := ce.popValue()
+			if ref == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			tf := functionFromUintptr(uintptr(ref))
+
+			if tf.moduleInstance != f.moduleInstance {
+				frameUnwound := ce.callWithUnwind(ctx, f.moduleInstance, tf)
+				if frameUnwound {
+					frame = ce.frames[len(ce.frames)-1]
+					body = frame.f.parent.body
+					bodyLen = uint64(len(body))
+					continue
+				}
+				ce.drop(op.Us[0])
+				frame.pc = op.Us[1]
+				continue
+			}
+
+			ce.dropForTailCall(frame, tf)
+			body, bodyLen = ce.resetPc(frame, tf)
+
+		case operationKindRefAsNonNull:
+			ref := ce.popValue()
+			if ref == 0 {
+				panic(wasmruntime.ErrRuntimeNullReference)
+			}
+			ce.pushValue(ref)
+			frame.pc++
+
+		case operationKindBrOnNull:
+			ref := ce.popValue()
+			if ref == 0 {
+				ce.drop(op.U3)
+				frame.pc = op.U1
+			} else {
+				ce.pushValue(ref)
+				frame.pc = op.U2
+			}
+
+		case operationKindBrOnNonNull:
+			ref := ce.popValue()
+			if ref != 0 {
+				ce.drop(op.U3)
+				ce.pushValue(ref)
+				frame.pc = op.U1
+			} else {
+				frame.pc = op.U2
+			}
 
 		default:
 			frame.pc++

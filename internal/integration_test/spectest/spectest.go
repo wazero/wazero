@@ -323,6 +323,8 @@ func (c command) expectedError() (err error) {
 		err = wasmruntime.ErrRuntimeUnreachable
 	case "uncaught exception":
 		err = wasmruntime.ErrRuntimeUncaughtException
+	case "null", "null reference", "null function reference", "null function":
+		err = wasmruntime.ErrRuntimeNullReference
 	default:
 		if strings.HasPrefix(c.Text, "uninitialized") {
 			err = wasmruntime.ErrRuntimeInvalidTableAccess

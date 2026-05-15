@@ -59,8 +59,19 @@ func decodeConstantExpression(r *bytes.Reader, enabledFeatures api.CoreFeatures,
 			reftype := wasm.ValueType(b)
 			if err != nil {
 				return fmt.Errorf("read reference type for ref.null: %w", err)
-			} else if reftype != wasm.RefTypeFuncref && reftype != wasm.RefTypeExternref {
-				return fmt.Errorf("invalid type for ref.null: 0x%x", reftype)
+			}
+			switch reftype {
+			case wasm.RefTypeFuncref, wasm.RefTypeExternref, wasm.ValueTypeExnref:
+				// Valid abstract heap type.
+			default:
+				// Could be a concrete type index; unread the byte and try reading as LEB128.
+				if err := r.UnreadByte(); err != nil {
+					return fmt.Errorf("unread byte for ref.null: %w", err)
+				}
+				_, _, err = leb128.DecodeUint32(r)
+				if err != nil {
+					return fmt.Errorf("invalid type for ref.null: 0x%x", reftype)
+				}
 			}
 		case wasm.OpcodeRefFunc:
 			if err := enabledFeatures.RequireEnabled(api.CoreFeatureBulkMemoryOperations); err != nil {

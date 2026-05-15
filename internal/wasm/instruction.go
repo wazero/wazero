@@ -274,6 +274,18 @@ const (
 	// Currently, this is only supported in the constant expression in element segments.
 	OpcodeRefFunc = 0xd2
 
+	// Typed function references instructions (toggled with CoreFeaturesTypedFunctionReferences)
+
+	// OpcodeRefAsNonNull pops a nullable reference and traps if null, otherwise pushes
+	// the non-nullable version.
+	OpcodeRefAsNonNull Opcode = 0xd4
+	// OpcodeBrOnNull pops a reference and branches if null, otherwise pushes
+	// the non-nullable reference.
+	OpcodeBrOnNull Opcode = 0xd5
+	// OpcodeBrOnNonNull pops a reference and branches if non-null (carrying the ref),
+	// otherwise falls through.
+	OpcodeBrOnNonNull Opcode = 0xd6
+
 	// Below are toggled with CoreFeatureSignExtensionOps
 
 	// OpcodeI32Extend8S extends a signed 8-bit integer to a 32-bit integer.
@@ -811,6 +823,14 @@ const (
 	OpcodeTailCallReturnCallIndirect OpcodeTailCall = 0x13
 )
 
+// OpcodeCallRef and OpcodeReturnCallRef are typed function references instructions.
+//
+// These opcodes are toggled with CoreFeaturesTypedFunctionReferences.
+const (
+	OpcodeCallRef       Opcode = 0x14
+	OpcodeReturnCallRef Opcode = 0x15
+)
+
 const (
 	OpcodeUnreachableName       = "unreachable"
 	OpcodeNopName               = "nop"
@@ -986,9 +1006,14 @@ const (
 	OpcodeF32ReinterpretI32Name = "f32.reinterpret_i32"
 	OpcodeF64ReinterpretI64Name = "f64.reinterpret_i64"
 
-	OpcodeRefNullName   = "ref.null"
-	OpcodeRefIsNullName = "ref.is_null"
-	OpcodeRefFuncName   = "ref.func"
+	OpcodeRefNullName       = "ref.null"
+	OpcodeRefIsNullName     = "ref.is_null"
+	OpcodeRefFuncName       = "ref.func"
+	OpcodeRefAsNonNullName  = "ref.as_non_null"
+	OpcodeBrOnNullName      = "br_on_null"
+	OpcodeBrOnNonNullName   = "br_on_non_null"
+	OpcodeCallRefName       = "call_ref"
+	OpcodeReturnCallRefName = "return_call_ref"
 
 	OpcodeTableGetName = "table.get"
 	OpcodeTableSetName = "table.set"
@@ -1184,9 +1209,14 @@ var instructionNames = [256]string{
 	OpcodeF32ReinterpretI32: OpcodeF32ReinterpretI32Name,
 	OpcodeF64ReinterpretI64: OpcodeF64ReinterpretI64Name,
 
-	OpcodeRefNull:   OpcodeRefNullName,
-	OpcodeRefIsNull: OpcodeRefIsNullName,
-	OpcodeRefFunc:   OpcodeRefFuncName,
+	OpcodeRefNull:       OpcodeRefNullName,
+	OpcodeRefIsNull:     OpcodeRefIsNullName,
+	OpcodeRefFunc:       OpcodeRefFuncName,
+	OpcodeRefAsNonNull:  OpcodeRefAsNonNullName,
+	OpcodeBrOnNull:      OpcodeBrOnNullName,
+	OpcodeBrOnNonNull:   OpcodeBrOnNonNullName,
+	OpcodeCallRef:       OpcodeCallRefName,
+	OpcodeReturnCallRef: OpcodeReturnCallRefName,
 
 	OpcodeTableGet: OpcodeTableGetName,
 	OpcodeTableSet: OpcodeTableSetName,

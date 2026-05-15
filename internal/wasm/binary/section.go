@@ -29,6 +29,7 @@ func decodeTypeSection(enabledFeatures api.CoreFeatures, r *bytes.Reader) ([]was
 			if err != nil {
 				return nil, fmt.Errorf("read rec group count: %v", err)
 			}
+			startIdx := uint32(len(result))
 			for j := uint32(0); j < recCount; j++ {
 				var ft wasm.FunctionType
 				if err = decodeFunctionType(enabledFeatures, r, &ft); err != nil {
@@ -37,6 +38,11 @@ func decodeTypeSection(enabledFeatures api.CoreFeatures, r *bytes.Reader) ([]was
 				ft.RecGroupSize = int(recCount)
 				ft.RecGroupPosition = int(j)
 				result = append(result, ft)
+			}
+			for j := uint32(0); j < recCount; j++ {
+				if err := validateTypeForwardRefs(&result[startIdx+j], startIdx+recCount); err != nil {
+					return nil, err
+				}
 			}
 		} else {
 			// Put back the byte and decode as a regular function type.
@@ -47,10 +53,31 @@ func decodeTypeSection(enabledFeatures api.CoreFeatures, r *bytes.Reader) ([]was
 			if err = decodeFunctionType(enabledFeatures, r, &ft); err != nil {
 				return nil, fmt.Errorf("read %d-th type: %v", i, err)
 			}
+			if err := validateTypeForwardRefs(&ft, uint32(len(result))); err != nil {
+				return nil, err
+			}
 			result = append(result, ft)
 		}
 	}
 	return result, nil
+}
+
+// validateTypeForwardRefs rejects concrete reference types (ref $t) whose type
+// index is not yet defined. For standalone types, maxTypeIndex is the count of
+// types decoded so far; for rec groups, it is the index after the last member,
+// allowing mutual references within the group.
+func validateTypeForwardRefs(ft *wasm.FunctionType, maxTypeIndex uint32) error {
+	for i, vt := range ft.Params {
+		if vt.IsConcreteRef() && vt.TypeIndex() >= maxTypeIndex {
+			return fmt.Errorf("unknown type index %d in param[%d]", vt.TypeIndex(), i)
+		}
+	}
+	for i, vt := range ft.Results {
+		if vt.IsConcreteRef() && vt.TypeIndex() >= maxTypeIndex {
+			return fmt.Errorf("unknown type index %d in result[%d]", vt.TypeIndex(), i)
+		}
+	}
+	return nil
 }
 
 // decodeImportSection decodes the decoded import segments plus the count per wasm.ExternType.
