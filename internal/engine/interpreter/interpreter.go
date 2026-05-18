@@ -15,6 +15,7 @@ import (
 	"github.com/tetratelabs/wazero/experimental"
 	"github.com/tetratelabs/wazero/internal/expctxkeys"
 	"github.com/tetratelabs/wazero/internal/filecache"
+	"github.com/tetratelabs/wazero/internal/fuel"
 	"github.com/tetratelabs/wazero/internal/internalapi"
 	"github.com/tetratelabs/wazero/internal/moremath"
 	"github.com/tetratelabs/wazero/internal/wasm"
@@ -886,11 +887,20 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 	typeIDs := moduleInst.TypeIDs
 	dataInstances := moduleInst.DataInstances
 	elementInstances := moduleInst.ElementInstances
+	var meter *fuel.Meter
+	if v := ctx.Value(expctxkeys.FuelKey{}); v != nil {
+		meter = v.(*fuel.Meter)
+	}
 	ce.pushFrame(frame)
 	body := frame.f.parent.body
 	bodyLen := uint64(len(body))
 	for frame.pc < bodyLen {
 		op := &body[frame.pc]
+		if meter != nil && op.Kind != operationKindBuiltinFunctionCheckExitCode {
+			if !meter.Consume(1) {
+				panic(wasmruntime.ErrRuntimeOutOfFuel)
+			}
+		}
 		// TODO: add description of each operation/case
 		// on, for example, how many args are used,
 		// how the stack is modified, etc.
