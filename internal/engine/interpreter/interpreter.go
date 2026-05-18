@@ -183,6 +183,10 @@ type callEngine struct {
 
 	// stackiterator for Listeners to walk frames and stack.
 	stackIterator stackIterator
+
+	// fuel is the meter set by experimental.SetFuel on the call ctx, or nil.
+	// Cached here so the dispatch loop can avoid a ctx.Value lookup per frame.
+	fuel *fuel.Meter
 }
 
 // matchCatchClause checks whether a single catch clause matches the given exception.
@@ -751,6 +755,8 @@ func (ce *callEngine) call(ctx context.Context, params, results []uint64) (_ []u
 		ctx = context.WithValue(ctx, expctxkeys.SnapshotterKey{}, ce)
 	}
 
+	ce.fuel, _ = ctx.Value(expctxkeys.FuelKey{}).(*fuel.Meter)
+
 	defer func() {
 		// If the module closed during the call, and the call didn't err for another reason, set an ExitError.
 		if err == nil {
@@ -887,10 +893,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 	typeIDs := moduleInst.TypeIDs
 	dataInstances := moduleInst.DataInstances
 	elementInstances := moduleInst.ElementInstances
-	var meter *fuel.Meter
-	if v := ctx.Value(expctxkeys.FuelKey{}); v != nil {
-		meter = v.(*fuel.Meter)
-	}
+	meter := ce.fuel
 	ce.pushFrame(frame)
 	body := frame.f.parent.body
 	bodyLen := uint64(len(body))
