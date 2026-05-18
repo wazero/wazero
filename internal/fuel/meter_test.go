@@ -37,11 +37,11 @@ func TestMeter_ConsumeAlwaysDeducts(t *testing.T) {
 	require.True(t, m.Consume(3))
 	require.Equal(t, uint64(2), m.Remaining())
 
-	require.False(t, m.Consume(10))            // not enough
-	require.Equal(t, uint64(0), m.Remaining()) // clamped at 0
+	require.False(t, m.Consume(10))
+	require.Equal(t, uint64(0), m.Remaining())
 
 	m.Set(100)
-	require.Equal(t, uint64(100), m.Remaining()) // recovery from negative
+	require.Equal(t, uint64(100), m.Remaining())
 }
 
 func TestMeter_RejectsOverflow(t *testing.T) {

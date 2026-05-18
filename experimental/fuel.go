@@ -9,23 +9,19 @@ import (
 	"github.com/tetratelabs/wazero/internal/wasmruntime"
 )
 
-// ErrOutOfFuel is returned from a wazero Call when fuel installed via
-// SetFuel is exhausted. Use errors.Is to detect it.
+// ErrOutOfFuel is returned when fuel set via SetFuel is exhausted.
 var ErrOutOfFuel = wasmruntime.ErrRuntimeOutOfFuel
 
-// ErrFuelNotSupported is returned when a wasm function is invoked with a
-// fueled context under an engine that does not implement fuel metering.
+// ErrFuelNotSupported is returned when fuel is set but the engine does not
+// support metering.
 var ErrFuelNotSupported = errors.New("fuel metering requires interpreter runtime")
 
-// SetFuel installs or replaces a fuel budget on ctx. Wasm functions invoked
-// under the returned context — including a module's start function during
-// instantiation — are metered: each dispatched operation consumes one unit,
-// and execution traps with ErrOutOfFuel when the budget is exhausted.
+// SetFuel installs or replaces a fuel budget on ctx. Each dispatched
+// operation consumes one unit; execution traps with ErrOutOfFuel when the
+// budget is exhausted.
 //
-// The first call on a given ctx installs a meter and returns a new ctx.
-// Subsequent calls on a descendant ctx replace the budget on the same meter
-// in place; the returned ctx is the input unchanged. This makes refueling
-// mid-execution from a host function simply another SetFuel call.
+// Subsequent SetFuel calls replace the budget in place, so refueling from a
+// host function is just another SetFuel call.
 //
 // Only the interpreter engine honors fuel; the compiler engine returns
 // ErrFuelNotSupported.
@@ -37,8 +33,8 @@ func SetFuel(ctx context.Context, units uint64) context.Context {
 	return context.WithValue(ctx, expctxkeys.FuelKey{}, fuel.New(units))
 }
 
-// GetFuel returns the remaining fuel budget on ctx, or 0 if no fuel is
-// installed or the budget is exhausted.
+// GetFuel returns the remaining fuel, or 0 if no fuel is installed or the
+// budget is exhausted.
 func GetFuel(ctx context.Context) uint64 {
 	if m, ok := ctx.Value(expctxkeys.FuelKey{}).(*fuel.Meter); ok {
 		return m.Remaining()
@@ -46,10 +42,7 @@ func GetFuel(ctx context.Context) uint64 {
 	return 0
 }
 
-// AddFuel adds units to the fuel budget on ctx. No-op if no fuel is
-// installed. Unlike SetFuel, this is a single atomic addition: safe to call
-// concurrently with the engine and with other AddFuel callers without a
-// read-modify-write race.
+// AddFuel adds units to the fuel budget. No-op if no fuel is installed.
 func AddFuel(ctx context.Context, units uint64) {
 	if m, ok := ctx.Value(expctxkeys.FuelKey{}).(*fuel.Meter); ok {
 		m.Add(units)

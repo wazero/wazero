@@ -6,9 +6,7 @@ import (
 	"sync/atomic"
 )
 
-// Meter is an atomic, signed fuel counter. The balance is stored as int64
-// because Consume deducts before checking the result and may briefly drive
-// the balance negative. Methods are safe for concurrent use.
+// Meter is a concurrency-safe fuel counter.
 type Meter struct {
 	remaining atomic.Int64
 }
@@ -34,9 +32,8 @@ func (m *Meter) Remaining() uint64 {
 	return 0
 }
 
-// Consume deducts units from the budget and reports whether the budget had
-// enough fuel. Units are deducted unconditionally — the balance may go
-// negative on a false return.
+// Consume deducts units from the budget and reports whether it had enough
+// fuel. Units are deducted unconditionally.
 func (m *Meter) Consume(units uint64) bool {
 	return m.remaining.Add(-toInt64(units)) >= 0
 }

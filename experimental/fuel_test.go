@@ -119,11 +119,9 @@ func TestFuel_Deterministic(t *testing.T) {
 func TestFuel_AddFuel(t *testing.T) {
 	ctx := context.Background()
 
-	// No fuel installed: AddFuel is a no-op.
-	experimental.AddFuel(ctx, 100)
+	experimental.AddFuel(ctx, 100) // no-op: no fuel installed
 	require.Equal(t, uint64(0), experimental.GetFuel(ctx))
 
-	// With fuel installed: AddFuel increments the existing balance.
 	ctx = experimental.SetFuel(ctx, 10)
 	experimental.AddFuel(ctx, 5)
 	require.Equal(t, uint64(15), experimental.GetFuel(ctx))
@@ -169,8 +167,7 @@ func TestFuel_RefuelInPlace(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, experimental.GetFuel(ctx) < 1_000)
 
-	// Refuel via SetFuel on the same ctx — mutates in place, no reassignment.
-	experimental.SetFuel(ctx, 1_000)
+	experimental.SetFuel(ctx, 1_000) // refuel in place
 	require.Equal(t, uint64(1_000), experimental.GetFuel(ctx))
 
 	_, err = fn.Call(ctx)
@@ -199,7 +196,7 @@ func TestFuel_HostRefuel(t *testing.T) {
 	m, err := r.Instantiate(ctx, bin)
 	require.NoError(t, err)
 
-	ctx = experimental.SetFuel(ctx, 3) // tight: would exhaust without host refuel
+	ctx = experimental.SetFuel(ctx, 3) // would exhaust without host refuel
 	results, err := m.ExportedFunction("f").Call(ctx)
 	require.NoError(t, err)
 	require.True(t, refueled.Load())

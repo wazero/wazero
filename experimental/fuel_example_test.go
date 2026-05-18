@@ -18,10 +18,8 @@ import (
 //go:embed testdata/fuel.wasm
 var fuelWasm []byte
 
-// ExampleSetFuel shows how to bound a WebAssembly module's CPU consumption
-// using the experimental fuel API: each dispatched wasm operation consumes
-// one unit, and execution traps with ErrOutOfFuel when the budget reaches
-// zero. SetFuel both installs the initial budget and refuels mid-execution.
+// ExampleSetFuel computes fibonacci with growing arguments, refueling
+// between calls, until one call exhausts the budget.
 func ExampleSetFuel() {
 	ctx := context.Background()
 
@@ -33,37 +31,37 @@ func ExampleSetFuel() {
 	if err != nil {
 		log.Panicln(err)
 	}
-	add := mod.ExportedFunction("add")
+	fib := mod.ExportedFunction("fibonacci")
 
-	// Install a budget on ctx. SetFuel returns a new ctx the first time it
-	// is called; later SetFuel calls on the same ctx mutate the meter in
-	// place.
-	ctx = experimental.SetFuel(ctx, 100)
+	ctx = experimental.SetFuel(ctx, 10_000)
 
-	// Call with plenty of fuel.
-	if _, err = add.Call(ctx, 2, 3); err != nil {
-		log.Panicln(err)
+	for n := uint64(1); ; n++ {
+		before := experimental.GetFuel(ctx)
+		out, err := fib.Call(ctx, n)
+		if errors.Is(err, experimental.ErrOutOfFuel) {
+			fmt.Printf("Exhausted fuel computing fib(%d)\n", n)
+			break
+		}
+		if err != nil {
+			log.Panicln(err)
+		}
+		fmt.Printf("fib(%d) = %d [consumed %d fuel]\n",
+			n, int32(out[0]), before-experimental.GetFuel(ctx))
+		experimental.SetFuel(ctx, 10_000) // refuel
 	}
-	if experimental.GetFuel(ctx) < 100 {
-		fmt.Println("call 1: completed, fuel consumed")
-	}
-
-	// Refuel to a budget too small to cover the next call.
-	experimental.SetFuel(ctx, 1)
-	if _, err = add.Call(ctx, 4, 5); errors.Is(err, experimental.ErrOutOfFuel) {
-		fmt.Println("call 2: out of fuel")
-	}
-
-	// Refuel and run again.
-	experimental.SetFuel(ctx, 100)
-	res, err := add.Call(ctx, 4, 5)
-	if err != nil {
-		log.Panicln(err)
-	}
-	fmt.Printf("call 3: result=%d\n", res[0])
 
 	// Output:
-	// call 1: completed, fuel consumed
-	// call 2: out of fuel
-	// call 3: result=9
+	// fib(1) = 1 [consumed 10 fuel]
+	// fib(2) = 1 [consumed 38 fuel]
+	// fib(3) = 2 [consumed 66 fuel]
+	// fib(4) = 3 [consumed 122 fuel]
+	// fib(5) = 5 [consumed 206 fuel]
+	// fib(6) = 8 [consumed 346 fuel]
+	// fib(7) = 13 [consumed 570 fuel]
+	// fib(8) = 21 [consumed 934 fuel]
+	// fib(9) = 34 [consumed 1522 fuel]
+	// fib(10) = 55 [consumed 2474 fuel]
+	// fib(11) = 89 [consumed 4014 fuel]
+	// fib(12) = 144 [consumed 6506 fuel]
+	// Exhausted fuel computing fib(13)
 }
