@@ -369,7 +369,9 @@ func (m *machine) resolveAddressingMode(arg0offset, ret0offset int64, i *instruc
 }
 
 // resolveRelativeAddresses resolves the relative addresses before encoding.
-func (m *machine) resolveRelativeAddresses(ctx context.Context) {
+func (m *machine) resolveRelativeAddresses(ctx context.Context, initialOffset int64) {
+	m.insertBTIForJumpTableTargets()
+
 	if len(m.unresolvedAddressModes) > 0 {
 		arg0offset, ret0offset := m.arg0OffsetFromSP(), m.ret0OffsetFromSP()
 		for _, i := range m.unresolvedAddressModes {
@@ -395,7 +397,7 @@ func (m *machine) resolveRelativeAddresses(ctx context.Context) {
 		}
 
 		// Next, in order to determine the offsets of relative jumps, we have to calculate the size of each label.
-		var offset int64
+		offset := initialOffset
 		for i, pos := range m.orderedSSABlockLabelPos {
 			pos.binaryOffset = offset
 			var size int64
@@ -462,7 +464,7 @@ func (m *machine) resolveRelativeAddresses(ctx context.Context) {
 		}
 	}
 
-	var currentOffset int64
+	currentOffset := initialOffset
 	for cur := m.rootInstr; cur != nil; cur = cur.next {
 		switch cur.kind {
 		case br:
@@ -499,6 +501,32 @@ func (m *machine) resolveRelativeAddresses(ctx context.Context) {
 			m.compiler.AddSourceOffsetInfo(currentOffset, cur.sourceOffsetInfo())
 		}
 		currentOffset += cur.size()
+	}
+}
+
+func (m *machine) insertBTIForJumpTableTargets() {
+	for i := 0; i < m.jmpTableTargetsNext; i++ {
+		for _, target := range m.jmpTableTargets[i] {
+			pos := m.labelPositionPool.Get(int(target))
+			if pos == nil || pos.begin == nil {
+				panic("BUG: jump table target without label position")
+			}
+			if next := pos.begin.next; next != nil && next.kind == bti {
+				continue
+			}
+
+			bti := m.allocateInstr()
+			bti.asBTI()
+			bti.prev = pos.begin
+			bti.next = pos.begin.next
+			if bti.next != nil {
+				bti.next.prev = bti
+			}
+			pos.begin.next = bti
+			if pos.end == pos.begin {
+				pos.end = bti
+			}
+		}
 	}
 }
 

@@ -28,6 +28,7 @@ var (
 // CompileEntryPreamble implements backend.Machine.
 func (m *machine) CompileEntryPreamble(sig *ssa.Signature) []byte {
 	root := m.compileEntryPreamble(sig)
+	m.c.Emit4Bytes(endbr64Instruction)
 	m.encodeWithoutSSA(root)
 	buf := m.c.Buf()
 	return buf

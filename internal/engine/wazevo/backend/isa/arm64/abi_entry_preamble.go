@@ -17,6 +17,7 @@ import (
 // also SP and FP are correct Go-runtime-based values, and LR is the return address to the Go-side caller.
 func (m *machine) CompileEntryPreamble(signature *ssa.Signature) []byte {
 	root := m.constructEntryPreamble(signature)
+	m.compiler.Emit4Bytes(btiJCInstruction)
 	m.encode(root)
 	return m.compiler.Buf()
 }

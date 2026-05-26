@@ -155,7 +155,7 @@ func (c *callEngine) init() {
 	if wazevoapi.StackGuardCheckEnabled {
 		stackSize += wazevoapi.StackGuardCheckGuardPageSize
 	}
-	c.stack = make([]byte, stackSize)
+	c.stack = allocateStack(stackSize)
 	c.stackTop = alignedStackTop(c.stack)
 	if wazevoapi.StackGuardCheckEnabled {
 		c.execCtx.stackBottomPtr = &c.stack[wazevoapi.StackGuardCheckGuardPageSize]
@@ -163,6 +163,14 @@ func (c *callEngine) init() {
 		c.execCtx.stackBottomPtr = &c.stack[0]
 	}
 	c.execCtxPtr = uintptr(unsafe.Pointer(&c.execCtx))
+	runtime.SetFinalizer(c, (*callEngine).finalize)
+}
+
+func (c *callEngine) finalize() {
+	if c.stack != nil {
+		releaseStack(c.stack)
+		c.stack = nil
+	}
 }
 
 // alignedStackTop returns 16-bytes aligned stack top of given stack.
@@ -352,6 +360,7 @@ func (c *callEngine) callWithStack(ctx context.Context, paramResultStack []uint6
 			adjustClonedStack(oldsp, oldTop, newsp, newfp, c.stackTop)
 			// Old stack must be alive until the new stack is adjusted.
 			runtime.KeepAlive(oldStack)
+			releaseStack(oldStack)
 			c.execCtx.exitCode = wazevoapi.ExitCodeOK
 			afterGoFunctionCallEntrypoint(c.execCtx.goCallReturnAddress, c.execCtxPtr, newsp, newfp)
 		case wazevoapi.ExitCodeGrowMemory:
@@ -722,7 +731,7 @@ func (c *callEngine) growStack() (newSP, newFP uintptr, err error) {
 }
 
 func (c *callEngine) cloneStack(l uintptr) (newSP, newFP, newTop uintptr, newStack []byte) {
-	newStack = make([]byte, l)
+	newStack = allocateStack(int(l))
 
 	relSp := c.stackTop - uintptr(unsafe.Pointer(c.execCtx.stackPointerBeforeGoCall))
 	relFp := c.stackTop - c.execCtx.framePointerBeforeGoCall

@@ -472,6 +472,7 @@ func (m *machine) CompileStackGrowCallSequence() []byte {
 	ret.asRet()
 	linkInstr(cur, ret)
 
+	m.compiler.Emit4Bytes(btiJCInstruction)
 	m.encode(m.rootInstr)
 	return m.compiler.Buf()
 }

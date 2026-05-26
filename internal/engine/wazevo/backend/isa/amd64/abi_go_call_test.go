@@ -76,6 +76,7 @@ L2:
 	mov.q %r12, 48(%rax)
 	exit_sequence %rax
 L3:
+	endbr64
 	add $8, %rsp
 	movq 8(%rsp), %rbx
 	movss 16(%rsp), %xmm0
@@ -151,6 +152,7 @@ L2:
 	mov.q %r12, 48(%rax)
 	exit_sequence %rax
 L3:
+	endbr64
 	add $8, %rsp
 	movq 96(%rax), %rdx
 	movq 112(%rax), %r12
@@ -217,6 +219,7 @@ L2:
 	mov.q %r12, 48(%rax)
 	exit_sequence %rax
 L3:
+	endbr64
 	add $8, %rsp
 	movq 96(%rax), %rdx
 	movq 112(%rax), %r12
@@ -313,6 +316,7 @@ L2:
 	mov.q %r12, 48(%rax)
 	exit_sequence %rax
 L3:
+	endbr64
 	add $8, %rsp
 	movsd (%rsp), %xmm0
 	movdqu 8(%rsp), %xmm1
@@ -441,6 +445,7 @@ func TestMachine_CompileStackGrowCallSequence(t *testing.T) {
 	mov.q %r12, 48(%rax)
 	exit_sequence %rax
 L1:
+	endbr64
 	movq 96(%rax), %rdx
 	movq 112(%rax), %r12
 	movq 128(%rax), %r13

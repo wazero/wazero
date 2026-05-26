@@ -271,6 +271,7 @@ func (m *machine) CompileGoFunctionTrampoline(exitCode wazevoapi.ExitCode, sig *
 	cur = m.revertRBPRSP(cur)
 	linkInstr(cur, m.allocateInstr().asRet())
 
+	m.c.Emit4Bytes(endbr64Instruction)
 	m.encodeWithoutSSA(m.rootInstr)
 	return m.c.Buf()
 }
@@ -330,6 +331,8 @@ func (m *machine) storeReturnAddressAndExit(cur *instruction, execCtx regalloc.V
 
 	nop, l := m.allocateBrTarget()
 	cur = linkInstr(cur, nop)
+	endbr := m.allocateInstr().asEndbr64()
+	cur = linkInstr(cur, endbr)
 	readRip.asLEA(newOperandLabel(l), ripReg)
 	return cur
 }
@@ -376,6 +379,7 @@ func (m *machine) CompileStackGrowCallSequence() []byte {
 	cur = m.revertRBPRSP(cur)
 	linkInstr(cur, m.allocateInstr().asRet())
 
+	m.c.Emit4Bytes(endbr64Instruction)
 	m.encodeWithoutSSA(m.rootInstr)
 	return m.c.Buf()
 }

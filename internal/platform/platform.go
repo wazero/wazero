@@ -23,7 +23,7 @@ func CompilerSupports(features api.CoreFeatures) bool {
 
 func compilerPlatformSupports(features api.CoreFeatures) bool {
 	switch runtime.GOOS {
-	case "linux", "darwin", "freebsd", "netbsd", "windows":
+	case "linux", "darwin", "freebsd", "openbsd", "netbsd", "windows":
 		if runtime.GOARCH == "arm64" {
 			if features.IsEnabled(experimental.CoreFeaturesThreads) {
 				return CpuFeatures.Has(CpuFeatureArm64Atomic)
