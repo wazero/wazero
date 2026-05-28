@@ -14,7 +14,6 @@ considering their efforts before starting your own!
 |:-----------------|------------------------------------------------------------------------------------------------------|
 | [go-pdfium][23]  | [PDFium][24] bindings to do PDF operations in Go, also available as end application [pdfium-cli][25] |
 | [go-re2][7]      | high performance regular expressions                                                                 |
-| [go-sqlite3][11] | [SQLite][12] bindings, `database/sql` driver                                                         |
 | [wasi-go][33]    | WASI host module for Wazero with experimental support for socket extensions                          |
 | [wazergo][29]    | Generics library for type-safe and high performance wazero host modules                              |
 | [Wetware][28]    | Simple, secure & scalable clusters                                                                   |
@@ -109,10 +108,6 @@ experience.
 [9]: https://mosn.io/
 
 [10]: https://github.com/proxy-wasm/spec
-
-[11]: https://github.com/ncruces/go-sqlite3
-
-[12]: https://sqlite.org
 
 [13]: https://scale.sh
 
