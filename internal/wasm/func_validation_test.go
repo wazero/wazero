@@ -2341,6 +2341,23 @@ func TestModule_funcValidation_RefTypes(t *testing.T) {
 			},
 			expectedErr: "ref.func invalid as feature \"reference-types\" is disabled",
 		},
+		{
+			name: "ref.null (concrete type) - typed-function-references disabled",
+			flag: api.CoreFeatureReferenceTypes,
+			body: []byte{
+				OpcodeRefNull, 0x00, // type index 0, not an abstract heap type
+				OpcodeDrop, OpcodeEnd,
+			},
+			expectedErr: `ref.null with concrete type invalid as feature "typed-function-references" is disabled`,
+		},
+		{
+			name: "ref.null (concrete type) - typed-function-references enabled",
+			flag: api.CoreFeatureReferenceTypes | experimental.CoreFeaturesTypedFunctionReferences,
+			body: []byte{
+				OpcodeRefNull, 0x00, // type index 0
+				OpcodeDrop, OpcodeEnd,
+			},
+		},
 	}
 
 	for _, tt := range tests {

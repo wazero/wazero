@@ -50,7 +50,7 @@ func RequireNoDiffT(t *testing.T, wasmBin []byte, checkMemory, loggingCheck bool
 
 // RequireNoDiff ensures that the behavior is the same between the compiler and the interpreter for any given binary.
 func RequireNoDiff(wasmBin []byte, checkMemory, loggingCheck bool, requireNoError func(err error)) {
-	const features = api.CoreFeaturesV2 | experimental.CoreFeaturesThreads | experimental.CoreFeaturesTailCall | experimental.CoreFeaturesExtendedConst
+	const features = api.CoreFeaturesV2 | experimental.CoreFeaturesThreads | experimental.CoreFeaturesTailCall | experimental.CoreFeaturesExtendedConst | experimental.CoreFeaturesExceptionHandling | experimental.CoreFeaturesTypedFunctionReferences
 	compiler := wazero.NewRuntimeWithConfig(context.Background(), wazero.NewRuntimeConfigCompiler().WithCoreFeatures(features))
 	interpreter := wazero.NewRuntimeWithConfig(context.Background(), wazero.NewRuntimeConfigInterpreter().WithCoreFeatures(features))
 	defer compiler.Close(context.Background())
@@ -217,6 +217,12 @@ func ensureDummyImports(r wazero.Runtime, origin *wasm.Module, requireNoError fu
 						body.Write([]byte{wasm.OpcodeRefNull, wasm.RefTypeExternref.Kind()})
 					case wasm.ValueTypeFuncref:
 						body.Write([]byte{wasm.OpcodeRefNull, wasm.RefTypeFuncref.Kind()})
+					case wasm.ValueTypeExnref:
+						body.Write([]byte{wasm.OpcodeRefNull, wasm.ValueTypeExnref.Kind()})
+					default:
+						if vt.IsRef() {
+							body.Write([]byte{wasm.OpcodeRefNull, wasm.RefTypeFuncref.Kind()})
+						}
 					}
 				}
 				body.WriteByte(wasm.OpcodeEnd)
@@ -247,6 +253,14 @@ func ensureDummyImports(r wazero.Runtime, origin *wasm.Module, requireNoError fu
 				case wasm.ValueTypeFuncref:
 					opcode = wasm.OpcodeRefNull
 					data = []byte{wasm.RefTypeFuncref.Kind()}
+				case wasm.ValueTypeExnref:
+					opcode = wasm.OpcodeRefNull
+					data = []byte{wasm.ValueTypeExnref.Kind()}
+				default:
+					if imp.DescGlobal.ValType.IsRef() {
+						opcode = wasm.OpcodeRefNull
+						data = []byte{wasm.RefTypeFuncref.Kind()}
+					}
 				}
 				m.GlobalSection = append(m.GlobalSection, wasm.Global{
 					Type: imp.DescGlobal, Init: wasm.NewConstantExpressionFromOpcode(opcode, data),

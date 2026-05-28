@@ -79,11 +79,27 @@ func evaluateConstExpr(e *ConstantExpression, globalResolver func(globalIndex In
 			if pc >= uint64(len(data)) {
 				return nil, 0, fmt.Errorf("read reference type for ref.null: %w", io.ErrShortBuffer)
 			}
-			valType := ValueType(data[pc])
-			if valType != RefTypeFuncref && valType != RefTypeExternref {
-				return nil, 0, fmt.Errorf("invalid type for ref.null: 0x%x", valType)
+			b := data[pc]
+			var valType ValueType
+			switch b {
+			case RefTypeFuncref.Kind():
+				valType = RefTypeFuncref
+				pc++
+			case RefTypeExternref.Kind():
+				valType = RefTypeExternref
+				pc++
+			case ValueTypeExnref.Kind():
+				valType = ValueTypeExnref
+				pc++
+			default:
+				// Concrete type index encoded as LEB128.
+				typeIdx, n, err := leb128.LoadUint32(data[pc:])
+				if err != nil {
+					return nil, 0, fmt.Errorf("invalid type for ref.null: 0x%x", b)
+				}
+				pc += n
+				valType = ValueTypeConcreteRef(typeIdx, true)
 			}
-			pc += 1
 			stack = append(stack, 0)
 			typeStack = append(typeStack, valType)
 		case OpcodeRefFunc:

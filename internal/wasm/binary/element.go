@@ -2,7 +2,6 @@ package binary
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 
 	"github.com/tetratelabs/wazero/api"
@@ -59,17 +58,21 @@ func decodeElementConstExprVector(r *bytes.Reader, elemType wasm.RefType, enable
 	return vec, nil
 }
 
-func decodeElementRefType(r *bytes.Reader) (ret wasm.RefType, err error) {
-	b, e := r.ReadByte()
-	ret = wasm.ValueType(b)
-	if e != nil {
-		err = fmt.Errorf("read element ref type: %w", e)
-		return
+func decodeElementRefType(r *bytes.Reader) (wasm.RefType, error) {
+	b, err := r.ReadByte()
+	if err != nil {
+		return 0, fmt.Errorf("read element ref type: %w", err)
 	}
-	if ret != wasm.RefTypeFuncref && ret != wasm.RefTypeExternref {
-		return 0, errors.New("ref type must be funcref or externref for element as of WebAssembly 2.0")
+	switch b {
+	case wasm.RefPrefixNullable, wasm.RefPrefixNonNullable:
+		return decodeRefType(r, b == wasm.RefPrefixNullable)
+	default:
+		ret := wasm.ValueType(b)
+		if ret != wasm.RefTypeFuncref && ret != wasm.RefTypeExternref {
+			return 0, fmt.Errorf("invalid ref type for element: 0x%x", b)
+		}
+		return ret, nil
 	}
-	return
 }
 
 const (
@@ -120,7 +123,7 @@ func decodeElementSegment(r *bytes.Reader, enabledFeatures api.CoreFeatures, ret
 		}
 
 		ret.Mode = wasm.ElementModeActive
-		ret.Type = wasm.RefTypeFuncref
+		ret.Type = wasm.RefTypeFuncref.AsNonNullable()
 		return nil
 	case elementSegmentPrefixPassiveFuncrefValueVector:
 		// Prefix 1 requires funcref.
@@ -133,7 +136,7 @@ func decodeElementSegment(r *bytes.Reader, enabledFeatures api.CoreFeatures, ret
 			return err
 		}
 		ret.Mode = wasm.ElementModePassive
-		ret.Type = wasm.RefTypeFuncref
+		ret.Type = wasm.RefTypeFuncref.AsNonNullable()
 		return nil
 	case elementSegmentPrefixActiveFuncrefValueVectorWithTableIndex:
 		ret.TableIndex, _, err = leb128.DecodeUint32(r)
@@ -163,7 +166,7 @@ func decodeElementSegment(r *bytes.Reader, enabledFeatures api.CoreFeatures, ret
 		}
 
 		ret.Mode = wasm.ElementModeActive
-		ret.Type = wasm.RefTypeFuncref
+		ret.Type = wasm.RefTypeFuncref.AsNonNullable()
 		return nil
 	case elementSegmentPrefixDeclarativeFuncrefValueVector:
 		// Prefix 3 requires funcref.
@@ -174,7 +177,7 @@ func decodeElementSegment(r *bytes.Reader, enabledFeatures api.CoreFeatures, ret
 		if err != nil {
 			return err
 		}
-		ret.Type = wasm.RefTypeFuncref
+		ret.Type = wasm.RefTypeFuncref.AsNonNullable()
 		ret.Mode = wasm.ElementModeDeclarative
 		return nil
 	case elementSegmentPrefixActiveFuncrefConstExprVector:

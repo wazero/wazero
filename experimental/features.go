@@ -32,3 +32,8 @@ const CoreFeaturesExtendedConst = api.CoreFeatureSIMD << 3
 //
 // See https://github.com/WebAssembly/exception-handling for further details.
 const CoreFeaturesExceptionHandling = api.CoreFeatureSIMD << 4
+
+// CoreFeaturesTypedFunctionReferences enables typed function references.
+//
+// See https://github.com/WebAssembly/function-references for further details.
+const CoreFeaturesTypedFunctionReferences = api.CoreFeatureSIMD << 5

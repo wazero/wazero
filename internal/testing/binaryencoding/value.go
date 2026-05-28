@@ -28,15 +28,11 @@ func EncodeValTypes(vt []wasm.ValueType) []byte {
 		if encoded, ok := encodedValTypes[vt[0]]; ok {
 			return encoded
 		}
-	case 2: // ex $wasi.environ_sizes_get
-		return []byte{2, vt[0].Kind(), vt[1].Kind()}
-	case 4: // ex $wasi.fd_write
-		return []byte{4, vt[0].Kind(), vt[1].Kind(), vt[2].Kind(), vt[3].Kind()}
-	case 9: // ex $wasi.fd_write
-		return []byte{9, vt[0].Kind(), vt[1].Kind(), vt[2].Kind(), vt[3].Kind(), vt[4].Kind(), vt[5].Kind(), vt[6].Kind(), vt[7].Kind(), vt[8].Kind()}
 	}
-	// Slow path others until someone complains with a valid signature
+	// Encode value types as their Kind bytes
 	count := leb128.EncodeUint32(uint32(len(vt)))
-	avt := wasm.ToApiValueType(vt)
-	return append(count, avt...)
+	for _, v := range vt {
+		count = append(count, v.Kind())
+	}
+	return count
 }
