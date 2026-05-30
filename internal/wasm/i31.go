@@ -83,15 +83,19 @@ func (r *I31Ref) Equals(other *I31Ref) bool {
 //
 //	0b00 — function pointer (upstream typed funcref) or null (the zero slot)
 //	0b01 — i31: payload in bits 2..32 (31 bits of value)
-//	0b10 — wasm-gc heap-object handle: 1-based index into Store.gcObjects
-//	       in bits 2.. (struct / array). NOT a raw pointer — see GCRegister.
+//	0b10 — wasm-gc heap-object handle (struct / array): NOT a raw pointer.
+//	       Bits 2..40 hold a 1-based index into the owning module's
+//	       ModuleInstance.gcObjects table; bits 40..64 hold the owning
+//	       module's gcID. See ModuleInstance.GCRegister / Store.GCLookup.
 //	0b11 — extern-wrapped-in-anyref: payload in bits 2..63 (62 bits)
 //
 // struct / array instances are addressed by an integer handle rather than
 // their Go pointer bits, so the interpreter never converts a uintptr back
 // to a pointer and never depends on a non-moving Go GC. The 0b10 tag keeps
 // those handles unambiguous against upstream's function-pointer slots
-// (0b00), which retain their existing representation.
+// (0b00), which retain their existing representation. Encoding the owning
+// module's id lets the table live (and be freed) with its module while a
+// handle that escapes into another module still resolves via the store.
 //
 // Externref values in wazero are opaque uintptrs supplied by the host.
 // Storing them directly in an anyref slot is ambiguous because some
@@ -105,19 +109,31 @@ const (
 	primTagI31   uintptr = 0b01
 	primTagHeap  uintptr = 0b10
 	primTagExtAn uintptr = 0b11
+
+	// gcHandleIDShift is the bit position where the owning module's gcID
+	// begins. Bits [2, gcHandleIDShift) hold the 1-based table index (38
+	// bits → up to ~2.7e11 objects per module); bits [gcHandleIDShift, 64)
+	// hold the gcID (24 bits → up to ~16.7M concurrently live GC modules).
+	gcHandleIDShift = 40
+	gcHandleIdxMask = (uint64(1) << (gcHandleIDShift - 2)) - 1
 )
 
-// packGCHandle encodes a 0-based index into Store.gcObjects as an operand-
-// stack handle. The index is stored 1-based so handle 0 (null) is never
-// produced for a real object.
-func packGCHandle(idx int) uint64 {
-	return (uint64(idx)+1)<<2 | uint64(primTagHeap)
+// packGCHandle encodes the owning module's gcID and a 0-based table index as
+// an operand-stack handle. The index is stored 1-based so a real object
+// never encodes to 0 (null).
+func packGCHandle(gcID uint32, idx int) uint64 {
+	return uint64(gcID)<<gcHandleIDShift | (uint64(idx)+1)<<2 | uint64(primTagHeap)
 }
 
-// gcHandleIndex recovers the 0-based Store.gcObjects index from a handle
-// produced by packGCHandle. Callers must check IsGCHandle first.
+// gcHandleIndex recovers the 0-based table index from a handle produced by
+// packGCHandle. Callers must check IsGCHandle first.
 func gcHandleIndex(handle uint64) int {
-	return int(handle>>2) - 1
+	return int((handle>>2)&gcHandleIdxMask) - 1
+}
+
+// gcHandleModuleID recovers the owning module's gcID from a handle.
+func gcHandleModuleID(handle uint64) uint32 {
+	return uint32(handle >> gcHandleIDShift)
 }
 
 // IsGCHandle reports whether a slot is a wasm-gc heap-object handle (a

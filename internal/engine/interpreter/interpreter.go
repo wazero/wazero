@@ -4740,7 +4740,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				fields[i] = encodeFieldValue(schema.Fields[i], raw)
 			}
 			s := wasm.NewWasmStructWith(f.moduleInstance.TypeIDs[typeIdx], fields)
-			ce.pushValue(f.moduleInstance.GetStore().GCRegister(s))
+			ce.pushValue(f.moduleInstance.GCRegister(s))
 			frame.pc++
 
 		case operationKindStructNewDefault:
@@ -4752,7 +4752,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				fields[i] = wasm.DefaultFieldValue(schema.Fields[i])
 			}
 			s := wasm.NewWasmStructWith(f.moduleInstance.TypeIDs[typeIdx], fields)
-			ce.pushValue(f.moduleInstance.GetStore().GCRegister(s))
+			ce.pushValue(f.moduleInstance.GCRegister(s))
 			frame.pc++
 
 		case operationKindStructGet, operationKindStructGetS, operationKindStructGetU:
@@ -4794,7 +4794,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				elems[i] = stored
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
-			ce.pushValue(f.moduleInstance.GetStore().GCRegister(a))
+			ce.pushValue(f.moduleInstance.GCRegister(a))
 			frame.pc++
 
 		case operationKindArrayNewDefault:
@@ -4807,7 +4807,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				elems[i] = def
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
-			ce.pushValue(f.moduleInstance.GetStore().GCRegister(a))
+			ce.pushValue(f.moduleInstance.GCRegister(a))
 			frame.pc++
 
 		case operationKindArrayGet, operationKindArrayGetS, operationKindArrayGetU:
@@ -4917,7 +4917,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				elems[i] = encodeFieldValue(schema.ArrayField, raw)
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
-			ce.pushValue(f.moduleInstance.GetStore().GCRegister(a))
+			ce.pushValue(f.moduleInstance.GCRegister(a))
 			frame.pc++
 
 		case operationKindArrayFill:
@@ -4993,7 +4993,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				elems[i] = readDataElement(schema, data, off)
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
-			ce.pushValue(f.moduleInstance.GetStore().GCRegister(a))
+			ce.pushValue(f.moduleInstance.GCRegister(a))
 			frame.pc++
 
 		case operationKindArrayNewElem:
@@ -5010,7 +5010,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				elems[i] = uint64(elem[srcOff+i])
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
-			ce.pushValue(f.moduleInstance.GetStore().GCRegister(a))
+			ce.pushValue(f.moduleInstance.GCRegister(a))
 			frame.pc++
 
 		case operationKindArrayInitData:

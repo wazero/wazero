@@ -65,17 +65,20 @@ type (
 		// Note: this is fixed to 2^27 but have this a field for testability.
 		functionMaxTypes uint32
 
-		// gcObjects is the handle table for wasm-gc heap objects (WasmStruct
-		// / WasmArray). The interpreter carries references on its operand
-		// stack as tagged integer handles (a 1-based index into this slice;
-		// see packGCHandle) rather than raw Go pointers, so it never converts
-		// a uintptr back to a pointer and never relies on a non-moving Go GC.
-		// Guarded by gcMux.
+		// gcModules maps a live module's gcID to its instance so that a
+		// wasm-gc handle (which encodes the owning module's gcID; see
+		// packGCHandle) can be resolved to that module's gcObjects table
+		// from anywhere, including another module the handle escaped into.
+		// Entries are added lazily on the module's first GC allocation and
+		// removed when the module is closed, so each module's GC objects are
+		// reclaimed with the module rather than living for the whole store.
 		//
-		// The table is append-only: entries live until the Store is released.
-		// This trades Go-GC reclamation for handle safety; a production
-		// wasm-gc engine would add tracing/reclamation here.
-		gcObjects []any
+		// gcNextID / gcFreeIDs assign and recycle gcIDs (gcID 0 is reserved
+		// for "unassigned"). gcMux guards all three plus every module's
+		// gcObjects slice.
+		gcModules map[uint32]*ModuleInstance
+		gcFreeIDs []uint32
+		gcNextID  uint32
 		gcMux     sync.Mutex
 
 		// mux is used to guard the fields from concurrent access.
@@ -105,6 +108,23 @@ type (
 		// TypeIDs is index-correlated with types and holds typeIDs which is uniquely assigned to a type by store.
 		// This is necessary to achieve fast runtime type checking for indirect function calls at runtime.
 		TypeIDs []FunctionTypeID
+
+		// gcObjects is this module's handle table for wasm-gc heap objects
+		// (WasmStruct / WasmArray). The interpreter carries references on its
+		// operand stack as tagged integer handles (a 1-based index into this
+		// slice plus the module's gcID; see packGCHandle) rather than raw Go
+		// pointers, so it never converts a uintptr back to a pointer and
+		// never relies on a non-moving Go GC. The table holds the only
+		// Go-traceable reference to each object and is freed when the module
+		// is closed. Guarded by Store.gcMux.
+		//
+		// gcID is the module's id in Store.gcModules, assigned lazily on the
+		// first GC allocation (0 = unassigned). The table is append-only for
+		// the module's lifetime: a production wasm-gc engine would add
+		// per-object tracing/reclamation, but bounding it to the module
+		// already reclaims everything when the module closes.
+		gcObjects []any
+		gcID      uint32
 
 		// DataInstances holds data segments bytes of the module.
 		// This is only used by bulk memory operations.
@@ -666,30 +686,37 @@ func (s *Store) GetFunctionTypeIDs(ts []FunctionType) ([]FunctionTypeID, error) 
 	return ret, nil
 }
 
-// GCRegister stores a wasm-gc heap object (a *WasmStruct or *WasmArray) in
-// the store's handle table and returns its operand-stack handle: a tagged
-// integer index, never a raw pointer. This keeps the only Go-traceable
-// reference to the object inside the table — so Go's GC manages its memory
-// — while the operand stack, locals, globals, tables and object fields hold
-// only the opaque handle.
-func (s *Store) GCRegister(v any) uint64 {
-	s.gcMux.Lock()
-	s.gcObjects = append(s.gcObjects, v)
-	idx := len(s.gcObjects) - 1
-	s.gcMux.Unlock()
-	return packGCHandle(idx)
-}
-
-// GCLookup resolves a handle produced by GCRegister back to its object.
-// Callers must ensure handle is a GC handle (IsGCHandle); a malformed or
-// out-of-range handle panics, indicating an interpreter bug rather than a
-// recoverable wasm trap.
+// GCLookup resolves a handle produced by ModuleInstance.GCRegister back to
+// its object, routing to the owning module's table via the gcID encoded in
+// the handle. Callers must ensure handle is a GC handle (IsGCHandle).
+//
+// Returns nil if the owning module has been closed (a use-after-close of an
+// escaped handle) or the handle is otherwise stale; the interpreter treats a
+// nil object as a failed match / null dereference rather than crashing.
 func (s *Store) GCLookup(handle uint64) any {
+	gcID := gcHandleModuleID(handle)
 	idx := gcHandleIndex(handle)
 	s.gcMux.Lock()
-	v := s.gcObjects[idx]
-	s.gcMux.Unlock()
-	return v
+	defer s.gcMux.Unlock()
+	m := s.gcModules[gcID]
+	if m == nil || idx < 0 || idx >= len(m.gcObjects) {
+		return nil
+	}
+	return m.gcObjects[idx]
+}
+
+// gcReleaseModule drops m's GC table and recycles its gcID for reuse by a
+// later module. Called from deleteModule when the module is closed.
+func (s *Store) gcReleaseModule(m *ModuleInstance) {
+	s.gcMux.Lock()
+	defer s.gcMux.Unlock()
+	if m.gcID == 0 {
+		return // never allocated a GC object
+	}
+	delete(s.gcModules, m.gcID)
+	s.gcFreeIDs = append(s.gcFreeIDs, m.gcID)
+	m.gcID = 0
+	m.gcObjects = nil
 }
 
 func init() {
@@ -1208,12 +1235,36 @@ func (m *ModuleInstance) TypeID(typeIdx uint32) FunctionTypeID {
 	return m.TypeIDs[typeIdx]
 }
 
-// GCRegister stores a wasm-gc heap object in the owning store's handle table
-// and returns its operand-stack handle. Used during instantiation-time const
-// expression evaluation (struct.new / array.new in globals and element
-// segments). Implements gcModuleCtx.
+// GCRegister stores a wasm-gc heap object (a *WasmStruct or *WasmArray) in
+// this module's handle table and returns its operand-stack handle: a tagged
+// integer encoding the module's gcID and the table index, never a raw
+// pointer. The table holds the only Go-traceable reference to the object, so
+// Go manages its memory, while the operand stack, locals, globals, tables
+// and object fields carry only the opaque handle. The module's gcID is
+// assigned lazily here on first use. Used both by the interpreter at runtime
+// and by instantiation-time const-expression evaluation (struct.new /
+// array.new in globals and element segments). Implements gcModuleCtx.
 func (m *ModuleInstance) GCRegister(v any) uint64 {
-	return m.s.GCRegister(v)
+	s := m.s
+	s.gcMux.Lock()
+	if m.gcID == 0 {
+		if n := len(s.gcFreeIDs); n > 0 {
+			m.gcID = s.gcFreeIDs[n-1]
+			s.gcFreeIDs = s.gcFreeIDs[:n-1]
+		} else {
+			s.gcNextID++
+			m.gcID = s.gcNextID
+		}
+		if s.gcModules == nil {
+			s.gcModules = make(map[uint32]*ModuleInstance)
+		}
+		s.gcModules[m.gcID] = m
+	}
+	m.gcObjects = append(m.gcObjects, v)
+	idx := len(m.gcObjects) - 1
+	gcID := m.gcID
+	s.gcMux.Unlock()
+	return packGCHandle(gcID, idx)
 }
 
 // FunctionTypeIndex returns the module-local type index of the function at
