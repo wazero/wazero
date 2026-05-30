@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"unsafe"
 
 	"github.com/tetratelabs/wazero/internal/leb128"
 )
@@ -31,9 +30,10 @@ type gcModuleCtx interface {
 	// TypeID returns the engine-wide FunctionTypeID for the given
 	// module-local type index.
 	TypeID(typeIdx uint32) FunctionTypeID
-	// KeepAlive records a Go pointer so the GC traces it for the
-	// lifetime of the consuming instance.
-	KeepAlive(v any)
+	// GCRegister stores a wasm-gc heap object in the engine's handle table
+	// and returns its operand-stack handle (a tagged integer, not a
+	// pointer).
+	GCRegister(v any) uint64
 	// FunctionTypeIndex returns the module-local type index of the
 	// function at funcIdx, or ok=false if unknown.
 	FunctionTypeIndex(funcIdx Index) (uint32, bool)
@@ -313,8 +313,7 @@ func evaluateConstExprWithModule(
 				}
 				if mi != nil {
 					s := NewWasmStructWith(mi.TypeID(typeIdx), fields)
-					mi.KeepAlive(s)
-					stack = append(stack, uint64(uintptr(unsafe.Pointer(s))))
+					stack = append(stack, mi.GCRegister(s))
 				} else {
 					stack = append(stack, 0)
 				}
@@ -360,8 +359,7 @@ func evaluateConstExprWithModule(
 				}
 				if mi != nil {
 					a := NewWasmArrayWith(mi.TypeID(typeIdx), elems)
-					mi.KeepAlive(a)
-					stack = append(stack, uint64(uintptr(unsafe.Pointer(a))))
+					stack = append(stack, mi.GCRegister(a))
 				} else {
 					stack = append(stack, 0)
 				}
@@ -396,8 +394,7 @@ func evaluateConstExprWithModule(
 				}
 				if mi != nil {
 					a := NewWasmArrayWith(mi.TypeID(typeIdx), elems)
-					mi.KeepAlive(a)
-					stack = append(stack, uint64(uintptr(unsafe.Pointer(a))))
+					stack = append(stack, mi.GCRegister(a))
 				} else {
 					stack = append(stack, 0)
 				}

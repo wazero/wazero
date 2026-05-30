@@ -78,14 +78,20 @@ func (r *I31Ref) Equals(other *I31Ref) bool {
 // objects to at least 8 bytes on the supported 64-bit platforms — so the
 // tag bit is unambiguous.
 
-// Tagged-uintptr representation of "primitive" refs (i31 and
-// externref-wrapped-in-anyref). The low 2 bits encode the tag:
+// Tagged representation of "primitive" and GC-handle refs carried on the
+// interpreter operand stack. The low 2 bits encode the tag:
 //
-//	0b00 — heap pointer (Go-allocated WasmStruct / WasmArray / etc.)
+//	0b00 — function pointer (upstream typed funcref) or null (the zero slot)
 //	0b01 — i31: payload in bits 2..32 (31 bits of value)
+//	0b10 — wasm-gc heap-object handle: 1-based index into Store.gcObjects
+//	       in bits 2.. (struct / array). NOT a raw pointer — see GCRegister.
 //	0b11 — extern-wrapped-in-anyref: payload in bits 2..63 (62 bits)
 //
-// 0b10 is reserved.
+// struct / array instances are addressed by an integer handle rather than
+// their Go pointer bits, so the interpreter never converts a uintptr back
+// to a pointer and never depends on a non-moving Go GC. The 0b10 tag keeps
+// those handles unambiguous against upstream's function-pointer slots
+// (0b00), which retain their existing representation.
 //
 // Externref values in wazero are opaque uintptrs supplied by the host.
 // Storing them directly in an anyref slot is ambiguous because some
@@ -97,8 +103,29 @@ func (r *I31Ref) Equals(other *I31Ref) bool {
 const (
 	primTagMask  uintptr = 0b11
 	primTagI31   uintptr = 0b01
+	primTagHeap  uintptr = 0b10
 	primTagExtAn uintptr = 0b11
 )
+
+// packGCHandle encodes a 0-based index into Store.gcObjects as an operand-
+// stack handle. The index is stored 1-based so handle 0 (null) is never
+// produced for a real object.
+func packGCHandle(idx int) uint64 {
+	return (uint64(idx)+1)<<2 | uint64(primTagHeap)
+}
+
+// gcHandleIndex recovers the 0-based Store.gcObjects index from a handle
+// produced by packGCHandle. Callers must check IsGCHandle first.
+func gcHandleIndex(handle uint64) int {
+	return int(handle>>2) - 1
+}
+
+// IsGCHandle reports whether a slot is a wasm-gc heap-object handle (a
+// struct or array), as opposed to null/function-pointer (0b00), i31
+// (0b01), or externref-as-any (0b11).
+func IsGCHandle(slot uint64) bool {
+	return uintptr(slot)&primTagMask == primTagHeap
+}
 
 // PackI31 returns the tagged-uintptr representation of an i31 value. The
 // 32-bit input is narrowed to its low 31 bits per the spec for ref.i31.

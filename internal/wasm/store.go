@@ -65,6 +65,19 @@ type (
 		// Note: this is fixed to 2^27 but have this a field for testability.
 		functionMaxTypes uint32
 
+		// gcObjects is the handle table for wasm-gc heap objects (WasmStruct
+		// / WasmArray). The interpreter carries references on its operand
+		// stack as tagged integer handles (a 1-based index into this slice;
+		// see packGCHandle) rather than raw Go pointers, so it never converts
+		// a uintptr back to a pointer and never relies on a non-moving Go GC.
+		// Guarded by gcMux.
+		//
+		// The table is append-only: entries live until the Store is released.
+		// This trades Go-GC reclamation for handle safety; a production
+		// wasm-gc engine would add tracing/reclamation here.
+		gcObjects []any
+		gcMux     sync.Mutex
+
 		// mux is used to guard the fields from concurrent access.
 		mux sync.RWMutex
 	}
@@ -92,12 +105,6 @@ type (
 		// TypeIDs is index-correlated with types and holds typeIDs which is uniquely assigned to a type by store.
 		// This is necessary to achieve fast runtime type checking for indirect function calls at runtime.
 		TypeIDs []FunctionTypeID
-
-		// GCRoots keeps Go-allocated WasmStruct / WasmArray / I31Ref
-		// pointers reachable for the lifetime of the module instance. The
-		// operand stack and tables store these as opaque uintptrs that the
-		// Go GC cannot trace, so KeepAlive records them here.
-		GCRoots []any
 
 		// DataInstances holds data segments bytes of the module.
 		// This is only used by bulk memory operations.
@@ -659,6 +666,32 @@ func (s *Store) GetFunctionTypeIDs(ts []FunctionType) ([]FunctionTypeID, error) 
 	return ret, nil
 }
 
+// GCRegister stores a wasm-gc heap object (a *WasmStruct or *WasmArray) in
+// the store's handle table and returns its operand-stack handle: a tagged
+// integer index, never a raw pointer. This keeps the only Go-traceable
+// reference to the object inside the table — so Go's GC manages its memory
+// — while the operand stack, locals, globals, tables and object fields hold
+// only the opaque handle.
+func (s *Store) GCRegister(v any) uint64 {
+	s.gcMux.Lock()
+	s.gcObjects = append(s.gcObjects, v)
+	idx := len(s.gcObjects) - 1
+	s.gcMux.Unlock()
+	return packGCHandle(idx)
+}
+
+// GCLookup resolves a handle produced by GCRegister back to its object.
+// Callers must ensure handle is a GC handle (IsGCHandle); a malformed or
+// out-of-range handle panics, indicating an interpreter bug rather than a
+// recoverable wasm trap.
+func (s *Store) GCLookup(handle uint64) any {
+	idx := gcHandleIndex(handle)
+	s.gcMux.Lock()
+	v := s.gcObjects[idx]
+	s.gcMux.Unlock()
+	return v
+}
+
 func init() {
 	// Wire the validation-time canonicalizer (module.go keeps an indirect
 	// to avoid importing strings / pulling the heavy logic into module.go).
@@ -1175,10 +1208,12 @@ func (m *ModuleInstance) TypeID(typeIdx uint32) FunctionTypeID {
 	return m.TypeIDs[typeIdx]
 }
 
-// KeepAlive records v on the module instance's GCRoots so the Go GC traces
-// it for the module's lifetime. Implements gcModuleCtx.
-func (m *ModuleInstance) KeepAlive(v any) {
-	m.GCRoots = append(m.GCRoots, v)
+// GCRegister stores a wasm-gc heap object in the owning store's handle table
+// and returns its operand-stack handle. Used during instantiation-time const
+// expression evaluation (struct.new / array.new in globals and element
+// segments). Implements gcModuleCtx.
+func (m *ModuleInstance) GCRegister(v any) uint64 {
+	return m.s.GCRegister(v)
 }
 
 // FunctionTypeIndex returns the module-local type index of the function at

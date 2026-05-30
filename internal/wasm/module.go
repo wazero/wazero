@@ -766,15 +766,16 @@ func (m *Module) validateConstExpression(globals []GlobalType, numFuncs uint32, 
 // validationModuleCtx is a module-backed gcModuleCtx used during static
 // validation: it exposes the TypeSection and function type indices so the
 // const-expression evaluator can type-check GC opcodes, but TypeID returns 0
-// and KeepAlive is a no-op (heap objects built during validation are
-// discarded).
+// and GCRegister returns a placeholder handle (heap objects built during
+// validation are discarded; only the value's type, tracked separately, is
+// checked).
 type validationModuleCtx struct {
 	m *Module
 }
 
 func (v validationModuleCtx) TypeSection() []FunctionType  { return v.m.TypeSection }
 func (v validationModuleCtx) TypeID(uint32) FunctionTypeID { return 0 }
-func (v validationModuleCtx) KeepAlive(any)                {}
+func (v validationModuleCtx) GCRegister(any) uint64        { return packGCHandle(0) }
 func (v validationModuleCtx) FunctionTypeIndex(funcIdx Index) (uint32, bool) {
 	return funcTypeIndex(v.m, funcIdx)
 }

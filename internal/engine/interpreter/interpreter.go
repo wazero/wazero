@@ -182,18 +182,6 @@ type callEngine struct {
 
 	// stackiterator for Listeners to walk frames and stack.
 	stackIterator stackIterator
-
-	// gcKeepAlive holds Go pointers to wasm-gc heap objects (I31Ref,
-	// WasmStruct, WasmArray) that are live only as opaque uintptrs on the
-	// operand stack. Recording them here keeps Go's GC from collecting the
-	// underlying objects for the duration of the call.
-	gcKeepAlive []any
-}
-
-// keepAlive records v on the gcKeepAlive list so Go's GC traces it for
-// the lifetime of the call.
-func (ce *callEngine) keepAlive(v any) {
-	ce.gcKeepAlive = append(ce.gcKeepAlive, v)
 }
 
 // matchCatchClause checks whether a single catch clause matches the given exception.
@@ -4692,12 +4680,10 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			if wasm.IsTaggedI31(uintptr(v)) {
-				ce.pushValue(uint64(uint32(wasm.UnpackI31Signed(uintptr(v)))))
-			} else {
-				i31 := *(**wasm.I31Ref)(unsafe.Pointer(&v))
-				ce.pushValue(uint64(uint32(i31.SignedI32())))
-			}
+			// i31 refs are always carried as tagged immediates (ref.i31 and
+			// the const-expr evaluator both emit PackI31), so there is no
+			// heap-pointer form to dereference here.
+			ce.pushValue(uint64(uint32(wasm.UnpackI31Signed(uintptr(v)))))
 			frame.pc++
 
 		case operationKindI31GetU:
@@ -4705,12 +4691,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			if wasm.IsTaggedI31(uintptr(v)) {
-				ce.pushValue(uint64(wasm.UnpackI31Unsigned(uintptr(v))))
-			} else {
-				i31 := *(**wasm.I31Ref)(unsafe.Pointer(&v))
-				ce.pushValue(uint64(i31.UnsignedI32()))
-			}
+			ce.pushValue(uint64(wasm.UnpackI31Unsigned(uintptr(v))))
 			frame.pc++
 
 		case operationKindRefEq:
@@ -4759,8 +4740,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				fields[i] = encodeFieldValue(schema.Fields[i], raw)
 			}
 			s := wasm.NewWasmStructWith(f.moduleInstance.TypeIDs[typeIdx], fields)
-			ce.keepAlive(s)
-			ce.pushValue(uint64(uintptr(unsafe.Pointer(s))))
+			ce.pushValue(f.moduleInstance.GetStore().GCRegister(s))
 			frame.pc++
 
 		case operationKindStructNewDefault:
@@ -4772,8 +4752,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				fields[i] = wasm.DefaultFieldValue(schema.Fields[i])
 			}
 			s := wasm.NewWasmStructWith(f.moduleInstance.TypeIDs[typeIdx], fields)
-			ce.keepAlive(s)
-			ce.pushValue(uint64(uintptr(unsafe.Pointer(s))))
+			ce.pushValue(f.moduleInstance.GetStore().GCRegister(s))
 			frame.pc++
 
 		case operationKindStructGet, operationKindStructGetS, operationKindStructGetU:
@@ -4783,7 +4762,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			s := *(**wasm.WasmStruct)(unsafe.Pointer(&v))
+			s := f.moduleInstance.GetStore().GCLookup(v).(*wasm.WasmStruct)
 			fieldSchema := f.moduleInstance.Source.TypeSection[typeIdx].Fields[fieldIdx]
 			raw := decodeFieldValueRead(fieldSchema, s.Get(fieldIdx), op.Kind)
 			ce.pushValue(raw)
@@ -4797,7 +4776,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			s := *(**wasm.WasmStruct)(unsafe.Pointer(&v))
+			s := f.moduleInstance.GetStore().GCLookup(v).(*wasm.WasmStruct)
 			fieldSchema := f.moduleInstance.Source.TypeSection[typeIdx].Fields[fieldIdx]
 			if err := s.Set(fieldIdx, encodeFieldValue(fieldSchema, raw)); err != nil {
 				panic(err)
@@ -4815,8 +4794,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				elems[i] = stored
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
-			ce.keepAlive(a)
-			ce.pushValue(uint64(uintptr(unsafe.Pointer(a))))
+			ce.pushValue(f.moduleInstance.GetStore().GCRegister(a))
 			frame.pc++
 
 		case operationKindArrayNewDefault:
@@ -4829,8 +4807,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				elems[i] = def
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
-			ce.keepAlive(a)
-			ce.pushValue(uint64(uintptr(unsafe.Pointer(a))))
+			ce.pushValue(f.moduleInstance.GetStore().GCRegister(a))
 			frame.pc++
 
 		case operationKindArrayGet, operationKindArrayGetS, operationKindArrayGetU:
@@ -4840,7 +4817,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			a := *(**wasm.WasmArray)(unsafe.Pointer(&v))
+			a := f.moduleInstance.GetStore().GCLookup(v).(*wasm.WasmArray)
 			if idx >= a.Len() {
 				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
 			}
@@ -4865,7 +4842,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			a := *(**wasm.WasmArray)(unsafe.Pointer(&v))
+			a := f.moduleInstance.GetStore().GCLookup(v).(*wasm.WasmArray)
 			if idx >= a.Len() {
 				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
 			}
@@ -4880,7 +4857,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			a := *(**wasm.WasmArray)(unsafe.Pointer(&v))
+			a := f.moduleInstance.GetStore().GCLookup(v).(*wasm.WasmArray)
 			ce.pushValue(uint64(a.Len()))
 			frame.pc++
 
@@ -4940,8 +4917,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				elems[i] = encodeFieldValue(schema.ArrayField, raw)
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
-			ce.keepAlive(a)
-			ce.pushValue(uint64(uintptr(unsafe.Pointer(a))))
+			ce.pushValue(f.moduleInstance.GetStore().GCRegister(a))
 			frame.pc++
 
 		case operationKindArrayFill:
@@ -4953,7 +4929,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			a := *(**wasm.WasmArray)(unsafe.Pointer(&v))
+			a := f.moduleInstance.GetStore().GCLookup(v).(*wasm.WasmArray)
 			if uint64(idx)+uint64(count) > uint64(a.Len()) {
 				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
 			}
@@ -4975,8 +4951,8 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if srcV == 0 || dstV == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			src := *(**wasm.WasmArray)(unsafe.Pointer(&srcV))
-			dst := *(**wasm.WasmArray)(unsafe.Pointer(&dstV))
+			src := f.moduleInstance.GetStore().GCLookup(srcV).(*wasm.WasmArray)
+			dst := f.moduleInstance.GetStore().GCLookup(dstV).(*wasm.WasmArray)
 			if uint64(srcIdx)+uint64(count) > uint64(src.Len()) ||
 				uint64(dstIdx)+uint64(count) > uint64(dst.Len()) {
 				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
@@ -5017,8 +4993,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				elems[i] = readDataElement(schema, data, off)
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
-			ce.keepAlive(a)
-			ce.pushValue(uint64(uintptr(unsafe.Pointer(a))))
+			ce.pushValue(f.moduleInstance.GetStore().GCRegister(a))
 			frame.pc++
 
 		case operationKindArrayNewElem:
@@ -5035,8 +5010,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 				elems[i] = uint64(elem[srcOff+i])
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
-			ce.keepAlive(a)
-			ce.pushValue(uint64(uintptr(unsafe.Pointer(a))))
+			ce.pushValue(f.moduleInstance.GetStore().GCRegister(a))
 			frame.pc++
 
 		case operationKindArrayInitData:
@@ -5049,7 +5023,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if arrV == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			a := *(**wasm.WasmArray)(unsafe.Pointer(&arrV))
+			a := f.moduleInstance.GetStore().GCLookup(arrV).(*wasm.WasmArray)
 			schema := f.moduleInstance.Source.TypeSection[typeIdx].ArrayField
 			data := f.moduleInstance.DataInstances[segIdx]
 			elemSize, ok := arrayDataElemSize(schema)
@@ -5078,7 +5052,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if arrV == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			a := *(**wasm.WasmArray)(unsafe.Pointer(&arrV))
+			a := f.moduleInstance.GetStore().GCLookup(arrV).(*wasm.WasmArray)
 			elem := f.moduleInstance.ElementInstances[segIdx]
 			if uint64(dstOff)+uint64(count) > uint64(a.Len()) {
 				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
@@ -5518,59 +5492,57 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 		}
 		return false
 	}
-	// Heap pointer: read the TypeID from the first field of the
-	// pointed-to object (both WasmStruct and WasmArray place TypeID first).
-	// For function values the layout is different (the first field is
-	// the *FunctionType pointer), so we check the funcref hierarchy
-	// targets separately using functionFromUintptr.
-	if !isConcrete {
-		switch wasm.ValueType(kindByte) {
-		case wasm.ValueTypeFuncref:
-			// Any non-null funcref-typed value matches funcref. The
-			// validator constrains the static type so we can trust
-			// that v is a function pointer here.
-			tf := functionFromUintptr(uintptr(v))
-			return tf != nil
-		case wasm.ValueTypeNoFuncref:
-			// nofunc is the bottom of the func hierarchy; only null matches.
-			return false
-		}
-	}
-	// We use the double-pointer cast idiom to avoid the
-	// unsafe.Pointer(uintptr(...)) pattern that go vet flags.
-	hdrPtr := *(**wasm.FunctionTypeID)(unsafe.Pointer(&v))
-	objTypeID := *hdrPtr
+	// The remaining non-null value is either a wasm-gc heap-object handle
+	// (struct / array, tagged 0b10) or an upstream function pointer (0b00).
+	// The tag disambiguates them, so no pointer is ever reconstructed from
+	// the operand-stack integer.
 	store := mi.GetStore()
-	if isConcrete {
-		if int(typeIdx) >= len(mi.TypeIDs) {
+	if wasm.IsGCHandle(v) {
+		var objTypeID wasm.FunctionTypeID
+		var objForm wasm.CompositeForm
+		switch o := store.GCLookup(v).(type) {
+		case *wasm.WasmStruct:
+			objTypeID, objForm = o.TypeID, wasm.CompositeFormStruct
+		case *wasm.WasmArray:
+			objTypeID, objForm = o.TypeID, wasm.CompositeFormArray
+		default:
 			return false
 		}
-		expected := mi.TypeIDs[typeIdx]
-		// Function: typeID lives at offset 16 (after funcType + moduleInstance pointers).
-		// For struct/array, typeID is at offset 0. Try the offset-0
-		// candidate first, then fall back to the function-pointer cast.
-		if store.IsSubtype(objTypeID, expected) {
-			return true
+		if isConcrete {
+			if int(typeIdx) >= len(mi.TypeIDs) {
+				return false
+			}
+			return store.IsSubtype(objTypeID, mi.TypeIDs[typeIdx])
 		}
-		tf := functionFromUintptr(uintptr(v))
-		if tf != nil {
-			return store.IsSubtype(tf.typeID, expected)
+		if !store.IsResolvedType(objTypeID) {
+			return false
+		}
+		switch wasm.ValueType(kindByte) {
+		case wasm.ValueTypeAnyref, wasm.ValueTypeEqref:
+			return objForm == wasm.CompositeFormStruct || objForm == wasm.CompositeFormArray
+		case wasm.ValueTypeStructref:
+			return objForm == wasm.CompositeFormStruct
+		case wasm.ValueTypeArrayref:
+			return objForm == wasm.CompositeFormArray
 		}
 		return false
 	}
-	if !store.IsResolvedType(objTypeID) {
-		return false
+	// Function pointer: matches the funcref hierarchy only. The validator
+	// constrains the static type, so v is a genuine function pointer here.
+	tf := functionFromUintptr(uintptr(v))
+	if isConcrete {
+		if int(typeIdx) >= len(mi.TypeIDs) || tf == nil {
+			return false
+		}
+		return store.IsSubtype(tf.typeID, mi.TypeIDs[typeIdx])
 	}
-	objForm := store.TypeForm(objTypeID)
 	switch wasm.ValueType(kindByte) {
-	case wasm.ValueTypeAnyref, wasm.ValueTypeEqref:
-		return objForm == wasm.CompositeFormStruct || objForm == wasm.CompositeFormArray
-	case wasm.ValueTypeStructref:
-		return objForm == wasm.CompositeFormStruct
-	case wasm.ValueTypeArrayref:
-		return objForm == wasm.CompositeFormArray
 	case wasm.ValueTypeFuncref:
-		return objForm == wasm.CompositeFormFunc
+		// Any non-null funcref-typed value matches funcref.
+		return tf != nil
+	case wasm.ValueTypeNoFuncref:
+		// nofunc is the bottom of the func hierarchy; only null matches.
+		return false
 	}
 	return false
 }
