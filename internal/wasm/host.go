@@ -174,6 +174,9 @@ func (m *Module) maybeAddType(params, results []ValueType, enabledFeatures api.C
 	}
 
 	result := m.SectionElementCount(SectionIDType)
-	m.TypeSection = append(m.TypeSection, FunctionType{Params: params, Results: results})
+	// Host function types desugar to (sub final (func ...)) — Final keeps
+	// type identity consistent with binary-decoded shorthand func types so
+	// imports linking host and guest funcref signatures resolve correctly.
+	m.TypeSection = append(m.TypeSection, FunctionType{Params: params, Results: results, Final: true})
 	return result, nil
 }

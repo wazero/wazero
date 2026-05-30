@@ -141,6 +141,9 @@ typed_function_references_wast_files := \
 	ref_func.wast ref_is_null.wast ref_null.wast return_call_indirect.wast \
 	return_call_ref.wast return_call.wast select.wast table-sub.wast table.wast \
 	type-equivalence.wast unreached-invalid.wast unreached-valid.wast
+spectest_gc_dir := $(spectest_base_dir)/gc
+spectest_gc_testdata_dir := $(spectest_gc_dir)/testdata
+spec_version_gc := 13734f8fb871a5dab939070f893adbd90bffe28c
 
 .PHONY: build.spectest
 build.spectest:
@@ -151,6 +154,7 @@ build.spectest:
 	@$(MAKE) build.spectest.extended_const
 	@$(MAKE) build.spectest.exception_handling
 	@$(MAKE) build.spectest.typed_function_references
+	@$(MAKE) build.spectest.gc
 
 .PHONY: build.spectest.v1
 build.spectest.v1: # Note: wabt by default uses >1.0 features, so wast2json flags might drift as they include more. See WebAssembly/wabt#1878
@@ -239,6 +243,17 @@ build.spectest.typed_function_references:
 			curl -sJL "https://raw.githubusercontent.com/WebAssembly/function-references/$(spec_version_typed_function_references)/test/core/$$f" -O; \
 		done
 	@cd $(spectest_typed_function_references_testdata_dir) && for f in `find . -name '*.wast'`; do \
+		wasm-tools json-from-wast --wasm-dir . -o $$(basename $$f .wast).json $$f || true; \
+	done
+
+.PHONY: build.spectest.gc
+build.spectest.gc:
+	@rm -rf $(spectest_gc_testdata_dir)
+	@mkdir -p $(spectest_gc_testdata_dir)
+	@cd $(spectest_gc_testdata_dir) \
+		&& curl -sSL 'https://api.github.com/repos/WebAssembly/spec/contents/test/core/gc?ref=$(spec_version_gc)' \
+		| jq -r '.[]| .download_url' | grep -E ".wast" | xargs -Iurl curl -sJL url -O
+	@cd $(spectest_gc_testdata_dir) && for f in `find . -name '*.wast'`; do \
 		wasm-tools json-from-wast --wasm-dir . -o $$(basename $$f .wast).json $$f || true; \
 	done
 
