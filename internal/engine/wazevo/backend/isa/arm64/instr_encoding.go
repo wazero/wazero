@@ -11,8 +11,7 @@ import (
 
 // Encode implements backend.Machine Encode.
 func (m *machine) Encode(ctx context.Context) error {
-	m.resolveRelativeAddresses(ctx, btiInstructionSize)
-	m.compiler.Emit4Bytes(btiJCInstruction)
+	m.resolveRelativeAddresses(ctx)
 	m.encode(m.rootInstr)
 	if l := len(m.compiler.Buf()); l > maxFunctionExecutableSize {
 		return fmt.Errorf("function size exceeds the limit: %d > %d", l, maxFunctionExecutableSize)
@@ -31,7 +30,9 @@ func (i *instruction) encode(m *machine) {
 	switch kind := i.kind; kind {
 	case nop0, emitSourceOffsetInfo, loadConstBlockArg:
 	case bti:
-		c.Emit4Bytes(btiJCInstruction)
+		// bti encodes "BTI JC", a landing pad valid for both indirect jumps and calls.
+		// https://developer.arm.com/documentation/ddi0602/2024-03/Base-Instructions/BTI--Branch-Target-Identification-
+		c.Emit4Bytes(0xd503_24df)
 	case exitSequence:
 		encodeExitSequence(c, i.rn.reg())
 	case ret:
@@ -442,14 +443,6 @@ func encodeMov64(rd, rn uint32, toIsSp, fromIsSp bool) uint32 {
 		return encodeLogicalShiftedRegister(0b101, 0, rn, 0, regNumberInEncoding[xzr], rd)
 	}
 }
-
-const (
-	// btiJCInstruction encodes "BTI JC", a landing pad valid for both
-	// indirect jumps and calls.
-	// https://developer.arm.com/documentation/ddi0602/2024-03/Base-Instructions/BTI--Branch-Target-Identification-
-	btiJCInstruction   = 0xd503_24df
-	btiInstructionSize = 4
-)
 
 // encodeSystemRegisterMove encodes as "System register move" in
 // https://developer.arm.com/documentation/ddi0596/2020-12/Index-by-Encoding/Branches--Exception-Generating-and-System-instructions?lang=en

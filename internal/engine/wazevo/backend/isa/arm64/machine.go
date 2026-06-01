@@ -369,7 +369,7 @@ func (m *machine) resolveAddressingMode(arg0offset, ret0offset int64, i *instruc
 }
 
 // resolveRelativeAddresses resolves the relative addresses before encoding.
-func (m *machine) resolveRelativeAddresses(ctx context.Context, initialOffset int64) {
+func (m *machine) resolveRelativeAddresses(ctx context.Context) {
 	m.insertBTIForJumpTableTargets()
 
 	if len(m.unresolvedAddressModes) > 0 {
@@ -397,7 +397,7 @@ func (m *machine) resolveRelativeAddresses(ctx context.Context, initialOffset in
 		}
 
 		// Next, in order to determine the offsets of relative jumps, we have to calculate the size of each label.
-		offset := initialOffset
+		var offset int64
 		for i, pos := range m.orderedSSABlockLabelPos {
 			pos.binaryOffset = offset
 			var size int64
@@ -464,7 +464,7 @@ func (m *machine) resolveRelativeAddresses(ctx context.Context, initialOffset in
 		}
 	}
 
-	currentOffset := initialOffset
+	var currentOffset int64
 	for cur := m.rootInstr; cur != nil; cur = cur.next {
 		switch cur.kind {
 		case br:

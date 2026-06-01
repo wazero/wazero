@@ -15,6 +15,9 @@ func (m *machine) setupPrologue() {
 	cur := m.rootInstr
 	prevInitInst := cur.next
 
+	// Landing pad for indirect branch tracking (Intel CET).
+	cur = linkInstr(cur, m.allocateInstr().asEndbr64())
+
 	// At this point, we have the stack layout as follows:
 	//
 	//                   (high address)

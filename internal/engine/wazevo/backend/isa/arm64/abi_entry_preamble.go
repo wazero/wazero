@@ -17,7 +17,6 @@ import (
 // also SP and FP are correct Go-runtime-based values, and LR is the return address to the Go-side caller.
 func (m *machine) CompileEntryPreamble(signature *ssa.Signature) []byte {
 	root := m.constructEntryPreamble(signature)
-	m.compiler.Emit4Bytes(btiJCInstruction)
 	m.encode(root)
 	return m.compiler.Buf()
 }
@@ -145,9 +144,12 @@ func (m *machine) constructEntryPreamble(sig *ssa.Signature) (root *instruction)
 
 	//// ----------------------------------- prologue ----------------------------------- ////
 
+	// Landing pad for branch target identification (ARM BTI).
+	cur := linkInstr(root, m.allocateInstr().asBTI())
+
 	// First, we save executionContextPtrReg into a callee-saved register so that it can be used in epilogue as well.
 	// 		mov savedExecutionContextPtr, x0
-	cur := m.move64(savedExecutionContextPtr, executionContextPtrReg, root)
+	cur = m.move64(savedExecutionContextPtr, executionContextPtrReg, cur)
 
 	// Next, save the current FP, SP and LR into the wazevo.executionContext:
 	// 		str fp, [savedExecutionContextPtr, #OriginalFramePointer]

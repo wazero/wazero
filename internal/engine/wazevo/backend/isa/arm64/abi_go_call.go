@@ -27,6 +27,9 @@ func (m *machine) CompileGoFunctionTrampoline(exitCode wazevoapi.ExitCode, sig *
 	cur.asNop0()
 	m.rootInstr = cur
 
+	// Landing pad for branch target identification (ARM BTI).
+	cur = linkInstr(cur, m.allocateInstr().asBTI())
+
 	// Execution context is always the first argument.
 	execCtrPtr := x0VReg
 
@@ -243,7 +246,6 @@ func (m *machine) CompileGoFunctionTrampoline(exitCode wazevoapi.ExitCode, sig *
 	ret.asRet()
 	linkInstr(cur, ret)
 
-	m.compiler.Emit4Bytes(btiJCInstruction)
 	m.encode(m.rootInstr)
 	return m.compiler.Buf()
 }
@@ -352,9 +354,7 @@ func (m *machine) storeReturnAddressAndExit(cur *instruction) *instruction {
 	trapSeq := m.allocateInstr()
 	trapSeq.asExitSequence(x0VReg)
 	cur = linkInstr(cur, trapSeq)
-	bti := m.allocateInstr()
-	bti.asBTI()
-	cur = linkInstr(cur, bti)
+	cur = linkInstr(cur, m.allocateInstr().asBTI())
 	return cur
 }
 

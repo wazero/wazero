@@ -36,6 +36,7 @@ func TestMachine_CompileGoFunctionTrampoline(t *testing.T) {
 			},
 			needModuleContextPtr: true,
 			exp: `
+	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
 	sub $40, %rsp
@@ -109,6 +110,7 @@ L3:
 			},
 			needModuleContextPtr: true,
 			exp: `
+	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
 	sub $40, %rsp
@@ -180,6 +182,7 @@ L3:
 				Results: []ssa.Type{ssa.TypeI32},
 			},
 			exp: `
+	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
 	sub $24, %rsp
@@ -259,6 +262,7 @@ L3:
 				},
 			},
 			exp: `
+	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
 	sub $248, %rsp
@@ -406,6 +410,7 @@ func TestMachine_CompileStackGrowCallSequence(t *testing.T) {
 	_ = m.CompileStackGrowCallSequence()
 
 	require.Equal(t, `
+	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
 	mov.q %rdx, 96(%rax)

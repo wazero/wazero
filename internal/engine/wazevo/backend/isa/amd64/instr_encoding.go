@@ -13,7 +13,8 @@ func (i *instruction) encode(c backend.Compiler) (needsLabelResolution bool) {
 	switch kind := i.kind; kind {
 	case nop0, sourceOffsetInfo, defineUninitializedReg, fcvtToSintSequence, fcvtToUintSequence, nopUseReg:
 	case endbr64:
-		c.Emit4Bytes(endbr64Instruction)
+		// endbr64 is the landing pad required by Intel CET indirect branch tracking
+		c.Emit4Bytes(0xfa1e_0ff3)
 	case ret:
 		encodeRet(c)
 	case imm:
@@ -1420,11 +1421,6 @@ func encodeLoad64(c backend.Compiler, m *amode, rd regalloc.RealReg) {
 func encodeRet(c backend.Compiler) {
 	c.EmitByte(0xc3)
 }
-
-// endbr64Instruction encodes "ENDBR64", the landing pad required by
-// Intel CET indirect branch tracking. Emit4Bytes writes little endian bytes,
-// so this emits f3 0f 1e fa.
-const endbr64Instruction = 0xfa1e_0ff3
 
 func encodeEncEnc(
 	c backend.Compiler,

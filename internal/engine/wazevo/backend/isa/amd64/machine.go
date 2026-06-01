@@ -2162,7 +2162,6 @@ func (m *machine) encodeWithoutSSA(root *instruction) {
 func (m *machine) Encode(ctx context.Context) (err error) {
 	m.insertEndbr64ForJumpTableTargets()
 	bufPtr := m.c.BufPtr()
-	m.c.Emit4Bytes(endbr64Instruction)
 
 	var fn string
 	var fnIndex int
