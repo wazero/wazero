@@ -39,26 +39,21 @@ func decodeSubType(enabledFeatures api.CoreFeatures, r *bytes.Reader, ret *wasm.
 		if err := decodeSuperTypes(r, ret); err != nil {
 			return err
 		}
-		ret.Final = true
 		return decodeCompositeForm(enabledFeatures, r, ret)
 
 	case 0x50: // sub (non-final)
 		if err := decodeSuperTypes(r, ret); err != nil {
 			return err
 		}
-		ret.Final = false
+		ret.Open = true
 		return decodeCompositeForm(enabledFeatures, r, ret)
 
 	case 0x60, 0x5F, 0x5E:
 		// Shorthand: per spec, a bare composite type desugars to
 		// (sub final () comptype) — implicit final, no super list.
-		// Host modules construct their FunctionTypes with Final set
-		// too (see Module.maybeAddType), keeping import linking and
-		// type identity consistent between decoded and host modules.
 		if err := r.UnreadByte(); err != nil {
 			return err
 		}
-		ret.Final = true
 		return decodeCompositeForm(enabledFeatures, r, ret)
 	}
 	return fmt.Errorf("%w: %#x", ErrInvalidByte, b)

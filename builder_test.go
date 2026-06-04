@@ -54,7 +54,7 @@ func TestNewHostModuleBuilder_Compile(t *testing.T) {
 			},
 			expected: &wasm.Module{
 				TypeSection: []wasm.FunctionType{
-					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}, Final: true},
+					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}},
 				},
 				FunctionSection: []wasm.Index{0},
 				CodeSection:     []wasm.Code{wasm.MustParseGoReflectFuncCode(uint32_uint32)},
@@ -80,7 +80,7 @@ func TestNewHostModuleBuilder_Compile(t *testing.T) {
 			},
 			expected: &wasm.Module{
 				TypeSection: []wasm.FunctionType{
-					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}, Final: true},
+					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}},
 				},
 				FunctionSection: []wasm.Index{0},
 				CodeSection:     []wasm.Code{wasm.MustParseGoReflectFuncCode(uint32_uint32)},
@@ -107,7 +107,7 @@ func TestNewHostModuleBuilder_Compile(t *testing.T) {
 			},
 			expected: &wasm.Module{
 				TypeSection: []wasm.FunctionType{
-					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}, Final: true},
+					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}},
 				},
 				FunctionSection: []wasm.Index{0},
 				CodeSection:     []wasm.Code{wasm.MustParseGoReflectFuncCode(uint32_uint32)},
@@ -133,7 +133,7 @@ func TestNewHostModuleBuilder_Compile(t *testing.T) {
 			},
 			expected: &wasm.Module{
 				TypeSection: []wasm.FunctionType{
-					{Params: []wasm.ValueType{i64}, Results: []wasm.ValueType{i32}, Final: true},
+					{Params: []wasm.ValueType{i64}, Results: []wasm.ValueType{i32}},
 				},
 				FunctionSection: []wasm.Index{0},
 				CodeSection:     []wasm.Code{wasm.MustParseGoReflectFuncCode(uint64_uint32)},
@@ -159,8 +159,8 @@ func TestNewHostModuleBuilder_Compile(t *testing.T) {
 			},
 			expected: &wasm.Module{
 				TypeSection: []wasm.FunctionType{
-					{Params: []wasm.ValueType{i64}, Results: []wasm.ValueType{i32}, Final: true},
-					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}, Final: true},
+					{Params: []wasm.ValueType{i64}, Results: []wasm.ValueType{i32}},
+					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}},
 				},
 				FunctionSection: []wasm.Index{0, 1},
 				CodeSection:     []wasm.Code{wasm.MustParseGoReflectFuncCode(uint64_uint32), wasm.MustParseGoReflectFuncCode(uint32_uint32)},
@@ -188,7 +188,7 @@ func TestNewHostModuleBuilder_Compile(t *testing.T) {
 			},
 			expected: &wasm.Module{
 				TypeSection: []wasm.FunctionType{
-					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}, Final: true},
+					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}},
 				},
 				FunctionSection: []wasm.Index{0},
 				CodeSection: []wasm.Code{
@@ -216,7 +216,7 @@ func TestNewHostModuleBuilder_Compile(t *testing.T) {
 			},
 			expected: &wasm.Module{
 				TypeSection: []wasm.FunctionType{
-					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}, Final: true},
+					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}},
 				},
 				FunctionSection: []wasm.Index{0},
 				CodeSection: []wasm.Code{
@@ -248,7 +248,7 @@ func TestNewHostModuleBuilder_Compile(t *testing.T) {
 			},
 			expected: &wasm.Module{
 				TypeSection: []wasm.FunctionType{
-					{Params: []wasm.ValueType{i64}, Results: []wasm.ValueType{i32}, Final: true},
+					{Params: []wasm.ValueType{i64}, Results: []wasm.ValueType{i32}},
 				},
 				FunctionSection: []wasm.Index{0},
 				CodeSection: []wasm.Code{
@@ -280,8 +280,8 @@ func TestNewHostModuleBuilder_Compile(t *testing.T) {
 			},
 			expected: &wasm.Module{
 				TypeSection: []wasm.FunctionType{
-					{Params: []wasm.ValueType{i64}, Results: []wasm.ValueType{i32}, Final: true},
-					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}, Final: true},
+					{Params: []wasm.ValueType{i64}, Results: []wasm.ValueType{i32}},
+					{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}},
 				},
 				FunctionSection: []wasm.Index{0, 1},
 				CodeSection: []wasm.Code{

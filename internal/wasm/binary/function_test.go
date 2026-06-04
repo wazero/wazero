@@ -87,10 +87,7 @@ func TestFunctionType(t *testing.T) {
 			var actual wasm.FunctionType
 			err := decodeFunctionType(api.CoreFeaturesV2, bytes.NewReader(b), &actual)
 			require.NoError(t, err)
-			// The decoder desugars the 0x60 shorthand to (sub final (func ...)),
-			// so the decoded type is Final. Mirror that on the expected copy.
 			expected := tc.input
-			expected.Final = true
 			// Set the FunctionType key on the input.
 			_ = expected.String()
 			require.Equal(t, actual, expected)

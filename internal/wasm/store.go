@@ -829,8 +829,8 @@ func refinedSingleKey(t *FunctionType, groupStart, groupEnd uint32, ts []Functio
 			ret += fmt.Sprintf("|sup=%d", sup)
 		}
 	}
-	if t.Final {
-		ret += "|final"
+	if t.Open {
+		ret += "|open"
 	}
 	if t.RecGroupSize > 1 {
 		ret += fmt.Sprintf("|rec%d/%d", t.RecGroupPosition, t.RecGroupSize)
@@ -918,8 +918,8 @@ func canonicalKey(t *FunctionType, groupStart, groupEnd uint32) string {
 			ret += fmt.Sprintf("|sup=%d", sup)
 		}
 	}
-	if t.Final {
-		ret += "|final"
+	if t.Open {
+		ret += "|open"
 	}
 	if t.RecGroupSize > 1 {
 		ret += fmt.Sprintf("|rec%d/%d", t.RecGroupPosition, t.RecGroupSize)

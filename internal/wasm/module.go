@@ -429,7 +429,7 @@ func (m *Module) validateTypeSection(enabledFeatures api.CoreFeatures) error {
 				return fmt.Errorf("type[%d] supertype index %d out of range", i, *t.SuperTypeIndex)
 			}
 			sup := &m.TypeSection[*t.SuperTypeIndex]
-			if sup.Final {
+			if !sup.Open {
 				return fmt.Errorf("type[%d] supertype %d is final", i, *t.SuperTypeIndex)
 			}
 			if sup.Form != t.Form {
@@ -943,12 +943,11 @@ type FunctionType struct {
 	// at most one supertype. (GC proposal.)
 	SuperTypeIndex *Index
 
-	// Final indicates whether this type can be a supertype of others.
-	// The shorthand 0x60 / 0x5F / 0x5E forms and the explicit 0x4F (sub
-	// final) form set this to true; the 0x50 (sub) form sets it to false.
-	// Default zero value (false) is benign for non-GC modules because they
-	// never declare subtypes. (GC proposal.)
-	Final bool
+	// Open indicates this type can be subtyped (declared with the 0x50
+	// `sub` form). The shorthand 0x60 / 0x5F / 0x5E forms and the
+	// explicit 0x4F `sub final` form are final (Open == false). The zero
+	// value (false) means final, matching the spec default. (GC proposal.)
+	Open bool
 }
 
 func (f *FunctionType) CacheNumInUint64() {
@@ -1006,8 +1005,8 @@ func (f *FunctionType) key() string {
 	if f.SuperTypeIndex != nil {
 		ret += fmt.Sprintf("|sup=%d", *f.SuperTypeIndex)
 	}
-	if f.Final {
-		ret += "|final"
+	if f.Open {
+		ret += "|open"
 	}
 	if f.RecGroupSize > 1 {
 		ret += fmt.Sprintf("|rec%d/%d", f.RecGroupPosition, f.RecGroupSize)
