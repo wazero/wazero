@@ -777,7 +777,7 @@ func (v validationModuleCtx) TypeSection() []FunctionType  { return v.m.TypeSect
 func (v validationModuleCtx) TypeID(uint32) FunctionTypeID { return 0 }
 func (v validationModuleCtx) GCRegister(any) uint64        { return 0 }
 func (v validationModuleCtx) FunctionTypeIndex(funcIdx Index) (uint32, bool) {
-	return funcTypeIndex(v.m, funcIdx)
+	return v.m.typeIndexOfFunction(funcIdx)
 }
 
 func (m *Module) validateDataCountSection() (err error) {

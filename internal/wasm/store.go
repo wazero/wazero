@@ -951,7 +951,7 @@ func importCompatibleFunc(s *Store, importerMod *Module, expected *FunctionType,
 	if sameFunctionSignature(s, expected, actual) {
 		return true
 	}
-	actualTypeIdx, ok := funcTypeIndex(actualMod, actualFuncIdx)
+	actualTypeIdx, ok := actualMod.typeIndexOfFunction(actualFuncIdx)
 	if !ok {
 		return false
 	}
@@ -970,31 +970,6 @@ func importCompatibleFunc(s *Store, importerMod *Module, expected *FunctionType,
 		actualTypeIdx = sup
 	}
 	return false
-}
-
-// funcTypeIndex returns the module-local type index of the function at
-// funcIdx, walking the import section to count imported functions.
-func funcTypeIndex(m *Module, funcIdx Index) (uint32, bool) {
-	imported := uint32(m.ImportFunctionCount)
-	if funcIdx < imported {
-		var fi uint32
-		for i := range m.ImportSection {
-			imp := &m.ImportSection[i]
-			if imp.Type != ExternTypeFunc {
-				continue
-			}
-			if fi == funcIdx {
-				return imp.DescFunc, true
-			}
-			fi++
-		}
-		return 0, false
-	}
-	local := funcIdx - imported
-	if int(local) >= len(m.FunctionSection) {
-		return 0, false
-	}
-	return m.FunctionSection[local], true
 }
 
 func (s *Store) GetFunctionTypeID(t *FunctionType) (FunctionTypeID, error) {
@@ -1194,36 +1169,12 @@ func (m *ModuleInstance) GCRegister(v any) uint64 {
 
 // FunctionTypeIndex returns the module-local type index of the function at
 // funcIdx (covering both imported and module-defined functions), or ok=false
-// if out of range. Implements gcModuleCtx so const-expression ref.func can
-// push a typed concrete-ref result.
+// if out of range. Implements gcModuleCtx.
 func (m *ModuleInstance) FunctionTypeIndex(funcIdx Index) (uint32, bool) {
-	src := m.Source
-	if src == nil {
+	if m.Source == nil {
 		return 0, false
 	}
-	imported := uint32(src.ImportFunctionCount)
-	if funcIdx < imported {
-		var fi uint32
-		for i := range src.ImportSection {
-			imp := &src.ImportSection[i]
-			if imp.Type != ExternTypeFunc {
-				continue
-			}
-			if fi == funcIdx {
-				return imp.DescFunc, true
-			}
-			fi++
-			if fi > funcIdx {
-				break
-			}
-		}
-		return 0, false
-	}
-	local := funcIdx - imported
-	if int(local) >= len(src.FunctionSection) {
-		return 0, false
-	}
-	return src.FunctionSection[local], true
+	return m.Source.typeIndexOfFunction(funcIdx)
 }
 
 // GetStore returns the Store on which this module is instantiated. Used by
