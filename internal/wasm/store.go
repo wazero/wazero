@@ -661,7 +661,6 @@ func (s *Store) GetFunctionTypeIDs(ts []FunctionType) ([]FunctionTypeID, error) 
 	return ret, nil
 }
 
-
 func init() {
 	// Wire the validation-time canonicalizer (module.go keeps an indirect
 	// to avoid importing strings / pulling the heavy logic into module.go).

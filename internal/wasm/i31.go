@@ -102,9 +102,9 @@ func (r *I31Ref) Equals(other *I31Ref) bool {
 // correct answer for ref.test eqref / ref.test i31ref / etc.
 
 const (
-	PrimTagMask uintptr = 0b11
-	primTagI31  uintptr = 0b01
-	primTagHeap uintptr = 0b10
+	PrimTagMask  uintptr = 0b11
+	primTagI31   uintptr = 0b01
+	primTagHeap  uintptr = 0b10
 	primTagExtAn uintptr = 0b11
 )
 
