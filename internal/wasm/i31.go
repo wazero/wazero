@@ -1,5 +1,7 @@
 package wasm
 
+import "unsafe"
+
 // I31Ref is an `i31` reference value introduced by the WebAssembly GC
 // proposal. An i31 holds a 31-bit integer, conceptually "tagged" in a
 // reference slot. The spec defines exactly three operations:
@@ -78,24 +80,19 @@ func (r *I31Ref) Equals(other *I31Ref) bool {
 // objects to at least 8 bytes on the supported 64-bit platforms — so the
 // tag bit is unambiguous.
 
-// Tagged representation of "primitive" and GC-handle refs carried on the
-// interpreter operand stack. The low 2 bits encode the tag:
+// Tagged representation of reference values on the interpreter operand stack.
+// The low 2 bits encode the tag:
 //
-//	0b00 — function pointer (upstream typed funcref) or null (the zero slot)
+//	0b00 — function pointer (typed funcref) or null (the zero slot)
 //	0b01 — i31: payload in bits 2..32 (31 bits of value)
-//	0b10 — wasm-gc heap-object handle (struct / array): NOT a raw pointer.
-//	       Bits 2..40 hold a 1-based index into the owning module's
-//	       ModuleInstance.gcObjects table; bits 40..64 hold the owning
-//	       module's gcID. See ModuleInstance.GCRegister / Store.GCLookup.
+//	0b10 — GC ref (struct / array): tagged raw pointer. Clear the low 2
+//	       bits to recover the *WasmStruct or *WasmArray. The object is
+//	       kept alive by ModuleInstance.GCRoots.
 //	0b11 — extern-wrapped-in-anyref: payload in bits 2..63 (62 bits)
 //
-// struct / array instances are addressed by an integer handle rather than
-// their Go pointer bits, so the interpreter never converts a uintptr back
-// to a pointer and never depends on a non-moving Go GC. The 0b10 tag keeps
-// those handles unambiguous against upstream's function-pointer slots
-// (0b00), which retain their existing representation. Encoding the owning
-// module's id lets the table live (and be freed) with its module while a
-// handle that escapes into another module still resolves via the store.
+// Go struct pointers are at least 8-byte aligned on 64-bit platforms, so
+// the low 3 bits are always zero and the 0b10 tag is unambiguous against
+// function-pointer slots (0b00).
 //
 // Externref values in wazero are opaque uintptrs supplied by the host.
 // Storing them directly in an anyref slot is ambiguous because some
@@ -105,42 +102,31 @@ func (r *I31Ref) Equals(other *I31Ref) bool {
 // correct answer for ref.test eqref / ref.test i31ref / etc.
 
 const (
-	primTagMask  uintptr = 0b11
-	primTagI31   uintptr = 0b01
-	primTagHeap  uintptr = 0b10
+	PrimTagMask uintptr = 0b11
+	primTagI31  uintptr = 0b01
+	primTagHeap uintptr = 0b10
 	primTagExtAn uintptr = 0b11
-
-	// gcHandleIDShift is the bit position where the owning module's gcID
-	// begins. Bits [2, gcHandleIDShift) hold the 1-based table index (38
-	// bits → up to ~2.7e11 objects per module); bits [gcHandleIDShift, 64)
-	// hold the gcID (24 bits → up to ~16.7M concurrently live GC modules).
-	gcHandleIDShift = 40
-	gcHandleIdxMask = (uint64(1) << (gcHandleIDShift - 2)) - 1
 )
 
-// packGCHandle encodes the owning module's gcID and a 0-based table index as
-// an operand-stack handle. The index is stored 1-based so a real object
-// never encodes to 0 (null).
-func packGCHandle(gcID uint32, idx int) uint64 {
-	return uint64(gcID)<<gcHandleIDShift | (uint64(idx)+1)<<2 | uint64(primTagHeap)
+// TagGCPointer encodes a Go pointer to a WasmStruct or WasmArray as a
+// tagged uint64 for the operand stack. The pointer must be 4-byte aligned
+// (guaranteed for Go heap-allocated structs) so the low 2 bits are free
+// for the primTagHeap tag.
+func TagGCPointer(ptr unsafe.Pointer) uint64 {
+	return uint64(uintptr(ptr)) | uint64(primTagHeap)
 }
 
-// gcHandleIndex recovers the 0-based table index from a handle produced by
-// packGCHandle. Callers must check IsGCHandle first.
-func gcHandleIndex(handle uint64) int {
-	return int((handle>>2)&gcHandleIdxMask) - 1
+// UntagGCPointer clears the primTagHeap tag and returns the raw pointer.
+// Callers must check IsGCRef first.
+func UntagGCPointer(v uint64) unsafe.Pointer {
+	return unsafe.Pointer(uintptr(v) &^ uintptr(PrimTagMask))
 }
 
-// gcHandleModuleID recovers the owning module's gcID from a handle.
-func gcHandleModuleID(handle uint64) uint32 {
-	return uint32(handle >> gcHandleIDShift)
-}
-
-// IsGCHandle reports whether a slot is a wasm-gc heap-object handle (a
-// struct or array), as opposed to null/function-pointer (0b00), i31
-// (0b01), or externref-as-any (0b11).
-func IsGCHandle(slot uint64) bool {
-	return uintptr(slot)&primTagMask == primTagHeap
+// IsGCRef reports whether a slot is a tagged GC-ref pointer (a struct or
+// array), as opposed to null/function-pointer (0b00), i31 (0b01), or
+// externref-as-any (0b11).
+func IsGCRef(slot uint64) bool {
+	return uintptr(slot)&PrimTagMask == primTagHeap
 }
 
 // PackI31 returns the tagged-uintptr representation of an i31 value. The
@@ -152,7 +138,7 @@ func PackI31(v uint32) uintptr {
 // IsTaggedI31 reports whether a tagged uintptr is an i31 ref (and not the
 // null reference or a real pointer).
 func IsTaggedI31(t uintptr) bool {
-	return t&primTagMask == primTagI31
+	return t&PrimTagMask == primTagI31
 }
 
 // UnpackI31Signed extracts an i31 value as a sign-extended i32. Callers
@@ -185,7 +171,7 @@ func PackExternAsAny(v uintptr) uintptr {
 
 // IsTaggedExternAsAny reports whether t was produced by PackExternAsAny.
 func IsTaggedExternAsAny(t uintptr) bool {
-	return t != 0 && t&primTagMask == primTagExtAn
+	return t != 0 && t&PrimTagMask == primTagExtAn
 }
 
 // UnpackExternAsAny extracts the original externref uintptr from a

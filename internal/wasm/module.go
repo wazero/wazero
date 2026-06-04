@@ -775,7 +775,7 @@ type validationModuleCtx struct {
 
 func (v validationModuleCtx) TypeSection() []FunctionType  { return v.m.TypeSection }
 func (v validationModuleCtx) TypeID(uint32) FunctionTypeID { return 0 }
-func (v validationModuleCtx) GCRegister(any) uint64        { return packGCHandle(0, 0) }
+func (v validationModuleCtx) GCRegister(any) uint64        { return 0 }
 func (v validationModuleCtx) FunctionTypeIndex(funcIdx Index) (uint32, bool) {
 	return funcTypeIndex(v.m, funcIdx)
 }

@@ -381,6 +381,24 @@ func functionFromUintptr(ptr uintptr) *function {
 	return *(**function)(unsafe.Pointer(wrapped))
 }
 
+func structFromUintptr(ptr uintptr) *wasm.WasmStruct {
+	var wrapped *uintptr = &ptr
+	return *(**wasm.WasmStruct)(unsafe.Pointer(wrapped))
+}
+
+func arrayFromUintptr(ptr uintptr) *wasm.WasmArray {
+	var wrapped *uintptr = &ptr
+	return *(**wasm.WasmArray)(unsafe.Pointer(wrapped))
+}
+
+func gcStruct(v uint64) *wasm.WasmStruct {
+	return structFromUintptr(uintptr(v) &^ uintptr(wasm.PrimTagMask))
+}
+
+func gcArray(v uint64) *wasm.WasmArray {
+	return arrayFromUintptr(uintptr(v) &^ uintptr(wasm.PrimTagMask))
+}
+
 type snapshot struct {
 	stack  []uint64
 	frames []*callFrame
@@ -4762,7 +4780,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			s := f.moduleInstance.GetStore().GCLookup(v).(*wasm.WasmStruct)
+			s := gcStruct(v)
 			fieldSchema := f.moduleInstance.Source.TypeSection[typeIdx].Fields[fieldIdx]
 			raw := decodeFieldValueRead(fieldSchema, s.Get(fieldIdx), op.Kind)
 			ce.pushValue(raw)
@@ -4776,7 +4794,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			s := f.moduleInstance.GetStore().GCLookup(v).(*wasm.WasmStruct)
+			s := gcStruct(v)
 			fieldSchema := f.moduleInstance.Source.TypeSection[typeIdx].Fields[fieldIdx]
 			if err := s.Set(fieldIdx, encodeFieldValue(fieldSchema, raw)); err != nil {
 				panic(err)
@@ -4817,7 +4835,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			a := f.moduleInstance.GetStore().GCLookup(v).(*wasm.WasmArray)
+			a := gcArray(v)
 			if idx >= a.Len() {
 				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
 			}
@@ -4842,7 +4860,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			a := f.moduleInstance.GetStore().GCLookup(v).(*wasm.WasmArray)
+			a := gcArray(v)
 			if idx >= a.Len() {
 				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
 			}
@@ -4857,7 +4875,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			a := f.moduleInstance.GetStore().GCLookup(v).(*wasm.WasmArray)
+			a := gcArray(v)
 			ce.pushValue(uint64(a.Len()))
 			frame.pc++
 
@@ -4929,7 +4947,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			a := f.moduleInstance.GetStore().GCLookup(v).(*wasm.WasmArray)
+			a := gcArray(v)
 			if uint64(idx)+uint64(count) > uint64(a.Len()) {
 				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
 			}
@@ -4951,8 +4969,8 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if srcV == 0 || dstV == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			src := f.moduleInstance.GetStore().GCLookup(srcV).(*wasm.WasmArray)
-			dst := f.moduleInstance.GetStore().GCLookup(dstV).(*wasm.WasmArray)
+			src := gcArray(srcV)
+			dst := gcArray(dstV)
 			if uint64(srcIdx)+uint64(count) > uint64(src.Len()) ||
 				uint64(dstIdx)+uint64(count) > uint64(dst.Len()) {
 				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
@@ -5023,7 +5041,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if arrV == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			a := f.moduleInstance.GetStore().GCLookup(arrV).(*wasm.WasmArray)
+			a := gcArray(arrV)
 			schema := f.moduleInstance.Source.TypeSection[typeIdx].ArrayField
 			data := f.moduleInstance.DataInstances[segIdx]
 			elemSize, ok := arrayDataElemSize(schema)
@@ -5052,7 +5070,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if arrV == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			a := f.moduleInstance.GetStore().GCLookup(arrV).(*wasm.WasmArray)
+			a := gcArray(arrV)
 			elem := f.moduleInstance.ElementInstances[segIdx]
 			if uint64(dstOff)+uint64(count) > uint64(a.Len()) {
 				panic(wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess)
@@ -5492,22 +5510,15 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 		}
 		return false
 	}
-	// The remaining non-null value is either a wasm-gc heap-object handle
-	// (struct / array, tagged 0b10) or an upstream function pointer (0b00).
-	// The tag disambiguates them, so no pointer is ever reconstructed from
-	// the operand-stack integer.
+	// The remaining non-null value is either a GC ref (struct / array,
+	// tagged 0b10) or a function pointer (0b00).
 	store := mi.GetStore()
-	if wasm.IsGCHandle(v) {
-		var objTypeID wasm.FunctionTypeID
-		var objForm wasm.CompositeForm
-		switch o := store.GCLookup(v).(type) {
-		case *wasm.WasmStruct:
-			objTypeID, objForm = o.TypeID, wasm.CompositeFormStruct
-		case *wasm.WasmArray:
-			objTypeID, objForm = o.TypeID, wasm.CompositeFormArray
-		default:
-			return false
-		}
+	if wasm.IsGCRef(v) {
+		// Read TypeID from offset 0 — first field of both WasmStruct
+		// and WasmArray.
+		ptr := unsafe.Pointer(uintptr(v) &^ uintptr(wasm.PrimTagMask))
+		objTypeID := *(*wasm.FunctionTypeID)(ptr)
+		objForm := store.TypeForm(objTypeID)
 		if isConcrete {
 			if int(typeIdx) >= len(mi.TypeIDs) {
 				return false

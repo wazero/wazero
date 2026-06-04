@@ -10,11 +10,6 @@ func (s *Store) deleteModule(m *ModuleInstance) error {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
-	// Free this module's wasm-gc handle table and recycle its gcID so its
-	// struct/array objects are reclaimed with the module rather than living
-	// for the whole store's lifetime.
-	s.gcReleaseModule(m)
-
 	// Remove this module name.
 	if m.prev != nil {
 		m.prev.next = m.next
