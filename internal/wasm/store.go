@@ -675,27 +675,16 @@ func init() {
 // fixed point — each "|sup=N" is replaced by "|sup=(<canonical key of N>)" —
 // so that two types whose supertypes are themselves canonically equivalent
 // share a canonical key.
+// canonicalizeRecGroupKeys computes canonical keys for all types in ts.
+// Types are processed in forward order by rec group. Since supertypes
+// always have lower indices than their subtypes, each supertype's key is
+// already finalized when its subtypes are processed — no fixed-point
+// iteration is needed.
+//
+// Within a rec group, in-group references use "rec.N" (relative);
+// out-of-group references are substituted with the referenced type's
+// already-computed canonical key (ts[idx].string).
 func canonicalizeRecGroupKeys(ts []FunctionType) {
-	computeInitialKeys(ts)
-	for round := 0; round < len(ts)+1; round++ {
-		changed := false
-		newKeys := make([]string, len(ts))
-		for i := range ts {
-			newKeys[i] = refinedKey(ts, &ts[i], i)
-		}
-		for i := range ts {
-			if newKeys[i] != ts[i].string {
-				ts[i].string = newKeys[i]
-				changed = true
-			}
-		}
-		if !changed {
-			return
-		}
-	}
-}
-
-func computeInitialKeys(ts []FunctionType) {
 	i := 0
 	for i < len(ts) {
 		t := &ts[i]
@@ -705,15 +694,16 @@ func computeInitialKeys(ts []FunctionType) {
 		}
 		groupStart := uint32(i - t.RecGroupPosition)
 		groupEnd := groupStart + uint32(groupSize)
+
 		memberKeys := make([]string, groupSize)
 		for j := 0; j < groupSize; j++ {
 			idx := groupStart + uint32(j)
 			if int(idx) >= len(ts) {
-				memberKeys[j] = ""
-				continue
+				break
 			}
-			memberKeys[j] = canonicalKey(&ts[idx], groupStart, groupEnd)
+			memberKeys[j] = compositeKey(&ts[idx], groupStart, groupEnd, ts)
 		}
+
 		var groupSuffix string
 		if groupSize > 1 {
 			groupSuffix = "|grp=[" + strings.Join(memberKeys, "|") + "]"
@@ -729,44 +719,25 @@ func computeInitialKeys(ts []FunctionType) {
 	}
 }
 
-func refinedKey(ts []FunctionType, t *FunctionType, idx int) string {
-	groupSize := t.RecGroupSize
-	if groupSize < 1 {
-		groupSize = 1
-	}
-	groupStart := uint32(idx - t.RecGroupPosition)
-	groupEnd := groupStart + uint32(groupSize)
-
-	own := refinedSingleKey(t, groupStart, groupEnd, ts)
-	if groupSize <= 1 {
-		return own
-	}
-	parts := make([]string, 0, groupSize)
-	for j := 0; j < groupSize; j++ {
-		k := groupStart + uint32(j)
-		if int(k) >= len(ts) {
-			break
-		}
-		parts = append(parts, refinedSingleKey(&ts[k], groupStart, groupEnd, ts))
-	}
-	return own + "|grp=[" + strings.Join(parts, "|") + "]"
-}
-
-func refinedSingleKey(t *FunctionType, groupStart, groupEnd uint32, ts []FunctionType) string {
+// compositeKey computes the canonical key for a single type within a rec
+// group bounded by [groupStart, groupEnd). In-group references use "rec.N";
+// out-of-group references are substituted with the referenced type's
+// canonical key from ts when ts is non-nil, or emitted as a raw index.
+func compositeKey(t *FunctionType, groupStart, groupEnd uint32, ts []FunctionType) string {
 	var ret string
 	switch t.Form {
 	case CompositeFormStruct:
-		ret = structKeyWithGroupRefined(t.Fields, groupStart, groupEnd, ts)
+		ret = structTypeKey(t.Fields, groupStart, groupEnd, ts)
 	case CompositeFormArray:
-		ret = "array(" + fieldKeyWithGroupRefined(t.ArrayField, groupStart, groupEnd, ts) + ")"
+		ret = "array(" + fieldTypeKey(t.ArrayField, groupStart, groupEnd, ts) + ")"
 	default:
-		ret = funcKeyWithGroupRefined(t.Params, t.Results, groupStart, groupEnd, ts)
+		ret = funcTypeKey(t.Params, t.Results, groupStart, groupEnd, ts)
 	}
 	if t.SuperTypeIndex != nil {
 		sup := *t.SuperTypeIndex
 		if sup >= groupStart && sup < groupEnd {
 			ret += fmt.Sprintf("|sup=rec.%d", sup-groupStart)
-		} else if int(sup) < len(ts) {
+		} else if ts != nil && int(sup) < len(ts) {
 			ret += "|sup=(" + ts[sup].string + ")"
 		} else {
 			ret += fmt.Sprintf("|sup=%d", sup)
@@ -781,96 +752,7 @@ func refinedSingleKey(t *FunctionType, groupStart, groupEnd uint32, ts []Functio
 	return ret
 }
 
-func valueTypeKeyWithGroupRefined(vt ValueType, groupStart, groupEnd uint32, ts []FunctionType) string {
-	if vt.IsConcreteRef() {
-		idxv := vt.TypeIndex()
-		prefix := "(ref "
-		if vt.IsNullable() {
-			prefix = "(ref null "
-		}
-		if idxv >= groupStart && idxv < groupEnd {
-			return fmt.Sprintf("%srec.%d)", prefix, idxv-groupStart)
-		}
-		if int(idxv) < len(ts) {
-			return prefix + "(" + ts[idxv].string + "))"
-		}
-		return fmt.Sprintf("%s%d)", prefix, idxv)
-	}
-	return ValueTypeName(vt)
-}
-
-func fieldKeyWithGroupRefined(f FieldType, groupStart, groupEnd uint32, ts []FunctionType) string {
-	var prefix string
-	if f.Mutable {
-		prefix = "mut "
-	}
-	if f.Packed != PackedTypeNone {
-		return prefix + f.Packed.String()
-	}
-	return prefix + valueTypeKeyWithGroupRefined(f.ValueType, groupStart, groupEnd, ts)
-}
-
-func structKeyWithGroupRefined(fields []FieldType, groupStart, groupEnd uint32, ts []FunctionType) string {
-	out := "struct{"
-	for i, f := range fields {
-		if i > 0 {
-			out += ","
-		}
-		out += fieldKeyWithGroupRefined(f, groupStart, groupEnd, ts)
-	}
-	return out + "}"
-}
-
-func funcKeyWithGroupRefined(params, results []ValueType, groupStart, groupEnd uint32, ts []FunctionType) string {
-	var ret string
-	for _, b := range params {
-		ret += valueTypeKeyWithGroupRefined(b, groupStart, groupEnd, ts)
-	}
-	if len(params) == 0 {
-		ret += "v_"
-	} else {
-		ret += "_"
-	}
-	for _, b := range results {
-		ret += valueTypeKeyWithGroupRefined(b, groupStart, groupEnd, ts)
-	}
-	if len(results) == 0 {
-		ret += "v"
-	}
-	return ret
-}
-
-// canonicalKey builds the initial rec-relative canonical key for a single
-// type: in-group SuperTypeIndex / concrete-ref references are encoded as
-// "rec.N", out-of-group references keep the absolute index (refined later).
-func canonicalKey(t *FunctionType, groupStart, groupEnd uint32) string {
-	var ret string
-	switch t.Form {
-	case CompositeFormStruct:
-		ret = structKeyWithGroup(t.Fields, groupStart, groupEnd)
-	case CompositeFormArray:
-		ret = "array(" + fieldKeyWithGroup(t.ArrayField, groupStart, groupEnd) + ")"
-	default:
-		ret = funcKeyWithGroup(t.Params, t.Results, groupStart, groupEnd)
-	}
-	if t.SuperTypeIndex != nil {
-		sup := *t.SuperTypeIndex
-		if sup >= groupStart && sup < groupEnd {
-			ret += fmt.Sprintf("|sup=rec.%d", sup-groupStart)
-		} else {
-			ret += fmt.Sprintf("|sup=%d", sup)
-		}
-	}
-	if t.Open {
-		ret += "|open"
-	}
-	if t.RecGroupSize > 1 {
-		ret += fmt.Sprintf("|rec%d/%d", t.RecGroupPosition, t.RecGroupSize)
-	}
-	return ret
-}
-
-func valueTypeKeyWithGroup(vt ValueType, groupStart, groupEnd uint32) string {
+func valueTypeKey(vt ValueType, groupStart, groupEnd uint32, ts []FunctionType) string {
 	if vt.IsConcreteRef() {
 		idx := vt.TypeIndex()
 		prefix := "(ref "
@@ -880,12 +762,15 @@ func valueTypeKeyWithGroup(vt ValueType, groupStart, groupEnd uint32) string {
 		if idx >= groupStart && idx < groupEnd {
 			return fmt.Sprintf("%srec.%d)", prefix, idx-groupStart)
 		}
+		if ts != nil && int(idx) < len(ts) {
+			return prefix + "(" + ts[idx].string + "))"
+		}
 		return fmt.Sprintf("%s%d)", prefix, idx)
 	}
 	return ValueTypeName(vt)
 }
 
-func fieldKeyWithGroup(f FieldType, groupStart, groupEnd uint32) string {
+func fieldTypeKey(f FieldType, groupStart, groupEnd uint32, ts []FunctionType) string {
 	var prefix string
 	if f.Mutable {
 		prefix = "mut "
@@ -893,24 +778,24 @@ func fieldKeyWithGroup(f FieldType, groupStart, groupEnd uint32) string {
 	if f.Packed != PackedTypeNone {
 		return prefix + f.Packed.String()
 	}
-	return prefix + valueTypeKeyWithGroup(f.ValueType, groupStart, groupEnd)
+	return prefix + valueTypeKey(f.ValueType, groupStart, groupEnd, ts)
 }
 
-func structKeyWithGroup(fields []FieldType, groupStart, groupEnd uint32) string {
+func structTypeKey(fields []FieldType, groupStart, groupEnd uint32, ts []FunctionType) string {
 	out := "struct{"
 	for i, f := range fields {
 		if i > 0 {
 			out += ","
 		}
-		out += fieldKeyWithGroup(f, groupStart, groupEnd)
+		out += fieldTypeKey(f, groupStart, groupEnd, ts)
 	}
 	return out + "}"
 }
 
-func funcKeyWithGroup(params, results []ValueType, groupStart, groupEnd uint32) string {
+func funcTypeKey(params, results []ValueType, groupStart, groupEnd uint32, ts []FunctionType) string {
 	var ret string
 	for _, b := range params {
-		ret += valueTypeKeyWithGroup(b, groupStart, groupEnd)
+		ret += valueTypeKey(b, groupStart, groupEnd, ts)
 	}
 	if len(params) == 0 {
 		ret += "v_"
@@ -918,7 +803,7 @@ func funcKeyWithGroup(params, results []ValueType, groupStart, groupEnd uint32) 
 		ret += "_"
 	}
 	for _, b := range results {
-		ret += valueTypeKeyWithGroup(b, groupStart, groupEnd)
+		ret += valueTypeKey(b, groupStart, groupEnd, ts)
 	}
 	if len(results) == 0 {
 		ret += "v"
