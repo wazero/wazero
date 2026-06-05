@@ -18,9 +18,10 @@ import "fmt"
 //     bits. Read instructions (struct.get_s / struct.get_u) extend at
 //     read time via the SignExtendI8 / ZeroExtendI8 / SignExtendI16 /
 //     ZeroExtendI16 helpers below.
-//   - Reference fields hold *WasmStruct / *WasmArray / *I31Ref / function
+//   - Reference fields hold *WasmStruct / *WasmArray / function
 //     instances / host externref values (`any`), or the untyped Go nil
-//     for null references.
+//     for null references. i31 values are stored as tagged uint64
+//     (see PackI31 in i31.go).
 type WasmStruct struct {
 	// TypeID is the engine-wide canonical FunctionTypeID of this struct's
 	// type, as assigned by Store.GetFunctionTypeIDs. ref.test / ref.cast

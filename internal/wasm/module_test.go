@@ -306,7 +306,7 @@ func TestValidateConstExpression(t *testing.T) {
 			require.EqualError(t, err, "unexpected EOF")
 			expr = NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{0x80, 0x80, 0x80, 0x80, 0x80})
 			err = (&Module{}).validateConstExpression(nil, 0, &expr, ValueTypeExternref)
-			require.EqualError(t, err, "invalid type for ref.null: 0x80")
+			require.EqualError(t, err, "const expression type mismatch expected externref but got (ref null 0)")
 		})
 	})
 	t.Run("global expr", func(t *testing.T) {

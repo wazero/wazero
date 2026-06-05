@@ -20,7 +20,7 @@ func evaluateConstExpr(e *ConstantExpression, globalResolver func(globalIndex In
 }
 
 // gcModuleCtx is the subset of *ModuleInstance the const-expression
-// evaluator needs to allocate WasmStruct / WasmArray / I31Ref / func
+// evaluator needs to allocate WasmStruct / WasmArray / func
 // references when the expression contains GC opcodes. nil means
 // "validation mode" — the evaluator type-checks without allocating.
 type gcModuleCtx interface {

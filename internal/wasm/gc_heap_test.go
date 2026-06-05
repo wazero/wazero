@@ -55,11 +55,11 @@ func TestWasmStruct_RefField(t *testing.T) {
 	// Verify that ref-typed fields naturally hold *WasmStruct pointers
 	// and survive Go-managed lifetime (i.e. nothing unsafe is happening).
 	inner := NewWasmStructWith(0, []any{int32(99)})
-	outer := NewWasmStructWith(1, []any{inner, NewI31Ref(7)})
+	outer := NewWasmStructWith(1, []any{inner, PackI31(7)})
 	got := outer.Get(0).(*WasmStruct)
 	require.Equal(t, int32(99), got.Get(0))
-	got31 := outer.Get(1).(*I31Ref)
-	require.Equal(t, int32(7), got31.SignedI32())
+	got31 := outer.Get(1).(uint64)
+	require.Equal(t, int32(7), UnpackI31Signed(got31))
 }
 
 func TestWasmArray_NewAndAccessors(t *testing.T) {
