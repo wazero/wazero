@@ -381,22 +381,12 @@ func functionFromUintptr(ptr uintptr) *function {
 	return *(**function)(unsafe.Pointer(wrapped))
 }
 
-func structFromUintptr(ptr uintptr) *wasm.WasmStruct {
-	var wrapped *uintptr = &ptr
-	return *(**wasm.WasmStruct)(unsafe.Pointer(wrapped))
-}
-
-func arrayFromUintptr(ptr uintptr) *wasm.WasmArray {
-	var wrapped *uintptr = &ptr
-	return *(**wasm.WasmArray)(unsafe.Pointer(wrapped))
-}
-
 func gcStruct(v uint64) *wasm.WasmStruct {
-	return structFromUintptr(uintptr(v) &^ uintptr(wasm.PrimTagMask))
+	return (*wasm.WasmStruct)(wasm.UntagGCPointer(v))
 }
 
 func gcArray(v uint64) *wasm.WasmArray {
-	return arrayFromUintptr(uintptr(v) &^ uintptr(wasm.PrimTagMask))
+	return (*wasm.WasmArray)(wasm.UntagGCPointer(v))
 }
 
 type snapshot struct {
@@ -4690,7 +4680,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			// ref.i31 narrows the low 31 bits and produces a non-null i31ref.
 			// The tagged-uintptr representation lets ref.eq distinguish i31
 			// slots from heap-pointer slots at runtime.
-			ce.pushValue(uint64(wasm.PackI31(uint32(raw))))
+			ce.pushValue(wasm.PackI31(uint32(raw)))
 			frame.pc++
 
 		case operationKindI31GetS:
@@ -4701,7 +4691,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			// i31 refs are always carried as tagged immediates (ref.i31 and
 			// the const-expr evaluator both emit PackI31), so there is no
 			// heap-pointer form to dereference here.
-			ce.pushValue(uint64(uint32(wasm.UnpackI31Signed(uintptr(v)))))
+			ce.pushValue(uint64(uint32(wasm.UnpackI31Signed(v))))
 			frame.pc++
 
 		case operationKindI31GetU:
@@ -4709,7 +4699,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if v == 0 {
 				panic(wasmruntime.ErrRuntimeNullReference)
 			}
-			ce.pushValue(uint64(wasm.UnpackI31Unsigned(uintptr(v))))
+			ce.pushValue(uint64(wasm.UnpackI31Unsigned(v)))
 			frame.pc++
 
 		case operationKindRefEq:
@@ -4733,7 +4723,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			// distinguish "externref wrapped as anyref" from genuine
 			// heap-pointer anyrefs. Null passes through unchanged.
 			v := ce.popValue()
-			ce.pushValue(uint64(wasm.PackExternAsAny(uintptr(v))))
+			ce.pushValue(wasm.PackExternAsAny(v))
 			frame.pc++
 
 		case operationKindExternConvertAny:
@@ -4741,8 +4731,8 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			// (struct/array/i31) are passed through unchanged so the
 			// validator's static externref typing is honoured.
 			v := ce.popValue()
-			if wasm.IsTaggedExternAsAny(uintptr(v)) {
-				ce.pushValue(uint64(wasm.UnpackExternAsAny(uintptr(v))))
+			if wasm.IsTaggedExternAsAny(v) {
+				ce.pushValue(wasm.UnpackExternAsAny(v))
 			} else {
 				ce.pushValue(v)
 			}
@@ -5491,7 +5481,7 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 	// carry the 0b11 tag. They do NOT match struct/array/i31/eq targets
 	// (they're host-opaque), and they DO match any; the func family
 	// reduces to false (extern is its own hierarchy).
-	if wasm.IsTaggedExternAsAny(uintptr(v)) {
+	if wasm.IsTaggedExternAsAny(v) {
 		if isConcrete {
 			return false
 		}
@@ -5500,7 +5490,7 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 		// bottoms and only match null.
 		return wasm.ValueType(kindByte) == wasm.ValueTypeAnyref
 	}
-	if wasm.IsTaggedI31(uintptr(v)) {
+	if wasm.IsTaggedI31(v) {
 		if isConcrete {
 			return false
 		}
@@ -5516,7 +5506,7 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 	if wasm.IsGCRef(v) {
 		// Read TypeID from offset 0 — first field of both WasmStruct
 		// and WasmArray.
-		ptr := unsafe.Pointer(uintptr(v) &^ uintptr(wasm.PrimTagMask))
+		ptr := wasm.UntagGCPointer(v)
 		objTypeID := *(*wasm.FunctionTypeID)(ptr)
 		objForm := store.TypeForm(objTypeID)
 		if isConcrete {

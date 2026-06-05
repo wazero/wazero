@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"math"
-	"os"
 	"testing"
 
 	"github.com/tetratelabs/wazero"
@@ -70,9 +69,6 @@ func TestCompiler(t *testing.T) {
 }
 
 func TestInterpreter(t *testing.T) {
-	if os.Getenv("WAZERO_GC_SPECTEST") == "" {
-		t.Skip("set WAZERO_GC_SPECTEST=1 to run the wasm-gc spec test suite")
-	}
 	ctx := context.Background()
 	config := wazero.NewRuntimeConfigInterpreter().WithCoreFeatures(enabledFeatures)
 	for _, name := range gcTestCases {

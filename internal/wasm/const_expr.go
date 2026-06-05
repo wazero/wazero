@@ -277,7 +277,7 @@ func evaluateConstExprWithModule(
 					return nil, 0, errors.New("ref.i31 requires i32 on stack")
 				}
 				v := stack[len(stack)-1]
-				stack[len(stack)-1] = uint64(PackI31(uint32(v)))
+				stack[len(stack)-1] = PackI31(uint32(v))
 				typeStack[len(typeStack)-1] = ValueTypeI31ref.AsNonNullable()
 			case OpcodeGCStructNew, OpcodeGCStructNewDefault:
 				typeIdx, m, err := leb128.LoadUint32(data[pc:])
@@ -405,7 +405,7 @@ func evaluateConstExprWithModule(
 				}
 				v := stack[len(stack)-1]
 				if v != 0 {
-					stack[len(stack)-1] = uint64(PackExternAsAny(uintptr(v)))
+					stack[len(stack)-1] = PackExternAsAny(v)
 				}
 				typeStack[len(typeStack)-1] = ValueTypeAnyref
 			case OpcodeGCExternConvertAny:
@@ -413,8 +413,8 @@ func evaluateConstExprWithModule(
 					return nil, 0, errors.New("extern.convert_any: stack underflow")
 				}
 				v := stack[len(stack)-1]
-				if v != 0 && IsTaggedExternAsAny(uintptr(v)) {
-					stack[len(stack)-1] = uint64(UnpackExternAsAny(uintptr(v)))
+				if v != 0 && IsTaggedExternAsAny(v) {
+					stack[len(stack)-1] = UnpackExternAsAny(v)
 				}
 				typeStack[len(typeStack)-1] = ValueTypeExternref
 			default:

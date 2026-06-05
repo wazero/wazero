@@ -630,8 +630,8 @@ func valuesEq(actual, exps []uint64, valTypes []wasm.ValueType, laneTypes map[in
 			// the runner sees the original externref payload. Only for
 			// ref types — i64 values can naturally have those bit
 			// patterns.
-			if tp != wasm.ValueTypeI64 && a != 0 && wasm.IsTaggedExternAsAny(uintptr(a)) {
-				a = uint64(wasm.UnpackExternAsAny(uintptr(a)))
+			if tp != wasm.ValueTypeI64 && a != 0 && wasm.IsTaggedExternAsAny(a) {
+				a = wasm.UnpackExternAsAny(a)
 			}
 			msgExpValuesStrs = append(msgExpValuesStrs, fmt.Sprintf("%d", exps[uint64RepPos]))
 			msgActualValuesStrs = append(msgActualValuesStrs, fmt.Sprintf("%d", a))

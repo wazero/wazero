@@ -33,8 +33,8 @@ func TestTagGCPointer_nullIsNotGCRef(t *testing.T) {
 	require.False(t, IsGCRef(0))
 }
 
-func TestTagGCPointer_alignment(t *testing.T) {
+func TestTagGCPointer_highBitsClear(t *testing.T) {
 	st := &WasmStruct{TypeID: 42}
-	ptr := unsafe.Pointer(st)
-	require.Equal(t, uintptr(0), uintptr(ptr)&uintptr(PrimTagMask))
+	ptr := uint64(uintptr(unsafe.Pointer(st)))
+	require.Equal(t, uint64(0), ptr&tagMask)
 }
