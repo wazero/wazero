@@ -1050,7 +1050,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				tp, err := valueTypeStack.pop()
 				if err != nil {
 					return fmt.Errorf("cannot pop the operand for ref.is_null: %v", err)
-				} else if !isReferenceValueType(tp) && tp != valueTypeUnknown {
+				} else if !tp.IsRef() && tp != valueTypeUnknown {
 					return fmt.Errorf("type mismatch: expected reference type but was %s", ValueTypeName(tp))
 				}
 				valueTypeStack.push(ValueTypeI32)
@@ -1565,7 +1565,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					return fmt.Errorf("reference type missing for %s", GCInstructionName(sub))
 				}
 				if refTy != valueTypeUnknown {
-					if !isReferenceValueType(refTy) {
+					if !refTy.IsRef() {
 						return fmt.Errorf("type mismatch: expected reference type for %s, but was %s",
 							GCInstructionName(sub), ValueTypeName(refTy))
 					}
@@ -1585,7 +1585,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					return fmt.Errorf("%s target label expects no values; needs a trailing ref", GCInstructionName(sub))
 				}
 				lastTarget := targetTypes[len(targetTypes)-1]
-				if !isReferenceValueType(lastTarget) && lastTarget != valueTypeUnknown {
+				if !lastTarget.IsRef() && lastTarget != valueTypeUnknown {
 					return fmt.Errorf("%s target label's last type is not a reference", GCInstructionName(sub))
 				}
 				head := targetTypes[:len(targetTypes)-1]
@@ -1640,7 +1640,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if have == valueTypeUnknown {
 					return nil
 				}
-				if !isReferenceValueType(have) {
+				if !have.IsRef() {
 					return fmt.Errorf("cannot pop the %s operand for ref.eq: type mismatch: expected eqref, but was %s", which, ValueTypeName(have))
 				}
 				// Accept eqref and its subtypes; reject funcref/externref/
@@ -1670,7 +1670,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			tp, err := valueTypeStack.pop()
 			if err != nil {
 				return fmt.Errorf("cannot pop the operand for %s: %v", OpcodeRefAsNonNullName, err)
-			} else if !isReferenceValueType(tp) && tp != valueTypeUnknown {
+			} else if !tp.IsRef() && tp != valueTypeUnknown {
 				return fmt.Errorf("type mismatch: expected reference type but was %s for %s", ValueTypeName(tp), OpcodeRefAsNonNullName)
 			}
 			if tp == valueTypeUnknown {
@@ -1694,7 +1694,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			tp, err := valueTypeStack.pop()
 			if err != nil {
 				return fmt.Errorf("cannot pop the operand for %s: %v", OpcodeBrOnNullName, err)
-			} else if !isReferenceValueType(tp) && tp != valueTypeUnknown {
+			} else if !tp.IsRef() && tp != valueTypeUnknown {
 				return fmt.Errorf("type mismatch: expected reference type but was %s for %s", ValueTypeName(tp), OpcodeBrOnNullName)
 			}
 			// If null, branch with the label's expected values (without the ref).
@@ -1734,7 +1734,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 			tp, err := valueTypeStack.pop()
 			if err != nil {
 				return fmt.Errorf("cannot pop the operand for %s: %v", OpcodeBrOnNonNullName, err)
-			} else if !isReferenceValueType(tp) && tp != valueTypeUnknown {
+			} else if !tp.IsRef() && tp != valueTypeUnknown {
 				return fmt.Errorf("type mismatch: expected reference type but was %s for %s", ValueTypeName(tp), OpcodeBrOnNonNullName)
 			}
 			// If non-null, branch to label with the label's expected values.
@@ -2875,7 +2875,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 						return fmt.Errorf("invalid type %s for %s", ValueTypeName(tp), OpcodeTypedSelectName)
 					}
 				}
-			} else if isReferenceValueType(v1) || isReferenceValueType(v2) {
+			} else if v1.IsRef() || v2.IsRef() {
 				return fmt.Errorf("reference types cannot be used for non typed select instruction")
 			}
 
@@ -3140,7 +3140,7 @@ func (s *valueTypeStack) popReferenceType() error {
 	if have == valueTypeUnknown {
 		return nil
 	}
-	if !isReferenceValueType(have) {
+	if !have.IsRef() {
 		return fmt.Errorf("type mismatch: expected reference type, but was %s", ValueTypeName(have))
 	}
 	return nil
@@ -3184,7 +3184,7 @@ func isFieldElementSubtypeOf(src, dst FieldType, m *Module) bool {
 	if srcVT == dstVT {
 		return true
 	}
-	if isReferenceValueType(srcVT) && isReferenceValueType(dstVT) {
+	if srcVT.IsRef() && dstVT.IsRef() {
 		return isRefSubtypeOfInModule(srcVT, dstVT, m)
 	}
 	return false
@@ -3201,7 +3201,7 @@ func fieldOperandType(f FieldType) (ValueType, error) {
 	case ValueTypeI32, ValueTypeI64, ValueTypeF32, ValueTypeF64, ValueTypeV128:
 		return vt, nil
 	}
-	if isReferenceValueType(vt) {
+	if vt.IsRef() {
 		return vt, nil
 	}
 	return 0, fmt.Errorf("unsupported struct/array field type %#x", vt)

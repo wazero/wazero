@@ -1682,9 +1682,6 @@ func FieldTypeName(f FieldType) string {
 	return prefix + ValueTypeName(f)
 }
 
-func isReferenceValueType(vt ValueType) bool {
-	return vt.IsRef()
-}
 
 // isRefSubtypeOf returns true if actual is a subtype of (or equal to)
 // expected. Non-nullable is a subtype of nullable (same kind/index);
@@ -1906,7 +1903,7 @@ func isValueSubtypeAcrossForm(sub, sup ValueType, m *Module) bool {
 	if sub == sup {
 		return true
 	}
-	if isReferenceValueType(sub) && isReferenceValueType(sup) {
+	if sub.IsRef() && sup.IsRef() {
 		return isRefSubtypeOfInModule(sub, sup, m)
 	}
 	return false

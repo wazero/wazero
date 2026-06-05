@@ -44,11 +44,11 @@ func TestFunctionType_String(t *testing.T) {
 func TestIsReferenceValueType(t *testing.T) {
 	refTypes := []ValueType{ValueTypeFuncref, ValueTypeExternref, ValueTypeExnref}
 	for _, vt := range refTypes {
-		require.True(t, isReferenceValueType(vt), "expected %#x to be a reference type", vt)
+		require.True(t, vt.IsRef(), "expected %#x to be a reference type", vt)
 	}
 	nonRefTypes := []ValueType{ValueTypeI32, ValueTypeI64, ValueTypeF32, ValueTypeF64, ValueTypeV128}
 	for _, vt := range nonRefTypes {
-		require.False(t, isReferenceValueType(vt), "expected %#x to not be a reference type", vt)
+		require.False(t, vt.IsRef(), "expected %#x to not be a reference type", vt)
 	}
 }
 
