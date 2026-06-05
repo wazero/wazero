@@ -31,7 +31,6 @@ func TestDecodeModule(t *testing.T) {
 		{
 			name: "type section",
 			input: &wasm.Module{
-				// `(func ...)` shorthand round-trips as `(sub final ...)`.
 				TypeSection: []wasm.FunctionType{
 					{},
 					{Params: []wasm.ValueType{i32, i32}, Results: []wasm.ValueType{i32}},
