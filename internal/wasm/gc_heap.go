@@ -186,13 +186,13 @@ func ZeroExtendI16(v uint16) uint32 {
 // validator (Phase 4) is responsible for rejecting struct.new_default /
 // array.new_default for types that contain non-nullable ref fields.
 func DefaultFieldValue(f FieldType) any {
-	switch f.Packed {
-	case PackedTypeI8:
+	switch f.Kind() {
+	case ValueTypeI8.Kind():
 		return uint8(0)
-	case PackedTypeI16:
+	case ValueTypeI16.Kind():
 		return uint16(0)
 	}
-	switch f.ValueType {
+	switch f.AsImmutable() {
 	case ValueTypeI32:
 		return int32(0)
 	case ValueTypeI64:

@@ -5382,13 +5382,13 @@ func v128Dot(x1Hi, x1Lo, x2Hi, x2Lo uint64) (uint64, uint64) {
 // encodeFieldValue converts an operand-stack uint64 into the Go-typed value
 // stored in a struct/array field, applying narrowing for packed fields.
 func encodeFieldValue(f wasm.FieldType, raw uint64) any {
-	if f.Packed == wasm.PackedTypeI8 {
+	switch f.Kind() {
+	case wasm.ValueTypeI8.Kind():
 		return wasm.NarrowI8(int32(uint32(raw)))
-	}
-	if f.Packed == wasm.PackedTypeI16 {
+	case wasm.ValueTypeI16.Kind():
 		return wasm.NarrowI16(int32(uint32(raw)))
 	}
-	switch f.ValueType {
+	switch f.AsImmutable() {
 	case wasm.ValueTypeI32:
 		return int32(uint32(raw))
 	case wasm.ValueTypeI64:
@@ -5398,32 +5398,31 @@ func encodeFieldValue(f wasm.FieldType, raw uint64) any {
 	case wasm.ValueTypeF64:
 		return math.Float64frombits(raw)
 	}
-	// Reference fields: store the raw uintptr-cast as-is.
-	if f.ValueType.IsRef() {
+	if f.IsRef() {
 		return raw
 	}
-	panic(fmt.Sprintf("unsupported struct/array field type %#x", f.ValueType.Kind()))
+	panic(fmt.Sprintf("unsupported struct/array field type %#x", f.Kind()))
 }
 
 // decodeFieldValueRead reads a stored field value and converts it to the
 // operand-stack uint64 representation, applying sign or zero extension
 // for packed fields based on the read variant.
 func decodeFieldValueRead(f wasm.FieldType, stored any, readKind operationKind) uint64 {
-	if f.Packed == wasm.PackedTypeI8 {
+	switch f.Kind() {
+	case wasm.ValueTypeI8.Kind():
 		v := stored.(uint8)
 		if readKind == operationKindStructGetS {
 			return uint64(uint32(wasm.SignExtendI8(v)))
 		}
 		return uint64(wasm.ZeroExtendI8(v))
-	}
-	if f.Packed == wasm.PackedTypeI16 {
+	case wasm.ValueTypeI16.Kind():
 		v := stored.(uint16)
 		if readKind == operationKindStructGetS {
 			return uint64(uint32(wasm.SignExtendI16(v)))
 		}
 		return uint64(wasm.ZeroExtendI16(v))
 	}
-	switch f.ValueType {
+	switch f.AsImmutable() {
 	case wasm.ValueTypeI32:
 		return uint64(uint32(stored.(int32)))
 	case wasm.ValueTypeI64:
@@ -5433,8 +5432,7 @@ func decodeFieldValueRead(f wasm.FieldType, stored any, readKind operationKind) 
 	case wasm.ValueTypeF64:
 		return math.Float64bits(stored.(float64))
 	}
-	// Reference fields: the stored uint64 is the raw uintptr cast.
-	if f.ValueType.IsRef() {
+	if f.IsRef() {
 		switch v := stored.(type) {
 		case uint64:
 			return v
@@ -5442,7 +5440,7 @@ func decodeFieldValueRead(f wasm.FieldType, stored any, readKind operationKind) 
 			return 0
 		}
 	}
-	panic(fmt.Sprintf("unsupported struct/array field type %#x", f.ValueType.Kind()))
+	panic(fmt.Sprintf("unsupported struct/array field type %#x", f.Kind()))
 }
 
 // refMatches reports whether the operand-stack uint64 ref value matches
@@ -5551,13 +5549,13 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 // arrayDataElemSize returns the byte size of one array element when read
 // from a data segment.
 func arrayDataElemSize(f wasm.FieldType) (uint32, bool) {
-	if f.Packed == wasm.PackedTypeI8 {
+	switch f.Kind() {
+	case wasm.ValueTypeI8.Kind():
 		return 1, true
-	}
-	if f.Packed == wasm.PackedTypeI16 {
+	case wasm.ValueTypeI16.Kind():
 		return 2, true
 	}
-	switch f.ValueType {
+	switch f.AsImmutable() {
 	case wasm.ValueTypeI32, wasm.ValueTypeF32:
 		return 4, true
 	case wasm.ValueTypeI64, wasm.ValueTypeF64:
@@ -5571,13 +5569,13 @@ func arrayDataElemSize(f wasm.FieldType) (uint32, bool) {
 // readDataElement decodes a single array element from `data` starting at
 // `off`, returning the Go-typed value the WasmArray.Elements slice stores.
 func readDataElement(f wasm.FieldType, data []byte, off uint32) any {
-	if f.Packed == wasm.PackedTypeI8 {
+	switch f.Kind() {
+	case wasm.ValueTypeI8.Kind():
 		return uint8(data[off])
-	}
-	if f.Packed == wasm.PackedTypeI16 {
+	case wasm.ValueTypeI16.Kind():
 		return binary.LittleEndian.Uint16(data[off:])
 	}
-	switch f.ValueType {
+	switch f.AsImmutable() {
 	case wasm.ValueTypeI32:
 		return int32(binary.LittleEndian.Uint32(data[off:]))
 	case wasm.ValueTypeI64:
@@ -5587,5 +5585,5 @@ func readDataElement(f wasm.FieldType, data []byte, off uint32) any {
 	case wasm.ValueTypeF64:
 		return math.Float64frombits(binary.LittleEndian.Uint64(data[off:]))
 	}
-	panic(fmt.Sprintf("unsupported element type for array.new_data: %#x", f.ValueType))
+	panic(fmt.Sprintf("unsupported element type for array.new_data: %#x", f.Kind()))
 }

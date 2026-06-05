@@ -407,14 +407,14 @@ func (m *Module) validateTypeSection(enabledFeatures api.CoreFeatures) error {
 			}
 			if t.Form == CompositeFormStruct {
 				for j, f := range t.Fields {
-					if f.Packed == PackedTypeNone {
-						if err := checkValueType(fmt.Sprintf("type[%d] field[%d]", i, j), f.ValueType); err != nil {
+					if !f.IsPacked() {
+						if err := checkValueType(fmt.Sprintf("type[%d] field[%d]", i, j), f.AsImmutable()); err != nil {
 							return err
 						}
 					}
 				}
-			} else if t.ArrayField.Packed == PackedTypeNone {
-				if err := checkValueType(fmt.Sprintf("type[%d] array element", i), t.ArrayField.ValueType); err != nil {
+			} else if !t.ArrayField.IsPacked() {
+				if err := checkValueType(fmt.Sprintf("type[%d] array element", i), t.ArrayField.AsImmutable()); err != nil {
 					return err
 				}
 			}
@@ -934,7 +934,7 @@ type FunctionType struct {
 	// Used only when Form == CompositeFormStruct. (GC proposal.)
 	Fields []FieldType
 
-	// ArrayField is the single element field type of an array type.
+	// ArrayField is the element field type of an array type.
 	// Used only when Form == CompositeFormArray. (GC proposal.)
 	ArrayField FieldType
 
@@ -1040,13 +1040,13 @@ func structKey(fields []FieldType) string {
 		if i > 0 {
 			out += ","
 		}
-		out += f.String()
+		out += FieldTypeName(f)
 	}
 	return out + "}"
 }
 
 func arrayKey(elem FieldType) string {
-	return "array(" + elem.String() + ")"
+	return "array(" + FieldTypeName(elem) + ")"
 }
 
 // String implements fmt.Stringer.
@@ -1371,6 +1371,7 @@ type ValueType uint64
 const (
 	flagNonNullable ValueType = 1 << 8
 	flagConcreteRef ValueType = 1 << 9
+	flagMutable     ValueType = 1 << 10
 )
 
 const (
@@ -1396,7 +1397,17 @@ const (
 	ValueTypeNoFuncref   ValueType = 0x73 // (ref null nofunc)
 	ValueTypeNoExternref ValueType = 0x72 // (ref null noextern)
 	ValueTypeNoExnref    ValueType = 0x74 // (ref null noexn)
+
+	// Packed storage types (GC proposal). These appear only in struct
+	// fields and array elements, never as standalone value types.
+	ValueTypeI8  ValueType = 0x78
+	ValueTypeI16 ValueType = 0x77
 )
+
+// FieldType is a ValueType that may additionally carry packed-storage
+// and mutability information in the flags byte. Used for struct fields
+// and array elements.
+type FieldType = ValueType
 
 // Kind returns the base type byte (bits 0-7).
 func (v ValueType) Kind() byte { return byte(v) }
@@ -1438,6 +1449,18 @@ func (v ValueType) AsNonNullable() ValueType { return v | flagNonNullable }
 
 // AsNullable returns a copy with the non-nullable flag cleared.
 func (v ValueType) AsNullable() ValueType { return v &^ flagNonNullable }
+
+// IsPacked returns true if this is a packed storage type (i8 or i16).
+func (v ValueType) IsPacked() bool { return v.Kind() == 0x78 || v.Kind() == 0x77 }
+
+// IsMutable returns true if the mutable flag is set (struct/array field mutability).
+func (v ValueType) IsMutable() bool { return v&flagMutable != 0 }
+
+// AsMutable returns a copy with the mutable flag set.
+func (v ValueType) AsMutable() ValueType { return v | flagMutable }
+
+// AsImmutable returns a copy with the mutable flag cleared.
+func (v ValueType) AsImmutable() ValueType { return v &^ flagMutable }
 
 // ValueTypeConcreteRef creates a concrete reference type with the given type index and nullability.
 func ValueTypeConcreteRef(typeIndex uint32, nullable bool) ValueType {
@@ -1559,6 +1582,7 @@ const (
 // refs it renders as `(ref null N)` / `(ref N)`; for non-nullable
 // abstract refs it renders as `(ref kind)`.
 func ValueTypeName(t ValueType) string {
+	t = t.AsImmutable()
 	if t.IsConcreteRef() {
 		if t.IsNullable() {
 			return fmt.Sprintf("(ref null %d)", t.TypeIndex())
@@ -1576,6 +1600,10 @@ func ValueTypeName(t ValueType) string {
 		return "f64"
 	case ValueTypeV128:
 		return "v128"
+	case ValueTypeI8:
+		return "i8"
+	case ValueTypeI16:
+		return "i16"
 	}
 	// Abstract reference types: nullable shorthand vs (ref kind) form.
 	nullable := t.IsNullable()
@@ -1642,6 +1670,16 @@ func ValueTypeName(t ValueType) string {
 		return "(ref noexn)"
 	}
 	return "unknown"
+}
+
+// FieldTypeName renders a field/element type as spec text format,
+// e.g. "mut i8" or "(ref null any)".
+func FieldTypeName(f FieldType) string {
+	var prefix string
+	if f.IsMutable() {
+		prefix = "mut "
+	}
+	return prefix + ValueTypeName(f)
 }
 
 func isReferenceValueType(vt ValueType) bool {
@@ -1835,30 +1873,31 @@ func checkStructuralSubtype(t, sup *FunctionType, m *Module) error {
 // mutable fields are invariant; immutable fields are covariant; packed
 // storage must match exactly.
 func checkFieldSubtype(sub, sup FieldType, m *Module) error {
-	if sub.Mutable != sup.Mutable {
+	if sub.IsMutable() != sup.IsMutable() {
 		return fmt.Errorf("mutability mismatch")
 	}
-	if sub.Packed != sup.Packed {
-		return fmt.Errorf("packed storage mismatch")
-	}
-	if sub.Packed != PackedTypeNone {
+	if sub.IsPacked() || sup.IsPacked() {
+		if sub.Kind() != sup.Kind() {
+			return fmt.Errorf("packed storage mismatch")
+		}
 		return nil
 	}
-	if sub.Mutable {
-		if sub.ValueType == sup.ValueType {
+	subVT, supVT := sub.AsImmutable(), sup.AsImmutable()
+	if sub.IsMutable() {
+		if subVT == supVT {
 			return nil
 		}
-		if sub.ValueType.IsConcreteRef() && sup.ValueType.IsConcreteRef() {
-			if concreteCanonicalEqual(m.TypeSection, sub.ValueType.TypeIndex(), sup.ValueType.TypeIndex()) {
+		if subVT.IsConcreteRef() && supVT.IsConcreteRef() {
+			if concreteCanonicalEqual(m.TypeSection, subVT.TypeIndex(), supVT.TypeIndex()) {
 				return nil
 			}
 		}
 		return fmt.Errorf("mutable field value type %s != %s",
-			ValueTypeName(sub.ValueType), ValueTypeName(sup.ValueType))
+			ValueTypeName(subVT), ValueTypeName(supVT))
 	}
-	if !isValueSubtypeAcrossForm(sub.ValueType, sup.ValueType, m) {
+	if !isValueSubtypeAcrossForm(subVT, supVT, m) {
 		return fmt.Errorf("immutable field value type %s not subtype of %s",
-			ValueTypeName(sub.ValueType), ValueTypeName(sup.ValueType))
+			ValueTypeName(subVT), ValueTypeName(supVT))
 	}
 	return nil
 }

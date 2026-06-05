@@ -3684,10 +3684,10 @@ operatorSwitch:
 				c.pc += fn - 1
 				if !c.unreachableState.on {
 					c.stackPop()
-					if st.Fields[fieldIdx].Packed != wasm.PackedTypeNone {
+					if st.Fields[fieldIdx].IsPacked() {
 						c.stackPush(unsignedTypeI32)
 					} else {
-						c.stackPush(wasmValueTypeTounsignedType(st.Fields[fieldIdx].ValueType))
+						c.stackPush(wasmValueTypeTounsignedType(st.Fields[fieldIdx].AsImmutable()))
 					}
 				}
 				switch index {
@@ -3739,10 +3739,10 @@ operatorSwitch:
 				if !c.unreachableState.on {
 					c.stackPop() // index
 					c.stackPop() // array ref
-					if at.ArrayField.Packed != wasm.PackedTypeNone {
+					if at.ArrayField.IsPacked() {
 						c.stackPush(unsignedTypeI32)
 					} else {
-						c.stackPush(wasmValueTypeTounsignedType(at.ArrayField.ValueType))
+						c.stackPush(wasmValueTypeTounsignedType(at.ArrayField.AsImmutable()))
 					}
 				}
 				switch index {

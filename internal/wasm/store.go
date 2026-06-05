@@ -771,13 +771,13 @@ func valueTypeKey(vt ValueType, groupStart, groupEnd uint32, ts []FunctionType) 
 
 func fieldTypeKey(f FieldType, groupStart, groupEnd uint32, ts []FunctionType) string {
 	var prefix string
-	if f.Mutable {
+	if f.IsMutable() {
 		prefix = "mut "
 	}
-	if f.Packed != PackedTypeNone {
-		return prefix + f.Packed.String()
+	if f.IsPacked() {
+		return prefix + ValueTypeName(f)
 	}
-	return prefix + valueTypeKey(f.ValueType, groupStart, groupEnd, ts)
+	return prefix + valueTypeKey(f.AsImmutable(), groupStart, groupEnd, ts)
 }
 
 func structTypeKey(fields []FieldType, groupStart, groupEnd uint32, ts []FunctionType) string {

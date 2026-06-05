@@ -81,13 +81,13 @@ func validateTypeForwardRefs(ft *wasm.FunctionType, maxTypeIndex uint32) error {
 	// supertype must also reference already-defined types (or, within a rec
 	// group, members of the same group).
 	for i, f := range ft.Fields {
-		if f.Packed == wasm.PackedTypeNone && f.ValueType.IsConcreteRef() && f.ValueType.TypeIndex() >= maxTypeIndex {
-			return fmt.Errorf("unknown type index %d in field[%d]", f.ValueType.TypeIndex(), i)
+		if !f.IsPacked() && f.IsConcreteRef() && f.TypeIndex() >= maxTypeIndex {
+			return fmt.Errorf("unknown type index %d in field[%d]", f.TypeIndex(), i)
 		}
 	}
 	if ft.Form == wasm.CompositeFormArray {
-		if af := ft.ArrayField; af.Packed == wasm.PackedTypeNone && af.ValueType.IsConcreteRef() && af.ValueType.TypeIndex() >= maxTypeIndex {
-			return fmt.Errorf("unknown type index %d in array element", af.ValueType.TypeIndex())
+		if af := ft.ArrayField; !af.IsPacked() && af.IsConcreteRef() && af.TypeIndex() >= maxTypeIndex {
+			return fmt.Errorf("unknown type index %d in array element", af.TypeIndex())
 		}
 	}
 	if ft.SuperTypeIndex != nil && *ft.SuperTypeIndex >= maxTypeIndex {

@@ -169,16 +169,16 @@ func TestDefaultFieldValue(t *testing.T) {
 		field FieldType
 		want  any
 	}{
-		{"i32", FieldType{ValueType: ValueTypeI32}, int32(0)},
-		{"i64", FieldType{ValueType: ValueTypeI64}, int64(0)},
-		{"f32", FieldType{ValueType: ValueTypeF32}, float32(0)},
-		{"f64", FieldType{ValueType: ValueTypeF64}, float64(0)},
-		{"v128", FieldType{ValueType: ValueTypeV128}, [16]byte{}},
-		{"i8 packed", FieldType{Packed: PackedTypeI8}, uint8(0)},
-		{"i16 packed", FieldType{Packed: PackedTypeI16}, uint16(0)},
-		{"funcref", FieldType{ValueType: ValueTypeFuncref}, uint64(0)},
-		{"externref", FieldType{ValueType: ValueTypeExternref}, uint64(0)},
-		{"exnref", FieldType{ValueType: ValueTypeExnref}, uint64(0)},
+		{"i32", ValueTypeI32, int32(0)},
+		{"i64", ValueTypeI64, int64(0)},
+		{"f32", ValueTypeF32, float32(0)},
+		{"f64", ValueTypeF64, float64(0)},
+		{"v128", ValueTypeV128, [16]byte{}},
+		{"i8 packed", ValueTypeI8, uint8(0)},
+		{"i16 packed", ValueTypeI16, uint16(0)},
+		{"funcref", ValueTypeFuncref, uint64(0)},
+		{"externref", ValueTypeExternref, uint64(0)},
+		{"exnref", ValueTypeExnref, uint64(0)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

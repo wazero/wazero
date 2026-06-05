@@ -466,13 +466,13 @@ func NewConstantExpressionFromI64(val int64) ConstantExpression {
 // Go-typed value stored in WasmStruct.Fields / WasmArray.Elements,
 // using the supplied FieldType to interpret packed vs numeric storage.
 func encodeFieldValueForConst(f FieldType, raw uint64) any {
-	if f.Packed == PackedTypeI8 {
+	switch f.Kind() {
+	case ValueTypeI8.Kind():
 		return NarrowI8(int32(uint32(raw)))
-	}
-	if f.Packed == PackedTypeI16 {
+	case ValueTypeI16.Kind():
 		return NarrowI16(int32(uint32(raw)))
 	}
-	switch f.ValueType {
+	switch f.AsImmutable() {
 	case ValueTypeI32:
 		return int32(uint32(raw))
 	case ValueTypeI64:

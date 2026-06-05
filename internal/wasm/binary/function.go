@@ -147,9 +147,11 @@ func decodeStructBody(r *bytes.Reader, ret *wasm.FunctionType) error {
 	}
 	fields := make([]wasm.FieldType, fieldCount)
 	for i := uint32(0); i < fieldCount; i++ {
-		if err := decodeFieldType(r, &fields[i]); err != nil {
+		ft, err := decodeFieldType(r)
+		if err != nil {
 			return fmt.Errorf("read struct field[%d]: %w", i, err)
 		}
+		fields[i] = ft
 	}
 	ret.Fields = fields
 	return nil
@@ -158,57 +160,54 @@ func decodeStructBody(r *bytes.Reader, ret *wasm.FunctionType) error {
 // decodeArrayBody reads an array type body — a single fieldtype. The leading
 // 0x5E byte has already been consumed.
 func decodeArrayBody(r *bytes.Reader, ret *wasm.FunctionType) error {
-	if err := decodeFieldType(r, &ret.ArrayField); err != nil {
+	ft, err := decodeFieldType(r)
+	if err != nil {
 		return fmt.Errorf("read array element field: %w", err)
 	}
+	ret.ArrayField = ft
 	return nil
 }
 
 // decodeFieldType reads a field type: a storage type followed by a
 // mutability byte.
-func decodeFieldType(r *bytes.Reader, ret *wasm.FieldType) error {
-	if err := decodeStorageType(r, ret); err != nil {
-		return err
+func decodeFieldType(r *bytes.Reader) (wasm.FieldType, error) {
+	vt, err := decodeStorageType(r)
+	if err != nil {
+		return 0, err
 	}
 	mut, err := r.ReadByte()
 	if err != nil {
-		return fmt.Errorf("read mutability byte: %w", err)
+		return 0, fmt.Errorf("read mutability byte: %w", err)
 	}
 	switch mut {
 	case 0x00:
-		ret.Mutable = false
 	case 0x01:
-		ret.Mutable = true
+		vt = vt.AsMutable()
 	default:
-		return fmt.Errorf("invalid mutability byte: %#x", mut)
+		return 0, fmt.Errorf("invalid mutability byte: %#x", mut)
 	}
-	return nil
+	return vt, nil
 }
 
-// decodeStorageType reads a storage type into ret. A storage type is either
+// decodeStorageType reads a storage type. A storage type is either
 // a packed type (0x78 = i8, 0x77 = i16) or any regular value type.
-func decodeStorageType(r *bytes.Reader, ret *wasm.FieldType) error {
+func decodeStorageType(r *bytes.Reader) (wasm.ValueType, error) {
 	b, err := r.ReadByte()
 	if err != nil {
-		return fmt.Errorf("read storage type byte: %w", err)
+		return 0, fmt.Errorf("read storage type byte: %w", err)
 	}
 	switch b {
-	case wasm.PackedTypeI8Byte:
-		ret.Packed = wasm.PackedTypeI8
-		return nil
-	case wasm.PackedTypeI16Byte:
-		ret.Packed = wasm.PackedTypeI16
-		return nil
+	case wasm.ValueTypeI8.Kind():
+		return wasm.ValueTypeI8, nil
+	case wasm.ValueTypeI16.Kind():
+		return wasm.ValueTypeI16, nil
 	}
-	// Put back the byte and decode as a normal value type.
 	if err := r.UnreadByte(); err != nil {
-		return err
+		return 0, err
 	}
 	vts, err := decodeValueTypes(r, 1)
 	if err != nil {
-		return fmt.Errorf("decode field value-type: %w", err)
+		return 0, fmt.Errorf("decode field value-type: %w", err)
 	}
-	ret.Packed = wasm.PackedTypeNone
-	ret.ValueType = vts[0]
-	return nil
+	return vts[0], nil
 }

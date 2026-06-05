@@ -1153,7 +1153,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					return fmt.Errorf("struct.get field index %d out of range for type %d", fieldIdx, typeIdx)
 				}
 				field := st.Fields[fieldIdx]
-				packed := field.Packed != PackedTypeNone
+				packed := field.IsPacked()
 				if sub == OpcodeGCStructGet && packed {
 					return fmt.Errorf("struct.get on packed field requires _s or _u")
 				}
@@ -1166,7 +1166,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if packed {
 					valueTypeStack.push(ValueTypeI32)
 				} else {
-					valueTypeStack.push(field.ValueType)
+					valueTypeStack.push(field.AsImmutable())
 				}
 			case OpcodeGCStructSet:
 				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
@@ -1190,7 +1190,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 					return fmt.Errorf("struct.set field index %d out of range for type %d", fieldIdx, typeIdx)
 				}
 				field := st.Fields[fieldIdx]
-				if !field.Mutable {
+				if !field.IsMutable() {
 					return fmt.Errorf("struct.set on immutable field %d of type %d", fieldIdx, typeIdx)
 				}
 				vt, err := fieldOperandType(field)
@@ -1242,7 +1242,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if at.Form != CompositeFormArray {
 					return fmt.Errorf("array.get type %d is not an array", typeIdx)
 				}
-				packed := at.ArrayField.Packed != PackedTypeNone
+				packed := at.ArrayField.IsPacked()
 				if sub == OpcodeGCArrayGet && packed {
 					return fmt.Errorf("array.get on packed array requires _s or _u")
 				}
@@ -1258,7 +1258,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if packed {
 					valueTypeStack.push(ValueTypeI32)
 				} else {
-					valueTypeStack.push(at.ArrayField.ValueType)
+					valueTypeStack.push(at.ArrayField.AsImmutable())
 				}
 			case OpcodeGCArraySet:
 				typeIdx, n, err := leb128.LoadUint32(body[pc+1:])
@@ -1273,7 +1273,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if at.Form != CompositeFormArray {
 					return fmt.Errorf("array.set type %d is not an array", typeIdx)
 				}
-				if !at.ArrayField.Mutable {
+				if !at.ArrayField.IsMutable() {
 					return fmt.Errorf("array.set on immutable array %d", typeIdx)
 				}
 				vt, err := fieldOperandType(at.ArrayField)
@@ -1335,7 +1335,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if at.Form != CompositeFormArray {
 					return fmt.Errorf("array.fill type %d is not an array", typeIdx)
 				}
-				if !at.ArrayField.Mutable {
+				if !at.ArrayField.IsMutable() {
 					return fmt.Errorf("array.fill on immutable array %d", typeIdx)
 				}
 				vt, err := fieldOperandType(at.ArrayField)
@@ -1373,7 +1373,7 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if dst.Form != CompositeFormArray || src.Form != CompositeFormArray {
 					return fmt.Errorf("array.copy types must both be arrays")
 				}
-				if !dst.ArrayField.Mutable {
+				if !dst.ArrayField.IsMutable() {
 					return fmt.Errorf("array.copy destination array %d is immutable", dstIdx)
 				}
 				// src element type must be a subtype of dst element type.
@@ -1437,15 +1437,14 @@ func (m *Module) validateFunctionWithMaxStackValues(
 				if at.Form != CompositeFormArray {
 					return fmt.Errorf("array.init_data/elem type %d is not an array", typeIdx)
 				}
-				if !at.ArrayField.Mutable {
+				if !at.ArrayField.IsMutable() {
 					return fmt.Errorf("array.init_data/elem on immutable array %d", typeIdx)
 				}
 				if sub == OpcodeGCArrayInitData {
-					// Element type must be numeric or vector (not a ref).
 					ef := at.ArrayField
-					numericOK := ef.Packed != PackedTypeNone
+					numericOK := ef.IsPacked()
 					if !numericOK {
-						switch ef.ValueType {
+						switch ef.AsImmutable() {
 						case ValueTypeI32, ValueTypeI64, ValueTypeF32, ValueTypeF64, ValueTypeV128:
 							numericOK = true
 						}
@@ -1454,15 +1453,13 @@ func (m *Module) validateFunctionWithMaxStackValues(
 						return fmt.Errorf("array.init_data: array type %d is not numeric or vector", typeIdx)
 					}
 				} else {
-					// OpcodeGCArrayInitElem: element segment's type must be a
-					// subtype of the array's element type.
 					if int(segIdx) >= len(m.ElementSection) {
 						return fmt.Errorf("array.init_elem: segment %d out of range", segIdx)
 					}
 					seg := &m.ElementSection[segIdx]
-					if !isRefSubtypeOfInModule(seg.Type, at.ArrayField.ValueType, m) {
+					if !isRefSubtypeOfInModule(seg.Type, at.ArrayField.AsImmutable(), m) {
 						return fmt.Errorf("array.init_elem: array element type does not match: %s vs %s",
-							ValueTypeName(at.ArrayField.ValueType), ValueTypeName(seg.Type))
+							ValueTypeName(at.ArrayField), ValueTypeName(seg.Type))
 					}
 				}
 				if err := valueTypeStack.popAndVerifyType(ValueTypeI32); err != nil {
@@ -3180,14 +3177,15 @@ func concreteSubtype(types []FunctionType, sub, sup uint32) bool {
 // can flow into a slot of type dst, honouring packed-storage equality and
 // ref-type subtyping.
 func isFieldElementSubtypeOf(src, dst FieldType, m *Module) bool {
-	if src.Packed != PackedTypeNone || dst.Packed != PackedTypeNone {
-		return src.Packed == dst.Packed
+	if src.IsPacked() || dst.IsPacked() {
+		return src.Kind() == dst.Kind()
 	}
-	if src.ValueType == dst.ValueType {
+	srcVT, dstVT := src.AsImmutable(), dst.AsImmutable()
+	if srcVT == dstVT {
 		return true
 	}
-	if isReferenceValueType(src.ValueType) && isReferenceValueType(dst.ValueType) {
-		return isRefSubtypeOfInModule(src.ValueType, dst.ValueType, m)
+	if isReferenceValueType(srcVT) && isReferenceValueType(dstVT) {
+		return isRefSubtypeOfInModule(srcVT, dstVT, m)
 	}
 	return false
 }
@@ -3195,17 +3193,18 @@ func isFieldElementSubtypeOf(src, dst FieldType, m *Module) bool {
 // fieldOperandType returns the operand-stack ValueType for a struct field /
 // array element: i32 for packed storage, else the field's own value type.
 func fieldOperandType(f FieldType) (ValueType, error) {
-	if f.Packed != PackedTypeNone {
+	if f.IsPacked() {
 		return ValueTypeI32, nil
 	}
-	switch f.ValueType {
+	vt := f.AsImmutable()
+	switch vt {
 	case ValueTypeI32, ValueTypeI64, ValueTypeF32, ValueTypeF64, ValueTypeV128:
-		return f.ValueType, nil
+		return vt, nil
 	}
-	if isReferenceValueType(f.ValueType) {
-		return f.ValueType, nil
+	if isReferenceValueType(vt) {
+		return vt, nil
 	}
-	return 0, fmt.Errorf("unsupported struct/array field type %#x", f.ValueType)
+	return 0, fmt.Errorf("unsupported struct/array field type %#x", vt)
 }
 
 func (s *valueTypeStack) push(v ValueType) {
