@@ -5499,14 +5499,18 @@ func refMatches(v uint64, kindByte byte, nullable, isConcrete bool, typeIdx uint
 		return false
 	}
 	// The remaining non-null value is either a GC ref (struct / array,
-	// tagged 0b10) or a function pointer (0b00).
+	// tagged bit 61) or a function pointer (no tag bits).
 	store := mi.GetStore()
 	if wasm.IsGCRef(v) {
-		// Read TypeID from offset 0 — first field of both WasmStruct
-		// and WasmArray.
-		ptr := wasm.UntagGCPointer(v)
-		objTypeID := *(*wasm.FunctionTypeID)(ptr)
-		objForm := store.TypeForm(objTypeID)
+		var objTypeID wasm.FunctionTypeID
+		var objForm wasm.CompositeForm
+		if wasm.IsGCStructRef(v) {
+			s := (*wasm.WasmStruct)(wasm.UntagGCPointer(v))
+			objTypeID, objForm = s.TypeID, wasm.CompositeFormStruct
+		} else {
+			a := (*wasm.WasmArray)(wasm.UntagGCPointer(v))
+			objTypeID, objForm = a.TypeID, wasm.CompositeFormArray
+		}
 		if isConcrete {
 			if int(typeIdx) >= len(mi.TypeIDs) {
 				return false

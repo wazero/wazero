@@ -21,26 +21,44 @@ const (
 	tagI31       uint64 = 1 << 63
 	tagExternAny uint64 = 1 << 62
 	tagGCRef     uint64 = 1 << 61
-	tagMask      uint64 = tagI31 | tagExternAny | tagGCRef
+	tagGCArray   uint64 = 1 << 60
+	tagMask      uint64 = tagI31 | tagExternAny | tagGCRef | tagGCArray
 )
 
-// TagGCPointer encodes a Go pointer to a WasmStruct or WasmArray as a
-// tagged uint64 for the operand stack by setting bit 61.
-func TagGCPointer(ptr unsafe.Pointer) uint64 {
+// TagGCStructPointer encodes a *WasmStruct pointer for the operand stack
+// (bit 61 set, bit 60 clear).
+func TagGCStructPointer(ptr unsafe.Pointer) uint64 {
 	return uint64(uintptr(ptr)) | tagGCRef
 }
 
-// UntagGCPointer clears bit 61 and returns the raw pointer.
+// TagGCArrayPointer encodes a *WasmArray pointer for the operand stack
+// (bits 61 and 60 set).
+func TagGCArrayPointer(ptr unsafe.Pointer) uint64 {
+	return uint64(uintptr(ptr)) | tagGCRef | tagGCArray
+}
+
+// UntagGCPointer clears tag bits and returns the raw pointer.
 // Callers must check IsGCRef first.
 func UntagGCPointer(v uint64) unsafe.Pointer {
-	return unsafe.Pointer(uintptr(v &^ tagGCRef))
+	return unsafe.Pointer(uintptr(v &^ (tagGCRef | tagGCArray)))
 }
 
 // IsGCRef reports whether a slot is a tagged GC-ref pointer (struct or
-// array). Checks all tag bits to avoid false positives from extern-as-any
-// payloads that happen to have bit 61 set.
+// array). Bit 61 must be set while bits 62-63 must be clear.
 func IsGCRef(slot uint64) bool {
-	return slot&tagMask == tagGCRef
+	return slot&(tagI31|tagExternAny|tagGCRef) == tagGCRef
+}
+
+// IsGCStructRef reports whether a GC-ref slot is a struct (bit 60 clear).
+// Callers must check IsGCRef first.
+func IsGCStructRef(slot uint64) bool {
+	return slot&tagGCArray == 0
+}
+
+// IsGCArrayRef reports whether a GC-ref slot is an array (bit 60 set).
+// Callers must check IsGCRef first.
+func IsGCArrayRef(slot uint64) bool {
+	return slot&tagGCArray != 0
 }
 
 // PackI31 returns the tagged uint64 representation of an i31 value. The

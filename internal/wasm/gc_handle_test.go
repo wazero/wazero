@@ -18,6 +18,10 @@ func TestGCTaggedPointer_roundTrip(t *testing.T) {
 
 	require.True(t, IsGCRef(h1))
 	require.True(t, IsGCRef(h2))
+	require.True(t, IsGCStructRef(h1))
+	require.False(t, IsGCArrayRef(h1))
+	require.True(t, IsGCArrayRef(h2))
+	require.False(t, IsGCStructRef(h2))
 
 	// Untag and recover the original pointers.
 	got1 := (*WasmStruct)(UntagGCPointer(h1))

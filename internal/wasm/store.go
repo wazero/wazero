@@ -58,8 +58,8 @@ type (
 
 		// subtypes is indexed by FunctionTypeID and holds the Cohen-style
 		// subtype display + composite form for each assigned type ID,
-		// populated by computeSubtypeDisplays. Used by Store.IsSubtype /
-		// TypeForm for O(1) GC ref.test / ref.cast / call_ref checks.
+		// populated by computeSubtypeDisplays. Used by Store.IsSubtype
+		// for O(1) GC ref.test / ref.cast / call_ref checks.
 		subtypes []subtypeInfo
 
 		// functionMaxTypes represents the limit on the number of function types in a store.
@@ -1001,17 +1001,6 @@ func (s *Store) IsSubtype(sub, sup FunctionTypeID) bool {
 	return subInfo.Display[supInfo.Depth] == sup
 }
 
-// TypeForm returns the composite form registered for the given
-// FunctionTypeID (CompositeFormFunc as the zero-value default).
-func (s *Store) TypeForm(id FunctionTypeID) CompositeForm {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
-	if int(id) >= len(s.subtypes) {
-		return CompositeFormFunc
-	}
-	return s.subtypes[id].Form
-}
-
 // IsResolvedType reports whether the given FunctionTypeID has been registered
 // and its subtype display computed.
 func (s *Store) IsResolvedType(id FunctionTypeID) bool {
@@ -1030,9 +1019,9 @@ func (m *ModuleInstance) GCRegister(v any) uint64 {
 	m.GCRoots = append(m.GCRoots, v)
 	switch obj := v.(type) {
 	case *WasmStruct:
-		return TagGCPointer(unsafe.Pointer(obj))
+		return TagGCStructPointer(unsafe.Pointer(obj))
 	case *WasmArray:
-		return TagGCPointer(unsafe.Pointer(obj))
+		return TagGCArrayPointer(unsafe.Pointer(obj))
 	}
 	return 0
 }
