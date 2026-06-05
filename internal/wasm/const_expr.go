@@ -16,37 +16,20 @@ type ConstantExpression struct {
 }
 
 func evaluateConstExpr(e *ConstantExpression, globalResolver func(globalIndex Index) (ValueType, uint64, uint64, error), funcRefResolver func(funcIndex Index) (Reference, error)) ([]uint64, ValueType, error) {
-	return evaluateConstExprWithModule(e, globalResolver, funcRefResolver, nil)
+	return evaluateConstExprWithModule(e, globalResolver, funcRefResolver, nil, nil)
 }
 
-// gcModuleCtx is the subset of *ModuleInstance the const-expression
-// evaluator needs to allocate WasmStruct / WasmArray / func
-// references when the expression contains GC opcodes. nil means
-// "validation mode" — the evaluator type-checks without allocating.
-type gcModuleCtx interface {
-	// TypeSection returns the module's composite type entries (for
-	// looking up struct/array schemas).
-	TypeSection() []FunctionType
-	// TypeID returns the engine-wide FunctionTypeID for the given
-	// module-local type index.
-	TypeID(typeIdx uint32) FunctionTypeID
-	// GCRegister stores a wasm-gc heap object in the engine's handle table
-	// and returns its operand-stack handle (a tagged integer, not a
-	// pointer).
-	GCRegister(v any) uint64
-	// FunctionTypeIndex returns the module-local type index of the
-	// function at funcIdx, or ok=false if unknown.
-	FunctionTypeIndex(funcIdx Index) (uint32, bool)
-}
-
-// evaluateConstExprWithModule is the GC-aware evaluator. mi may be nil
-// during validation: in that case struct.new / array.new / ref.i31 are
-// type-checked but produce a 0 placeholder uint64.
+// evaluateConstExprWithModule is the GC-aware evaluator.
+// mod provides the TypeSection for GC opcode type lookups (nil-safe).
+// mi provides runtime allocation (TypeIDs, GCRegister); nil means
+// validation mode — GC opcodes are type-checked but produce a 0
+// placeholder uint64.
 func evaluateConstExprWithModule(
 	e *ConstantExpression,
 	globalResolver func(globalIndex Index) (ValueType, uint64, uint64, error),
 	funcRefResolver func(funcIndex Index) (Reference, error),
-	mi gcModuleCtx,
+	mod *Module,
+	mi *ModuleInstance,
 ) ([]uint64, ValueType, error) {
 	var stack []uint64
 	var typeStack []ValueType
@@ -146,14 +129,9 @@ func evaluateConstExprWithModule(
 				return nil, 0, err
 			}
 			stack = append(stack, uint64(ref))
-			// With a module context, ref.func produces the function's
-			// concrete (ref $t) type so a downstream (ref $t) consumer
-			// matches. Without one (mi == nil), produce plain nullable
-			// funcref, matching upstream so element/table init checks that
-			// special-case funcref keep working.
 			var t ValueType
-			if mi != nil {
-				if typeIdx, ok := mi.FunctionTypeIndex(Index(v)); ok {
+			if mod != nil {
+				if typeIdx, ok := mod.typeIndexOfFunction(Index(v)); ok {
 					t = ValueTypeConcreteRef(typeIdx, false)
 				} else {
 					t = ValueTypeFuncref
@@ -287,7 +265,7 @@ func evaluateConstExprWithModule(
 				pc += m
 				var fields []any
 				if sub == OpcodeGCStructNew && mi != nil {
-					schema := mi.TypeSection()[typeIdx]
+					schema := mod.TypeSection[typeIdx]
 					fields = make([]any, len(schema.Fields))
 					for i := len(schema.Fields) - 1; i >= 0; i-- {
 						raw := stack[len(stack)-1]
@@ -296,23 +274,24 @@ func evaluateConstExprWithModule(
 						fields[i] = encodeFieldValueForConst(schema.Fields[i], raw)
 					}
 				} else if sub == OpcodeGCStructNew {
-					// validation: drop fields
-					schema := emptyOrTypeSection(mi, typeIdx)
-					fc := len(schema.Fields)
+					fc := 0
+					if mod != nil && int(typeIdx) < len(mod.TypeSection) {
+						fc = len(mod.TypeSection[typeIdx].Fields)
+					}
 					if fc > len(stack) {
 						return nil, 0, errors.New("struct.new: stack underflow")
 					}
 					stack = stack[:len(stack)-fc]
 					typeStack = typeStack[:len(typeStack)-fc]
 				} else if mi != nil {
-					schema := mi.TypeSection()[typeIdx]
+					schema := mod.TypeSection[typeIdx]
 					fields = make([]any, len(schema.Fields))
 					for i := range schema.Fields {
 						fields[i] = DefaultFieldValue(schema.Fields[i])
 					}
 				}
 				if mi != nil {
-					s := NewWasmStructWith(mi.TypeID(typeIdx), fields)
+					s := NewWasmStructWith(mi.TypeIDs[typeIdx], fields)
 					stack = append(stack, mi.GCRegister(s))
 				} else {
 					stack = append(stack, 0)
@@ -334,7 +313,7 @@ func evaluateConstExprWithModule(
 					stack = stack[:len(stack)-2]
 					typeStack = typeStack[:len(typeStack)-2]
 					if mi != nil {
-						schema := mi.TypeSection()[typeIdx].ArrayField
+						schema := mod.TypeSection[typeIdx].ArrayField
 						stored := encodeFieldValueForConst(schema, rawElem)
 						elems = make([]any, length)
 						for i := range elems {
@@ -349,7 +328,7 @@ func evaluateConstExprWithModule(
 					stack = stack[:len(stack)-1]
 					typeStack = typeStack[:len(typeStack)-1]
 					if mi != nil {
-						schema := mi.TypeSection()[typeIdx].ArrayField
+						schema := mod.TypeSection[typeIdx].ArrayField
 						def := DefaultFieldValue(schema)
 						elems = make([]any, length)
 						for i := range elems {
@@ -358,7 +337,7 @@ func evaluateConstExprWithModule(
 					}
 				}
 				if mi != nil {
-					a := NewWasmArrayWith(mi.TypeID(typeIdx), elems)
+					a := NewWasmArrayWith(mi.TypeIDs[typeIdx], elems)
 					stack = append(stack, mi.GCRegister(a))
 				} else {
 					stack = append(stack, 0)
@@ -380,7 +359,7 @@ func evaluateConstExprWithModule(
 				}
 				var elems []any
 				if mi != nil {
-					schema := mi.TypeSection()[typeIdx].ArrayField
+					schema := mod.TypeSection[typeIdx].ArrayField
 					elems = make([]any, count)
 					for i := int(count) - 1; i >= 0; i-- {
 						raw := stack[len(stack)-1]
@@ -393,7 +372,7 @@ func evaluateConstExprWithModule(
 					typeStack = typeStack[:uint32(len(typeStack))-count]
 				}
 				if mi != nil {
-					a := NewWasmArrayWith(mi.TypeID(typeIdx), elems)
+					a := NewWasmArrayWith(mi.TypeIDs[typeIdx], elems)
 					stack = append(stack, mi.GCRegister(a))
 				} else {
 					stack = append(stack, 0)
@@ -436,6 +415,7 @@ func evaluateConstExprInModuleInstance(e *ConstantExpression, m *ModuleInstance)
 		func(funcIndex Index) (Reference, error) {
 			return m.Engine.FunctionInstanceReference(funcIndex), nil
 		},
+		m.Source,
 		m,
 	)
 	return v
@@ -484,18 +464,4 @@ func encodeFieldValueForConst(f FieldType, raw uint64) any {
 	}
 	// Reference / vector — keep raw uint64 (refs are opaque pointers).
 	return raw
-}
-
-// emptyOrTypeSection returns the FunctionType at typeIdx if mi is
-// non-nil, otherwise a zero-valued FunctionType to keep validation
-// safe.
-func emptyOrTypeSection(mi gcModuleCtx, typeIdx uint32) FunctionType {
-	if mi == nil {
-		return FunctionType{}
-	}
-	ts := mi.TypeSection()
-	if int(typeIdx) >= len(ts) {
-		return FunctionType{}
-	}
-	return ts[typeIdx]
 }

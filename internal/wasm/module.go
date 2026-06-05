@@ -588,7 +588,8 @@ func (m *Module) declaredFunctionIndexes(enabledFeatures api.CoreFeatures) (ret 
 				ret[funcIndex] = struct{}{}
 				return 0, nil
 			},
-			validationModuleCtx{m: m},
+			m,
+			nil,
 		)
 
 		if initErr != nil {
@@ -728,10 +729,6 @@ func (m *Module) validateExports(enabledFeatures api.CoreFeatures, functions []I
 
 func (m *Module) validateConstExpression(globals []GlobalType, numFuncs uint32, expr *ConstantExpression, expectedType ValueType) (err error) {
 	var lastRefFuncIdx Index
-	// Validate via the GC-aware evaluator with a module-backed context so
-	// GC opcodes (struct.new / array.new) can look up their schemas and
-	// ref.func pushes the function's concrete (ref $t) type. The context
-	// allocates throwaway heap objects (discarded after validation).
 	_, typ, err := evaluateConstExprWithModule(
 		expr,
 		func(globalIndex Index) (ValueType, uint64, uint64, error) {
@@ -747,7 +744,8 @@ func (m *Module) validateConstExpression(globals []GlobalType, numFuncs uint32, 
 			lastRefFuncIdx = funcIndex
 			return 0, nil
 		},
-		validationModuleCtx{m: m},
+		m,
+		nil,
 	)
 	if err != nil {
 		return err
@@ -761,23 +759,6 @@ func (m *Module) validateConstExpression(globals []GlobalType, numFuncs uint32, 
 		return fmt.Errorf("const expression type mismatch expected %s but got %s", ValueTypeName(expectedType), ValueTypeName(typ))
 	}
 	return nil
-}
-
-// validationModuleCtx is a module-backed gcModuleCtx used during static
-// validation: it exposes the TypeSection and function type indices so the
-// const-expression evaluator can type-check GC opcodes, but TypeID returns 0
-// and GCRegister returns a placeholder handle (heap objects built during
-// validation are discarded; only the value's type, tracked separately, is
-// checked).
-type validationModuleCtx struct {
-	m *Module
-}
-
-func (v validationModuleCtx) TypeSection() []FunctionType  { return v.m.TypeSection }
-func (v validationModuleCtx) TypeID(uint32) FunctionTypeID { return 0 }
-func (v validationModuleCtx) GCRegister(any) uint64        { return 0 }
-func (v validationModuleCtx) FunctionTypeIndex(funcIdx Index) (uint32, bool) {
-	return v.m.typeIndexOfFunction(funcIdx)
 }
 
 func (m *Module) validateDataCountSection() (err error) {
@@ -812,7 +793,7 @@ func (m *ModuleInstance) buildGlobals(module *Module, funcRefResolver func(funcI
 		}
 		m.Globals[i+module.ImportGlobalCount] = g
 		g.Type = gs.Type
-		g.initialize(importedGlobals, &gs.Init, funcRefResolver, m)
+		g.initialize(importedGlobals, &gs.Init, funcRefResolver, module, m)
 	}
 }
 

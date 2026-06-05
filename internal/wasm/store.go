@@ -586,7 +586,7 @@ func errorInvalidImport(i *Import, err error) error {
 //
 // Global initialization constant expression can only reference the imported globals.
 // See the note on https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#constant-expressions%E2%91%A0
-func (g *GlobalInstance) initialize(importedGlobals []*GlobalInstance, expr *ConstantExpression, funcRefResolver func(funcIndex Index) Reference, gcCtx gcModuleCtx) {
+func (g *GlobalInstance) initialize(importedGlobals []*GlobalInstance, expr *ConstantExpression, funcRefResolver func(funcIndex Index) Reference, mod *Module, mi *ModuleInstance) {
 	result, _, _ := evaluateConstExprWithModule(
 		expr,
 		func(globalIndex Index) (ValueType, uint64, uint64, error) {
@@ -596,7 +596,8 @@ func (g *GlobalInstance) initialize(importedGlobals []*GlobalInstance, expr *Con
 		func(funcIndex Index) (Reference, error) {
 			return funcRefResolver(funcIndex), nil
 		},
-		gcCtx,
+		mod,
+		mi,
 	)
 	switch len(result) {
 	case 1:
@@ -1022,24 +1023,9 @@ func (s *Store) IsResolvedType(id FunctionTypeID) bool {
 	return s.subtypes[id].Resolved
 }
 
-// TypeSection returns the module's composite type entries. Implements
-// gcModuleCtx for the GC-aware const-expression evaluator.
-func (m *ModuleInstance) TypeSection() []FunctionType {
-	return m.Source.TypeSection
-}
-
-// TypeID returns the engine-wide FunctionTypeID for the given module-local
-// type index. Implements gcModuleCtx.
-func (m *ModuleInstance) TypeID(typeIdx uint32) FunctionTypeID {
-	if int(typeIdx) >= len(m.TypeIDs) {
-		return 0
-	}
-	return m.TypeIDs[typeIdx]
-}
-
 // GCRegister roots a wasm-gc heap object (a *WasmStruct or *WasmArray) so
 // the Go GC keeps it alive, and returns a tagged pointer for the operand
-// stack. Implements gcModuleCtx.
+// stack.
 func (m *ModuleInstance) GCRegister(v any) uint64 {
 	m.GCRoots = append(m.GCRoots, v)
 	switch obj := v.(type) {
@@ -1049,16 +1035,6 @@ func (m *ModuleInstance) GCRegister(v any) uint64 {
 		return TagGCPointer(unsafe.Pointer(obj))
 	}
 	return 0
-}
-
-// FunctionTypeIndex returns the module-local type index of the function at
-// funcIdx (covering both imported and module-defined functions), or ok=false
-// if out of range. Implements gcModuleCtx.
-func (m *ModuleInstance) FunctionTypeIndex(funcIdx Index) (uint32, bool) {
-	if m.Source == nil {
-		return 0, false
-	}
-	return m.Source.typeIndexOfFunction(funcIdx)
 }
 
 // GetStore returns the Store on which this module is instantiated. Used by
