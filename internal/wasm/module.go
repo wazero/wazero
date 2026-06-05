@@ -895,6 +895,35 @@ func (m *ModuleInstance) buildMemory(module *Module, allocator experimental.Memo
 // See https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#binary-index
 type Index = uint32
 
+// CompositeForm discriminates the form of a composite type entry in the
+// module's type section. Wasm 1.0 / 2.0 supported only function types; the
+// WebAssembly GC proposal adds struct and array forms.
+//
+// CompositeFormFunc is the zero value so a default-constructed FunctionType
+// remains a function type — preserving backward compatibility with all
+// code written before the GC additions.
+//
+// See https://www.w3.org/TR/2026/CRD-wasm-core-2-20260527//#composite-types%E2%91%A0
+type CompositeForm uint8
+
+const (
+	CompositeFormFunc CompositeForm = iota
+	CompositeFormStruct
+	CompositeFormArray
+)
+
+func (f CompositeForm) String() string {
+	switch f {
+	case CompositeFormFunc:
+		return "func"
+	case CompositeFormStruct:
+		return "struct"
+	case CompositeFormArray:
+		return "array"
+	}
+	return fmt.Sprintf("<unknown composite form %d>", f)
+}
+
 // FunctionType is a possibly empty function signature.
 //
 // See https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#function-types%E2%91%A0

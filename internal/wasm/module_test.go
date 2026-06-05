@@ -304,12 +304,9 @@ func TestValidateConstExpression(t *testing.T) {
 			expr = NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{0xff})
 			err = (&Module{}).validateConstExpression(nil, 0, &expr, ValueTypeExternref)
 			require.EqualError(t, err, "unexpected EOF")
-			// The heap type is decoded as a signed s33 LEB; an overlong
-			// all-continuation encoding saturates to 0, yielding (ref null 0),
-			// which then fails the externref type check.
 			expr = NewConstantExpressionFromOpcode(OpcodeRefNull, []byte{0x80, 0x80, 0x80, 0x80, 0x80})
 			err = (&Module{}).validateConstExpression(nil, 0, &expr, ValueTypeExternref)
-			require.EqualError(t, err, "const expression type mismatch expected externref but got (ref null 0)")
+			require.EqualError(t, err, "invalid type for ref.null: 0x80")
 		})
 	})
 	t.Run("global expr", func(t *testing.T) {
