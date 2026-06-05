@@ -273,12 +273,9 @@ func (c commandActionVal) toUint64() (ret uint64) {
 			ret = 0
 		} else {
 			original, _ := strconv.ParseUint(strValue, 10, 64)
-			// In wazero, externref / host anyref / eqref are opaque
-			// pointers. Use a left-shifted encoding so the synthetic
-			// integer never aliases the i31 tag (low 2 bits = 0b01)
-			// nor the externref-as-anyref tag (low 2 bits = 0b11), and
-			// is non-zero (so "0" is non-null).
-			ret = (original + 1) << 8
+			// In wazero, externref is opaque pointer, so "0" is considered as null.
+			// So in order to treat "externref 0" in spectest non nullref, we increment the value.
+			ret = original + 1
 		}
 	} else if strings.Contains(c.ValType, "32") {
 		// wasm-tools may output signed decimals (e.g. "-1"); handle both.

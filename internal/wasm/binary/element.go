@@ -68,17 +68,10 @@ func decodeElementRefType(r *bytes.Reader) (wasm.RefType, error) {
 		return decodeRefType(r, b == wasm.RefPrefixNullable)
 	default:
 		ret := wasm.ValueType(b)
-		switch ret {
-		case wasm.RefTypeFuncref, wasm.RefTypeExternref,
-			// wasm-gc nullable abstract heap-type shorthand bytes.
-			wasm.ValueTypeExnref,
-			wasm.ValueTypeAnyref, wasm.ValueTypeEqref, wasm.ValueTypeI31ref,
-			wasm.ValueTypeStructref, wasm.ValueTypeArrayref, wasm.ValueTypeNullref,
-			wasm.ValueTypeNoFuncref, wasm.ValueTypeNoExternref, wasm.ValueTypeNoExnref:
+		if ret.IsRef() {
 			return ret, nil
-		default:
-			return 0, fmt.Errorf("invalid ref type for element: 0x%x", b)
 		}
+		return 0, fmt.Errorf("invalid ref type for element: 0x%x", b)
 	}
 }
 

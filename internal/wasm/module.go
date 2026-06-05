@@ -1682,7 +1682,6 @@ func FieldTypeName(f FieldType) string {
 	return prefix + ValueTypeName(f)
 }
 
-
 // isRefSubtypeOf returns true if actual is a subtype of (or equal to)
 // expected. Non-nullable is a subtype of nullable (same kind/index);
 // concrete function refs are subtypes of funcref; and the GC abstract
