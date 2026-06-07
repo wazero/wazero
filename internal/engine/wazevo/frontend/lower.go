@@ -37,6 +37,10 @@ type (
 		blockType *wasm.FunctionType
 		// clonedArgs hold the arguments to Else block.
 		clonedArgs ssa.Values
+		// hasCatchClauses is true for try_table frames that registered a
+		// handler. Used at OpcodeEnd to decide whether to emit the leave
+		// trampoline
+		hasCatchClauses bool
 	}
 
 	controlFrameKind byte
@@ -1096,6 +1100,9 @@ func (c *Compiler) lowerCurrentOpcode() {
 		variable := c.localVariable(index)
 		newValue := state.pop()
 		builder.DefineVariableInCurrentBB(variable, newValue)
+		if c.tryTableDepth > 0 {
+			c.storeLocalToSaveArea(wasm.Index(index), newValue)
+		}
 
 	case wasm.OpcodeLocalTee:
 		index := c.readI32u()
@@ -1105,6 +1112,9 @@ func (c *Compiler) lowerCurrentOpcode() {
 		variable := c.localVariable(index)
 		newValue := state.peek()
 		builder.DefineVariableInCurrentBB(variable, newValue)
+		if c.tryTableDepth > 0 {
+			c.storeLocalToSaveArea(wasm.Index(index), newValue)
+		}
 
 	case wasm.OpcodeSelect, wasm.OpcodeTypedSelect:
 		if op == wasm.OpcodeTypedSelect {
@@ -1446,8 +1456,10 @@ func (c *Compiler) lowerCurrentOpcode() {
 
 		unreachable := state.unreachable
 		if !unreachable {
-			// For try_table, emit the leave trampoline before the jump to the following block.
-			if ctrl.kind == controlFrameKindTryTable {
+			// For try_table with catch clauses, emit the leave trampoline
+			// before the jump to the following block. If there are no catch clauses,
+			// skip since they never pushed a handler.
+			if ctrl.kind == controlFrameKindTryTable && ctrl.hasCatchClauses {
 				c.emitTryTableLeave()
 			}
 
@@ -1472,6 +1484,10 @@ func (c *Compiler) lowerCurrentOpcode() {
 			elseBlk := ctrl.blk
 			builder.SetCurrentBlock(elseBlk)
 			c.insertJumpToBlock(ctrl.clonedArgs, followingBlk)
+		case controlFrameKindTryTable:
+			if ctrl.hasCatchClauses && c.tryTableDepth > 0 {
+				c.tryTableDepth--
+			}
 		}
 
 		builder.Seal(followingBlk)
@@ -3563,7 +3579,7 @@ func (c *Compiler) lowerCurrentOpcode() {
 			catchClauses = append(catchClauses, catchClause{kind: kind, tagIndex: tagIdx, labelIdx: labelIdx})
 		}
 
-		// Register catch clauses in the table and get the try_table ID.
+		// Register try_table metadata and get the try_table ID.
 		var clauseInstances []wazevoapi.CatchClauseInstance
 		for _, cc := range catchClauses {
 			clauseInstances = append(clauseInstances, wazevoapi.CatchClauseInstance{
@@ -3571,7 +3587,12 @@ func (c *Compiler) lowerCurrentOpcode() {
 				TagIndex: cc.tagIndex,
 			})
 		}
-		tryTableID := c.catchClauseTable.Append(clauseInstances)
+		numLocals := len(c.wasmFunctionTyp.Params) + len(c.wasmFunctionLocalTypes)
+		tryTableID := c.tryTableMetadata.Append(wazevoapi.TryTableInfo{
+			CatchClauses: clauseInstances,
+			NumLocals:    numLocals,
+			ReuseLocals:  c.tryTableDepth > 0,
+		})
 
 		// Allocate the following block (after try_table end) and body block.
 		followingBlk := builder.AllocateBasicBlock()
@@ -3595,6 +3616,7 @@ func (c *Compiler) lowerCurrentOpcode() {
 				handlerBlk := builder.AllocateBasicBlock()
 				builder.SetCurrentBlock(handlerBlk)
 				c.reloadAfterCall()
+				c.reloadLocalsFromSaveArea()
 
 				// Resolve the wasm target label.
 				targetBlk, _ := state.brTargetArgNumFor(cc.labelIdx)
@@ -3676,6 +3698,10 @@ func (c *Compiler) lowerCurrentOpcode() {
 		if len(catchClauses) > 0 {
 			// Body block is entered after the trampoline call, so we need to reload.
 			c.reloadAfterCall()
+			// Initialize the locals save area so handlers can read
+			// correct values after a stack restore.
+			c.storeAllLocalsToSaveArea()
+			c.tryTableDepth++
 		}
 
 		// Push the try_table control frame AFTER resolving catch labels.
@@ -3684,6 +3710,7 @@ func (c *Compiler) lowerCurrentOpcode() {
 			originalStackLenWithoutParam: len(state.values) - len(bt.Params),
 			followingBlock:               followingBlk,
 			blockType:                    bt,
+			hasCatchClauses:              len(catchClauses) > 0,
 		})
 
 	case wasm.OpcodeRefAsNonNull:
@@ -4574,6 +4601,64 @@ func (c *Compiler) emitThrow(exnref ssa.Value) {
 	builder.InsertInstruction(exit)
 }
 
+// loadLocalsSaveAreaPtr emits a load of the locals save area pointer from execCtx.
+func (c *Compiler) loadLocalsSaveAreaPtr() ssa.Value {
+	return c.ssaBuilder.AllocateInstruction().
+		AsLoad(c.execCtxPtrValue,
+			wazevoapi.ExecutionContextOffsetLocalsSaveAreaPtr.U32(),
+			ssa.TypeI64).
+		Insert(c.ssaBuilder).Return()
+}
+
+// storeLocalToSaveArea emits a store of the given local value to the
+// heap-allocated locals save area.
+func (c *Compiler) storeLocalToSaveArea(localIdx wasm.Index, val ssa.Value) {
+	ptr := c.loadLocalsSaveAreaPtr()
+	store := c.ssaBuilder.AllocateInstruction()
+	store.AsStore(ssa.OpcodeStore, val, ptr, uint32(localIdx)*16)
+	c.ssaBuilder.InsertInstruction(store)
+}
+
+// reloadLocalsFromSaveArea loads all locals from the heap-allocated save area
+// and redefines the SSA variables, so handler blocks see throw-time values.
+func (c *Compiler) reloadLocalsFromSaveArea() {
+	builder := c.ssaBuilder
+	ptr := c.loadLocalsSaveAreaPtr()
+	numParams := len(c.wasmFunctionTyp.Params)
+	numLocals := numParams + len(c.wasmFunctionLocalTypes)
+	for i := 0; i < numLocals; i++ {
+		localIdx := wasm.Index(i)
+		var wasmType wasm.ValueType
+		if i < numParams {
+			wasmType = c.wasmFunctionTyp.Params[i]
+		} else {
+			wasmType = c.wasmFunctionLocalTypes[i-numParams]
+		}
+		ssaType := WasmTypeToSSAType(wasmType)
+		load := builder.AllocateInstruction()
+		load.AsLoad(ptr, uint32(localIdx)*16, ssaType)
+		builder.InsertInstruction(load)
+		variable := c.localVariable(localIdx)
+		builder.DefineVariableInCurrentBB(variable, load.Return())
+	}
+}
+
+// storeAllLocalsToSaveArea stores all locals to the save area at once.
+func (c *Compiler) storeAllLocalsToSaveArea() {
+	builder := c.ssaBuilder
+	ptr := c.loadLocalsSaveAreaPtr()
+	numParams := len(c.wasmFunctionTyp.Params)
+	numLocals := numParams + len(c.wasmFunctionLocalTypes)
+	for i := 0; i < numLocals; i++ {
+		localIdx := wasm.Index(i)
+		variable := c.localVariable(localIdx)
+		val := builder.MustFindValue(variable)
+		store := builder.AllocateInstruction()
+		store.AsStore(ssa.OpcodeStore, val, ptr, uint32(localIdx)*16)
+		builder.InsertInstruction(store)
+	}
+}
+
 // emitTryTableLeave emits a trampoline call to pop the try handler in the dispatch loop.
 func (c *Compiler) emitTryTableLeave() {
 	builder := c.ssaBuilder
@@ -4592,12 +4677,13 @@ func (c *Compiler) emitTryTableLeave() {
 }
 
 // branchExitsTryTable returns true if a branch to the given depth would
-// exit at least one try_table frame.
+// exit at least one try_table frame that has catch clauses.
 func (c *Compiler) branchExitsTryTable(depth int) bool {
 	state := c.state()
 	tail := len(state.controlFrames) - 1
 	for i := 0; i < depth; i++ {
-		if state.controlFrames[tail-i].kind == controlFrameKindTryTable {
+		cf := &state.controlFrames[tail-i]
+		if cf.kind == controlFrameKindTryTable && cf.hasCatchClauses {
 			return true
 		}
 	}
@@ -4605,12 +4691,13 @@ func (c *Compiler) branchExitsTryTable(depth int) bool {
 }
 
 // emitTryTableLeaves emits TryTableLeave calls for try_table frames
-// that would be exited by a branch to the given depth.
+// with catch clauses that would be exited by a branch to the given depth.
 func (c *Compiler) emitTryTableLeaves(depth int) {
 	state := c.state()
 	tail := len(state.controlFrames) - 1
 	for i := 0; i < depth; i++ {
-		if state.controlFrames[tail-i].kind == controlFrameKindTryTable {
+		cf := &state.controlFrames[tail-i]
+		if cf.kind == controlFrameKindTryTable && cf.hasCatchClauses {
 			c.emitTryTableLeave()
 		}
 	}

@@ -102,9 +102,9 @@ type (
 		offsets         wazevoapi.ModuleContextOffsetData
 		sharedFunctions *sharedFunctions
 		sourceMap       sourceMap
-		// catchClauseTable stores catch clause info for each try_table,
-		// indexed by a try_table ID assigned during compilation.
-		catchClauseTable [][]wazevoapi.CatchClauseInstance
+		// tryTableInfo stores per-try_table metadata (catch clauses,
+		// local count) indexed by try_table ID assigned during compilation.
+		tryTableInfo []wazevoapi.TryTableInfo
 	}
 
 	executables struct {
@@ -281,7 +281,7 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 
 			relocator.appendFunction(fctx, module, cm, i, fidx, body, relsPerFunc, be.SourceOffsetInfo())
 		}
-		cm.catchClauseTable = fe.CatchClauseTable()
+		cm.tryTableInfo = fe.TryTableMetadata()
 	} else {
 		// Compile with N worker goroutines.
 		// Collect compiled functions across workers in a slice,
@@ -300,9 +300,9 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 		ctx, cancel := context.WithCancelCause(ctx)
 		defer cancel(nil)
 
-		// Catch clause table IDs are baked into compiled machine code, so all
+		// Try-table IDs are baked into compiled machine code, so all
 		// workers must share a single table to ensure globally unique IDs.
-		sharedCCT := frontend.NewSharedCatchClauseTable()
+		sharedTTM := frontend.NewSharedTryTableMetadata()
 
 		var count atomic.Uint32
 		var wg sync.WaitGroup
@@ -318,7 +318,7 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 				be := backend.NewCompiler(ctx, machine, ssaBuilder)
 				fe := frontend.NewFrontendCompiler(
 					module, ssaBuilder, &cm.offsets, ensureTermination, withListener, needSourceInfo).
-					WithCatchClauseTable(sharedCCT)
+					WithTryTableMetadata(sharedTTM)
 
 				for {
 					if err := ctx.Err(); err != nil {
@@ -365,7 +365,7 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 			fn := &compiledFuncs[i]
 			relocator.appendFunction(fn.fctx, module, cm, fn.fnum, fn.fidx, fn.body, fn.relsPerFunc, fn.offsPerFunc)
 		}
-		cm.catchClauseTable = sharedCCT.Table()
+		cm.tryTableInfo = sharedTTM.Table()
 	}
 
 	// Allocate executable memory and then copy the generated machine code.
