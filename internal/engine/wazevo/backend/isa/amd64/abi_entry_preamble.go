@@ -41,9 +41,12 @@ func (m *machine) compileEntryPreamble(sig *ssa.Signature) *instruction {
 
 	//// ----------------------------------- prologue ----------------------------------- ////
 
+	// Landing pad for indirect branch tracking (Intel CET).
+	cur := linkInstr(root, m.allocateInstr().asEndbr64())
+
 	// First, we save executionContextPtrReg into a callee-saved register so that it can be used in epilogue as well.
 	// 		mov %executionContextPtrReg, %savedExecutionContextPtr
-	cur := m.move64(executionContextPtrReg, savedExecutionContextPtr, root)
+	cur = m.move64(executionContextPtrReg, savedExecutionContextPtr, cur)
 
 	// Next is to save the original RBP and RSP into the execution context.
 	cur = m.saveOriginalRSPRBP(cur)

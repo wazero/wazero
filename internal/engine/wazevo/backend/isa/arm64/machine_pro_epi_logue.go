@@ -18,6 +18,9 @@ func (m *machine) setupPrologue() {
 	cur := m.rootInstr
 	prevInitInst := cur.next
 
+	// Landing pad for branch target identification (ARM BTI).
+	cur = linkInstr(cur, m.allocateInstr().asBTI())
+
 	//
 	//                   (high address)                    (high address)
 	//         SP----> +-----------------+               +------------------+ <----+
@@ -451,6 +454,9 @@ func (m *machine) CompileStackGrowCallSequence() []byte {
 	cur := m.allocateInstr()
 	cur.asNop0()
 	m.rootInstr = cur
+
+	// Landing pad for branch target identification (ARM BTI).
+	cur = linkInstr(cur, m.allocateInstr().asBTI())
 
 	// Save the callee saved and argument registers.
 	cur = m.saveRegistersInExecutionContext(cur, saveRequiredRegs)

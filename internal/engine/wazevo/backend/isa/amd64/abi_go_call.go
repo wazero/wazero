@@ -26,6 +26,9 @@ func (m *machine) CompileGoFunctionTrampoline(exitCode wazevoapi.ExitCode, sig *
 	cur := m.allocateNop()
 	m.rootInstr = cur
 
+	// Landing pad for indirect branch tracking (Intel CET).
+	cur = linkInstr(cur, m.allocateInstr().asEndbr64())
+
 	// Execution context is always the first argument.
 	execCtrPtr := raxVReg
 
@@ -330,6 +333,9 @@ func (m *machine) storeReturnAddressAndExit(cur *instruction, execCtx regalloc.V
 
 	nop, l := m.allocateBrTarget()
 	cur = linkInstr(cur, nop)
+	// Landing pad for indirect branch tracking (Intel CET).
+	endbr := m.allocateInstr().asEndbr64()
+	cur = linkInstr(cur, endbr)
 	readRip.asLEA(newOperandLabel(l), ripReg)
 	return cur
 }
@@ -348,6 +354,9 @@ var stackGrowSaveVRegs = []regalloc.VReg{
 func (m *machine) CompileStackGrowCallSequence() []byte {
 	cur := m.allocateNop()
 	m.rootInstr = cur
+
+	// Landing pad for indirect branch tracking (Intel CET).
+	cur = linkInstr(cur, m.allocateInstr().asEndbr64())
 
 	cur = m.setupRBPRSP(cur)
 

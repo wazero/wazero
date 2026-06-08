@@ -21,6 +21,7 @@ func TestAbiImpl_constructEntryPreamble(t *testing.T) {
 			name: "empty",
 			sig:  &ssa.Signature{},
 			exp: `
+	bti jc
 	mov x20, x0
 	str x29, [x20, #0x10]
 	mov x27, sp
@@ -44,6 +45,7 @@ func TestAbiImpl_constructEntryPreamble(t *testing.T) {
 				},
 			},
 			exp: `
+	bti jc
 	mov x20, x0
 	str x29, [x20, #0x10]
 	mov x27, sp
@@ -72,6 +74,7 @@ func TestAbiImpl_constructEntryPreamble(t *testing.T) {
 				},
 			},
 			exp: `
+	bti jc
 	mov x20, x0
 	str x29, [x20, #0x10]
 	mov x27, sp
@@ -100,6 +103,7 @@ func TestAbiImpl_constructEntryPreamble(t *testing.T) {
 				},
 			},
 			exp: `
+	bti jc
 	mov x20, x0
 	str x29, [x20, #0x10]
 	mov x27, sp
@@ -136,6 +140,7 @@ func TestAbiImpl_constructEntryPreamble(t *testing.T) {
 				Results: []ssa.Type{f32, f64, i32, f32, i64, i32, f64},
 			},
 			exp: `
+	bti jc
 	mov x20, x0
 	str x29, [x20, #0x10]
 	mov x27, sp
@@ -173,6 +178,7 @@ func TestAbiImpl_constructEntryPreamble(t *testing.T) {
 				},
 			},
 			exp: `
+	bti jc
 	mov x20, x0
 	str x29, [x20, #0x10]
 	mov x27, sp
@@ -235,6 +241,7 @@ func TestAbiImpl_constructEntryPreamble(t *testing.T) {
 				},
 			},
 			exp: `
+	bti jc
 	mov x20, x0
 	str x29, [x20, #0x10]
 	mov x27, sp
@@ -307,6 +314,7 @@ func TestAbiImpl_constructEntryPreamble(t *testing.T) {
 				},
 			},
 			exp: `
+	bti jc
 	mov x20, x0
 	str x29, [x20, #0x10]
 	mov x27, sp

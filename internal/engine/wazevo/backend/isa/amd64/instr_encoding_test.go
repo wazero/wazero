@@ -21,6 +21,11 @@ func TestInstruction_format_encode(t *testing.T) {
 		wantFormat string
 	}{
 		{
+			setup:      func(i *instruction) { i.asEndbr64() },
+			wantFormat: "endbr64",
+			want:       "f30f1efa",
+		},
+		{
 			setup:      func(i *instruction) { i.asRet() },
 			wantFormat: "ret",
 			want:       "c3",

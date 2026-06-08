@@ -78,6 +78,7 @@ var defKinds = [numInstructionKinds]defKind{
 	fpuMov128:            defKindRD,
 	fpuRR:                defKindRD,
 	fpuRRR:               defKindRD,
+	bti:                  defKindNone,
 	nop0:                 defKindNone,
 	call:                 defKindCall,
 	callInd:              defKindCall,
@@ -218,6 +219,7 @@ var useKinds = [numInstructionKinds]useKind{
 	fpuMov128:            useKindRN,
 	fpuRR:                useKindRN,
 	fpuRRR:               useKindRNRM,
+	bti:                  useKindNone,
 	nop0:                 useKindNone,
 	call:                 useKindCall,
 	callInd:              useKindCallInd,
@@ -1034,6 +1036,8 @@ func (i *instruction) String() (str string) {
 	}
 
 	switch i.kind {
+	case bti:
+		str = "bti jc"
 	case nop0:
 		if i.u1 != 0 {
 			l := label(i.u1)
@@ -1578,6 +1582,8 @@ func (i *instruction) asTailCallIndirect(ptr regalloc.VReg, abi *backend.Functio
 const (
 	// nop0 represents a no-op of zero size.
 	nop0 instructionKind = iota + 1
+	// bti represents a BTI JC landing pad.
+	bti
 	// aluRRR represents an ALU operation with two register sources and a register destination.
 	aluRRR
 	// aluRRRR represents an ALU operation with three register sources and a register destination.
@@ -1792,6 +1798,11 @@ func (i *instruction) sourceOffsetInfo() ssa.SourceOffset {
 
 func (i *instruction) asUDF() *instruction {
 	i.kind = udf
+	return i
+}
+
+func (i *instruction) asBTI() *instruction {
+	i.kind = bti
 	return i
 }
 

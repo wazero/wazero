@@ -102,7 +102,7 @@ We also test cross compilation for many `GOOS` and `GOARCH` combinations.
   * macOS is tested only on arm64.
 * Compiler
   * Linux is tested on amd64 and arm64.
-  * Windows, FreeBSD, NetBSD, DragonFly BSD, illumos and Solaris are
+  * Windows, FreeBSD, NetBSD, OpenBSD, DragonFly BSD, illumos and Solaris are
     tested only on amd64.
   * macOS is tested only on arm64.
 
