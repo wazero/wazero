@@ -933,8 +933,26 @@ operatorSwitch:
 			newOperationSelect(isTargetVector),
 		)
 	case wasm.OpcodeTypedSelect:
-		// Skips two bytes: vector size fixed to 1, and the value type for select.
-		c.pc += 2
+		// Skip the inline type vector: one byte for count (always 1),
+		// then the value type which may be multi-byte for GC ref types.
+		// At entry c.pc points at the typed_select opcode (0x1c).
+		// c.pc must end on the LAST byte of the encoding so the final
+		// c.pc++ in handleInstruction advances to the next instruction.
+		c.pc++ // now at count byte (always 0x01)
+		c.pc++ // now at value type byte
+		vt := c.body[c.pc]
+		if vt == 0x63 || vt == 0x64 {
+			// (ref null ht) or (ref ht): skip the prefix byte, then
+			// read the heap type as s33 LEB128.
+			c.pc++
+			_, n, err := leb128.DecodeInt33AsInt64(bytes.NewReader(c.body[c.pc:]))
+			if err != nil {
+				return fmt.Errorf("read typed_select heap type: %v", err)
+			}
+			c.pc += n - 1
+		}
+		// else: single-byte value type — c.pc already points at it,
+		// handleInstruction's c.pc++ will advance past it.
 		// If it is on the unreachable state, ignore the instruction.
 		if c.unreachableState.on {
 			break operatorSwitch

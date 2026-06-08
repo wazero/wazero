@@ -47,4 +47,4 @@ const CoreFeaturesTypedFunctionReferences = api.CoreFeatureSIMD << 5
 // compiler (wazevo) rejects them.
 //
 // See https://github.com/WebAssembly/gc for further details.
-const CoreFeaturesGC = CoreFeaturesTypedFunctionReferences | api.CoreFeatureSIMD<<6
+const CoreFeaturesGC = CoreFeaturesTypedFunctionReferences | CoreFeaturesExtendedConst | api.CoreFeatureSIMD<<6

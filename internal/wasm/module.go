@@ -493,12 +493,16 @@ func (m *Module) validateGlobals(globals []GlobalType, numFuncts, maxGlobals uin
 		return fmt.Errorf("too many globals in a module")
 	}
 
-	// Global initialization constant expression can only reference the imported globals.
-	// See the note on https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#constant-expressions%E2%91%A0
-	importedGlobals := globals[:m.ImportGlobalCount]
+	// In the wasm 1.0 spec, global init expressions can only reference imported globals:
+	//   https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#constant-expressions%E2%91%A0
+	// In 3.0 (GC / extended-const), all previously defined globals are allowed:
+	//   https://webassembly.github.io/gc/core/valid/instructions.html#constant-expressions
+	// TODO: gate this on enabledFeatures (CoreFeaturesGC / CoreFeaturesExtendedConst)
+	// and reject non-imported global.get when neither flag is set.
 	for i := range m.GlobalSection {
 		g := &m.GlobalSection[i]
-		if err := m.validateConstExpression(importedGlobals, numFuncts, &g.Init, g.Type.ValType); err != nil {
+		visibleGlobals := globals[:m.ImportGlobalCount+uint32(i)]
+		if err := m.validateConstExpression(visibleGlobals, numFuncts, &g.Init, g.Type.ValType); err != nil {
 			return err
 		}
 	}
@@ -780,8 +784,6 @@ func (m *ModuleInstance) buildTags(module *Module) {
 }
 
 func (m *ModuleInstance) buildGlobals(module *Module, funcRefResolver func(funcIndex Index) Reference) {
-	importedGlobals := m.Globals[:module.ImportGlobalCount]
-
 	me := m.Engine
 	engineOwnGlobal := me.OwnsGlobals()
 	for i := Index(0); i < Index(len(module.GlobalSection)); i++ {
@@ -793,7 +795,9 @@ func (m *ModuleInstance) buildGlobals(module *Module, funcRefResolver func(funcI
 		}
 		m.Globals[i+module.ImportGlobalCount] = g
 		g.Type = gs.Type
-		g.initialize(importedGlobals, &gs.Init, funcRefResolver, module, m)
+		// Pass all globals defined so far (imports + previously initialized).
+		visibleGlobals := m.Globals[:module.ImportGlobalCount+i]
+		g.initialize(visibleGlobals, &gs.Init, funcRefResolver, module, m)
 	}
 }
 
@@ -1739,6 +1743,17 @@ func isRefSubtypeOf(actual, expected ValueType) bool {
 		}
 		return false
 	}
+	// Abstract bottom type into nullable concrete ref: nullref/nofuncref
+	// are the bottom of their respective hierarchies and flow into any
+	// nullable concrete ref. Permissive (no Form check) to match the
+	// concrete→abstract path above; the planned isRefSubtypeOfInModule
+	// refactor will tighten both directions with Form checks.
+	if actual.IsAbstract() && expected.IsConcreteRef() && expected.IsNullable() {
+		switch ValueType(actual.Kind()) {
+		case ValueTypeNullref, ValueTypeNoFuncref, ValueTypeNoExternref, ValueTypeNoExnref:
+			return true
+		}
+	}
 	// Abstract into abstract: the GC heap-type hierarchy.
 	if actual.IsAbstract() && expected.IsAbstract() {
 		return IsAbstractByteSubtypeOf(actual.Kind(), expected.Kind())
@@ -1799,6 +1814,27 @@ func isRefSubtypeOfInModule(actual, expected ValueType, m *Module) bool {
 			idx = *t.SuperTypeIndex
 		}
 		return false
+	}
+	// Abstract bottom type → nullable concrete ref: check that the bottom
+	// type belongs to the same hierarchy as the concrete type.
+	//   nullref  (none)     → any concrete struct/array type (any hierarchy)
+	//   nofuncref (nofunc)  → any concrete func type
+	//   noexternref/noexnref are abstract-only, no concrete types exist.
+	if actual.IsAbstract() && expected.IsConcreteRef() && expected.IsNullable() && m != nil {
+		expIdx := expected.TypeIndex()
+		if int(expIdx) < len(m.TypeSection) {
+			switch ValueType(actual.Kind()) {
+			case ValueTypeNullref:
+				form := m.TypeSection[expIdx].Form
+				if form == CompositeFormStruct || form == CompositeFormArray {
+					return true
+				}
+			case ValueTypeNoFuncref:
+				if m.TypeSection[expIdx].Form == CompositeFormFunc {
+					return true
+				}
+			}
+		}
 	}
 	// Concrete -> abstract and abstract -> abstract reduce to the
 	// module-unaware rules.
