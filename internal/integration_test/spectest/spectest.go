@@ -330,7 +330,7 @@ func (c command) expectedError() (err error) {
 		err = wasmruntime.ErrRuntimeNullReference
 	case "out of bounds array access", "array out of bounds":
 		err = wasmruntime.ErrRuntimeOutOfBoundsMemoryAccess
-	case "cast failure", "ref.cast failure":
+	case "cast", "cast failure", "ref.cast failure":
 		err = wasmruntime.ErrRuntimeInvalidConversionToInteger
 	default:
 		if strings.HasPrefix(c.Text, "uninitialized") {

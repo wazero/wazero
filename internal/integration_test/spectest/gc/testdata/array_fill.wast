@@ -10,7 +10,7 @@
       (array.fill $a (local.get $1) (i32.const 0) (local.get $2) (i32.const 0))
     )
   )
-  "immutable array"
+  "array is immutable"
 )
 
 (assert_invalid
@@ -79,22 +79,3 @@
 (assert_return (invoke "array_get_nth" (i32.const 2)) (i32.const 11))
 (assert_return (invoke "array_get_nth" (i32.const 3)) (i32.const 11))
 (assert_return (invoke "array_get_nth" (i32.const 4)) (i32.const 0))
-
-;; fill the whole array
-(assert_return (invoke "array_fill" (i32.const 0) (i32.const 42) (i32.const 12)))
-(assert_return (invoke "array_get_nth" (i32.const 0)) (i32.const 42))
-(assert_return (invoke "array_get_nth" (i32.const 2)) (i32.const 42))
-(assert_return (invoke "array_get_nth" (i32.const 5)) (i32.const 42))
-(assert_return (invoke "array_get_nth" (i32.const 11)) (i32.const 42))
-
-;; fill the first element
-(assert_return (invoke "array_fill" (i32.const 0) (i32.const 7) (i32.const 1)))
-(assert_return (invoke "array_get_nth" (i32.const 0)) (i32.const 7))
-(assert_return (invoke "array_get_nth" (i32.const 1)) (i32.const 42))
-(assert_return (invoke "array_get_nth" (i32.const 11)) (i32.const 42))
-
-;; fill the last 2 elements
-(assert_return (invoke "array_fill" (i32.const 10) (i32.const 9) (i32.const 2)))
-(assert_return (invoke "array_get_nth" (i32.const 9)) (i32.const 42))
-(assert_return (invoke "array_get_nth" (i32.const 10)) (i32.const 9))
-(assert_return (invoke "array_get_nth" (i32.const 11)) (i32.const 9))

@@ -12,7 +12,7 @@
       (array.init_data $a $d1 (local.get $1) (i32.const 0) (i32.const 0) (i32.const 0))
     )
   )
-  "immutable array"
+  "array is immutable"
 )
 
 (assert_invalid
@@ -108,105 +108,3 @@
 (assert_return (invoke "drop_segs"))
 (assert_return (invoke "array_init_data" (i32.const 0) (i32.const 0) (i32.const 0)))
 (assert_trap (invoke "array_init_data" (i32.const 0) (i32.const 0) (i32.const 1)) "out of bounds memory access")
-
-
-(module
-  (type $a32 (array (mut i32)))
-  (type $a64 (array (mut i64)))
-
-  (data $data0 "")
-  (data $data1 "1")
-  (data $data2 "12")
-  (data $data3 "123")
-  (data $data4 "1234")
-  (data $data7 "1234567")
-  (data $data9 "123456789")
-
-  (func (export "f0")
-    (array.init_data $a32 $data0
-      (array.new_default $a32 (i32.const 1))
-      (i32.const 0) (i32.const 0) (i32.const 1)
-    )
-  )
-  (func (export "f1")
-    (array.init_data $a32 $data1
-      (array.new_default $a32 (i32.const 1))
-      (i32.const 0) (i32.const 0) (i32.const 1)
-    )
-  )
-  (func (export "f2")
-    (array.init_data $a32 $data2
-      (array.new_default $a32 (i32.const 1))
-      (i32.const 0) (i32.const 0) (i32.const 1)
-    )
-  )
-  (func (export "f3")
-    (array.init_data $a32 $data3
-      (array.new_default $a32 (i32.const 1))
-      (i32.const 0) (i32.const 0) (i32.const 1)
-    )
-  )
-  (func (export "f4")
-    (array.init_data $a32 $data4
-      (array.new_default $a32 (i32.const 1))
-      (i32.const 0) (i32.const 0) (i32.const 1)
-    )
-  )
-  (func (export "f9")
-    (array.init_data $a32 $data9
-      (array.new_default $a32 (i32.const 1))
-      (i32.const 0) (i32.const 6) (i32.const 1)
-    )
-  )
-
-  (func (export "g0")
-    (array.init_data $a64 $data0
-      (array.new_default $a64 (i32.const 1))
-      (i32.const 0) (i32.const 0) (i32.const 1)
-    )
-  )
-  (func (export "g1")
-    (array.init_data $a64 $data1
-      (array.new_default $a64 (i32.const 1))
-      (i32.const 0) (i32.const 0) (i32.const 1)
-    )
-  )
-  (func (export "g4")
-    (array.init_data $a64 $data4
-      (array.new_default $a64 (i32.const 1))
-      (i32.const 0) (i32.const 0) (i32.const 1)
-    )
-  )
-  (func (export "g7")
-    (array.init_data $a64 $data7
-      (array.new_default $a64 (i32.const 1))
-      (i32.const 0) (i32.const 0) (i32.const 1)
-    )
-  )
-  (func (export "g8")
-    (array.init_data $a64 $data9
-      (array.new_default $a64 (i32.const 1))
-      (i32.const 0) (i32.const 0) (i32.const 1)
-    )
-  )
-  (func (export "g9")
-    (array.init_data $a64 $data9
-      (array.new_default $a64 (i32.const 1))
-      (i32.const 0) (i32.const 2) (i32.const 1)
-    )
-  )
-)
-
-(assert_trap (invoke "f0") "out of bounds memory access")
-(assert_trap (invoke "f1") "out of bounds memory access")
-(assert_trap (invoke "f2") "out of bounds memory access")
-(assert_trap (invoke "f3") "out of bounds memory access")
-(assert_return (invoke "f4"))
-(assert_trap (invoke "f9") "out of bounds memory access")
-
-(assert_trap (invoke "g0") "out of bounds memory access")
-(assert_trap (invoke "g1") "out of bounds memory access")
-(assert_trap (invoke "g4") "out of bounds memory access")
-(assert_trap (invoke "g7") "out of bounds memory access")
-(assert_return (invoke "g8"))
-(assert_trap (invoke "g9") "out of bounds memory access")

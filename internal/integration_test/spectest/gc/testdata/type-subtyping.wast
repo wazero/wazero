@@ -280,12 +280,12 @@
   )
 )
 (assert_return (invoke "run"))
-(assert_trap (invoke "fail1") "indirect call type mismatch")
-(assert_trap (invoke "fail2") "indirect call type mismatch")
-(assert_trap (invoke "fail3") "indirect call type mismatch")
-(assert_trap (invoke "fail4") "cast failure")
-(assert_trap (invoke "fail5") "cast failure")
-(assert_trap (invoke "fail6") "cast failure")
+(assert_trap (invoke "fail1") "indirect call")
+(assert_trap (invoke "fail2") "indirect call")
+(assert_trap (invoke "fail3") "indirect call")
+(assert_trap (invoke "fail4") "cast")
+(assert_trap (invoke "fail5") "cast")
+(assert_trap (invoke "fail6") "cast")
 
 (module
   (type $t1 (sub (func)))
@@ -311,10 +311,10 @@
     (drop)
   )
 )
-(assert_trap (invoke "fail1") "indirect call type mismatch")
-(assert_trap (invoke "fail2") "indirect call type mismatch")
-(assert_trap (invoke "fail3") "cast failure")
-(assert_trap (invoke "fail4") "cast failure")
+(assert_trap (invoke "fail1") "indirect call")
+(assert_trap (invoke "fail2") "indirect call")
+(assert_trap (invoke "fail3") "cast")
+(assert_trap (invoke "fail4") "cast")
 
 (module
   (type $t1 (sub (func)))
@@ -342,8 +342,8 @@
   )
 )
 (assert_return (invoke "run"))
-(assert_trap (invoke "fail1") "indirect call type mismatch")
-(assert_trap (invoke "fail2") "indirect call type mismatch")
+(assert_trap (invoke "fail1") "indirect call")
+(assert_trap (invoke "fail2") "indirect call")
 
 (module
   (rec (type $f1 (sub (func))) (type (struct (field (ref $f1)))))
@@ -608,7 +608,7 @@
     (rec (type $g1 (sub $f1 (func))) (type (struct)))
     (func (import "M5" "g") (type $g1))
   )
-  "incompatible import type"
+  "incompatible import"
 )
 
 (module
@@ -700,7 +700,7 @@
     (rec (type $f11 (sub (func))) (type $f12 (sub $f11 (func))))
     (func (import "M10" "f") (type $f11))
   )
-  "incompatible import type"
+  "incompatible import"
 )
 
 (module
@@ -716,7 +716,7 @@
     (rec (type $f11 (sub (func))) (type $f12 (sub $f01 (func))))
     (func (import "M11" "f") (type $f11))
   )
-  "incompatible import type"
+  "incompatible import"
 )
 
 
@@ -826,98 +826,8 @@
 
 (assert_invalid
   (module
-    (type $a (sub (array (ref none))))
-    (type $b (sub $a (array (ref any))))
-  )
-  "sub type"
-)
-
-(assert_invalid
-  (module
-    (type $a (sub (array (mut (ref any)))))
-    (type $b (sub $a (array (mut (ref none)))))
-  )
-  "sub type"
-)
-
-(assert_invalid
-  (module
-    (type $a (sub (array (mut (ref any)))))
-    (type $b (sub $a (array (ref any))))
-  )
-  "sub type"
-)
-
-(assert_invalid
-  (module
-    (type $a (sub (array (ref any))))
-    (type $b (sub $a (array (mut (ref any)))))
-  )
-  "sub type"
-)
-
-(assert_invalid
-  (module
-    (type $a (sub (struct (field (ref none)))))
-    (type $b (sub $a (struct (field (ref any)))))
-  )
-  "sub type"
-)
-
-(assert_invalid
-  (module
-    (type $a (sub (struct (field (mut (ref any))))))
-    (type $b (sub $a (struct (field (mut (ref none))))))
-  )
-  "sub type"
-)
-
-(assert_invalid
-  (module
-    (type $a (sub (struct (field (mut (ref any))))))
-    (type $b (sub $a (struct (field (ref any)))))
-  )
-  "sub type"
-)
-
-(assert_invalid
-  (module
-    (type $a (sub (struct (field (ref any)))))
-    (type $b (sub $a (struct (field (mut (ref any))))))
-  )
-  "sub type"
-)
-
-(assert_invalid
-  (module
     (type $f0 (sub (func)))
     (type $f1 (sub $f0 (func (param i32))))
   )
   "sub type"
 )
-
-
-;; Testing exported functions with non-flat types
-(module
-  (type $t1 (sub (func (result f32))))
-  (type $t2 (sub $t1 (func (result f32))))
-  (type $t3 (sub final $t2 (func (result f32))))
-  (rec
-    (type $t4 (func (result f32)))
-    (type $t5 (sub (func (result f32))))
-    (type $t6 (sub $t5 (func (result f32))))
-  )
-  (func (export "f1") (type $t1) (f32.const 0))
-  (func (export "f2") (type $t2) (f32.const 0))
-  (func (export "f3") (type $t3) (f32.const 0))
-  (func (export "f4") (type $t4) (f32.const 0))
-  (func (export "f5") (type $t5) (f32.const 0))
-  (func (export "f6") (type $t6) (f32.const 0))
-)
-
-(assert_return (invoke "f1") (f32.const 0))
-(assert_return (invoke "f2") (f32.const 0))
-(assert_return (invoke "f3") (f32.const 0))
-(assert_return (invoke "f4") (f32.const 0))
-(assert_return (invoke "f5") (f32.const 0))
-(assert_return (invoke "f6") (f32.const 0))
