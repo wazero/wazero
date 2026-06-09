@@ -790,6 +790,8 @@ func (ce *callEngine) call(ctx context.Context, params, results []uint64) (_ []u
 
 	ce.callFunction(ctx, m, ce.f)
 
+	m.GCSweep(ce.stack)
+
 	// This returns a safe copy of the results, instead of a slice view. If we
 	// returned a re-slice, the caller could accidentally or purposefully
 	// corrupt the stack of subsequent calls.
@@ -4749,6 +4751,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			}
 			s := wasm.NewWasmStructWith(f.moduleInstance.TypeIDs[typeIdx], fields)
 			ce.pushValue(f.moduleInstance.GCRegister(s))
+			f.moduleInstance.GCMaybeSweep(ce.stack)
 			frame.pc++
 
 		case operationKindStructNewDefault:
@@ -4761,6 +4764,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			}
 			s := wasm.NewWasmStructWith(f.moduleInstance.TypeIDs[typeIdx], fields)
 			ce.pushValue(f.moduleInstance.GCRegister(s))
+			f.moduleInstance.GCMaybeSweep(ce.stack)
 			frame.pc++
 
 		case operationKindStructGet, operationKindStructGetS, operationKindStructGetU:
@@ -4803,6 +4807,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
 			ce.pushValue(f.moduleInstance.GCRegister(a))
+			f.moduleInstance.GCMaybeSweep(ce.stack)
 			frame.pc++
 
 		case operationKindArrayNewDefault:
@@ -4816,6 +4821,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
 			ce.pushValue(f.moduleInstance.GCRegister(a))
+			f.moduleInstance.GCMaybeSweep(ce.stack)
 			frame.pc++
 
 		case operationKindArrayGet, operationKindArrayGetS, operationKindArrayGetU:
@@ -4926,6 +4932,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
 			ce.pushValue(f.moduleInstance.GCRegister(a))
+			f.moduleInstance.GCMaybeSweep(ce.stack)
 			frame.pc++
 
 		case operationKindArrayFill:
@@ -5002,6 +5009,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
 			ce.pushValue(f.moduleInstance.GCRegister(a))
+			f.moduleInstance.GCMaybeSweep(ce.stack)
 			frame.pc++
 
 		case operationKindArrayNewElem:
@@ -5013,12 +5021,14 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if uint64(srcOff)+uint64(count) > uint64(len(elem)) {
 				panic(wasmruntime.ErrRuntimeInvalidTableAccess)
 			}
+			schema := f.moduleInstance.Source.TypeSection[typeIdx].ArrayField
 			elems := make([]any, count)
 			for i := uint32(0); i < count; i++ {
-				elems[i] = uint64(elem[srcOff+i])
+				elems[i] = encodeFieldValue(schema, uint64(elem[srcOff+i]))
 			}
 			a := wasm.NewWasmArrayWith(f.moduleInstance.TypeIDs[typeIdx], elems)
 			ce.pushValue(f.moduleInstance.GCRegister(a))
+			f.moduleInstance.GCMaybeSweep(ce.stack)
 			frame.pc++
 
 		case operationKindArrayInitData:
@@ -5052,6 +5062,7 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			frame.pc++
 
 		case operationKindArrayInitElem:
+			typeIdx := uint32(op.U1)
 			segIdx := uint32(op.U2)
 			count := uint32(ce.popValue())
 			srcOff := uint32(ce.popValue())
@@ -5068,8 +5079,9 @@ func (ce *callEngine) callNativeFunc(ctx context.Context, m *wasm.ModuleInstance
 			if uint64(srcOff)+uint64(count) > uint64(len(elem)) {
 				panic(wasmruntime.ErrRuntimeInvalidTableAccess)
 			}
+			schema := f.moduleInstance.Source.TypeSection[typeIdx].ArrayField
 			for i := uint32(0); i < count; i++ {
-				if err := a.Set(dstOff+i, uint64(elem[srcOff+i])); err != nil {
+				if err := a.Set(dstOff+i, encodeFieldValue(schema, uint64(elem[srcOff+i]))); err != nil {
 					panic(err)
 				}
 			}
@@ -5399,6 +5411,15 @@ func encodeFieldValue(f wasm.FieldType, raw uint64) any {
 		return math.Float64frombits(raw)
 	}
 	if f.IsRef() {
+		if raw == 0 {
+			return nil
+		}
+		if wasm.IsGCRef(raw) {
+			if wasm.IsGCStructRef(raw) {
+				return (*wasm.WasmStruct)(wasm.UntagGCPointer(raw))
+			}
+			return (*wasm.WasmArray)(wasm.UntagGCPointer(raw))
+		}
 		return raw
 	}
 	panic(fmt.Sprintf("unsupported struct/array field type %#x", f.Kind()))
@@ -5434,6 +5455,10 @@ func decodeFieldValueRead(f wasm.FieldType, stored any, readKind operationKind) 
 	}
 	if f.IsRef() {
 		switch v := stored.(type) {
+		case *wasm.WasmStruct:
+			return wasm.TagGCStructPointer(unsafe.Pointer(v))
+		case *wasm.WasmArray:
+			return wasm.TagGCArrayPointer(unsafe.Pointer(v))
 		case uint64:
 			return v
 		case nil:

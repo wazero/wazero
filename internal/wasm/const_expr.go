@@ -462,6 +462,16 @@ func encodeFieldValueForConst(f FieldType, raw uint64) any {
 	case ValueTypeF64:
 		return math.Float64frombits(raw)
 	}
-	// Reference / vector — keep raw uint64 (refs are opaque pointers).
+	if f.IsRef() {
+		if raw == 0 {
+			return nil
+		}
+		if IsGCRef(raw) {
+			if IsGCStructRef(raw) {
+				return (*WasmStruct)(UntagGCPointer(raw))
+			}
+			return (*WasmArray)(UntagGCPointer(raw))
+		}
+	}
 	return raw
 }

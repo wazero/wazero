@@ -94,12 +94,12 @@ type (
 		// This is necessary to achieve fast runtime type checking for indirect function calls at runtime.
 		TypeIDs []FunctionTypeID
 
-		// GCRoots keeps Go-allocated WasmStruct / WasmArray pointers alive
-		// for the lifetime of the module instance. The operand stack and
-		// globals carry tagged uintptr casts (see TagGCPointer) that the Go
-		// GC cannot trace; this slice provides the missing root edge.
-		// Append-only; freed when the module closes.
-		GCRoots []any
+		// GCRoots keeps Go-allocated WasmStruct / WasmArray pointers alive.
+		// Keyed by the tagged uint64 operand-stack value; the map value is
+		// the Go object (*WasmStruct or *WasmArray). The GC sweep scans the
+		// operand stack, globals, and tables for live tagged values, then
+		// rebuilds this map with only the matching entries.
+		GCRoots map[uint64]any
 
 		// DataInstances holds data segments bytes of the module.
 		// This is only used by bulk memory operations.
@@ -1016,14 +1016,64 @@ func (s *Store) IsResolvedType(id FunctionTypeID) bool {
 // the Go GC keeps it alive, and returns a tagged pointer for the operand
 // stack.
 func (m *ModuleInstance) GCRegister(v any) uint64 {
-	m.GCRoots = append(m.GCRoots, v)
+	var tagged uint64
 	switch obj := v.(type) {
 	case *WasmStruct:
-		return TagGCStructPointer(unsafe.Pointer(obj))
+		tagged = TagGCStructPointer(unsafe.Pointer(obj))
 	case *WasmArray:
-		return TagGCArrayPointer(unsafe.Pointer(obj))
+		tagged = TagGCArrayPointer(unsafe.Pointer(obj))
+	default:
+		return 0
 	}
-	return 0
+	if m.GCRoots == nil {
+		m.GCRoots = make(map[uint64]any)
+	}
+	m.GCRoots[tagged] = v
+	return tagged
+}
+
+const gcSweepThreshold = 1024
+
+// GCSweep scans the given live values (e.g. operand stack, spill slots),
+// the module's globals, and its tables for tagged values present in
+// GCRoots, keeping only those entries. Objects reachable transitively
+// through Go-pointer struct/array fields are traced by Go's GC.
+func (m *ModuleInstance) GCSweep(liveValues []uint64) {
+	if len(m.GCRoots) == 0 {
+		return
+	}
+	live := make(map[uint64]any)
+
+	for _, v := range liveValues {
+		if obj, ok := m.GCRoots[v]; ok {
+			live[v] = obj
+		}
+	}
+
+	for _, g := range m.Globals {
+		if obj, ok := m.GCRoots[g.Val]; ok {
+			live[g.Val] = obj
+		}
+	}
+
+	for _, t := range m.Tables {
+		for _, ref := range t.References {
+			v := uint64(ref)
+			if obj, ok := m.GCRoots[v]; ok {
+				live[v] = obj
+			}
+		}
+	}
+
+	m.GCRoots = live
+}
+
+// GCMaybeSweep calls GCSweep only if GCRoots has grown past the sweep
+// threshold. Use this at allocation sites to amortize sweep cost.
+func (m *ModuleInstance) GCMaybeSweep(liveValues []uint64) {
+	if len(m.GCRoots) >= gcSweepThreshold {
+		m.GCSweep(liveValues)
+	}
 }
 
 // GetStore returns the Store on which this module is instantiated. Used by
