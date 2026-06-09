@@ -426,7 +426,7 @@ func TestModule_validateStartSection(t *testing.T) {
 func TestModule_validateGlobals(t *testing.T) {
 	t.Run("too many globals", func(t *testing.T) {
 		m := Module{}
-		err := m.validateGlobals(make([]GlobalType, 10), 0, 9)
+		err := m.validateGlobals(api.CoreFeaturesV2, make([]GlobalType, 10), 0, 9)
 		require.Error(t, err)
 		require.EqualError(t, err, "too many globals in a module")
 	})
@@ -438,7 +438,7 @@ func TestModule_validateGlobals(t *testing.T) {
 				Init: NewConstantExpressionFromOpcode(OpcodeGlobalGet, []byte{1}),
 			},
 		}}
-		err := m.validateGlobals(nil, 0, 9)
+		err := m.validateGlobals(api.CoreFeaturesV2, nil, 0, 9)
 		require.Error(t, err)
 		require.EqualError(t, err, "global index out of range")
 	})
@@ -449,7 +449,7 @@ func TestModule_validateGlobals(t *testing.T) {
 				Init: NewConstantExpressionFromOpcode(OpcodeUnreachable, nil),
 			},
 		}}
-		err := m.validateGlobals(nil, 0, 9)
+		err := m.validateGlobals(api.CoreFeaturesV2, nil, 0, 9)
 		require.Error(t, err)
 		require.EqualError(t, err, "invalid opcode for const expression: 0x0")
 	})
@@ -460,7 +460,7 @@ func TestModule_validateGlobals(t *testing.T) {
 				Init: NewConstantExpressionFromI32(0),
 			},
 		}}
-		err := m.validateGlobals(nil, 0, 9)
+		err := m.validateGlobals(api.CoreFeaturesV2, nil, 0, 9)
 		require.NoError(t, err)
 	})
 	t.Run("ok with imported global", func(t *testing.T) {
@@ -479,7 +479,7 @@ func TestModule_validateGlobals(t *testing.T) {
 			{ValType: ValueTypeI32}, // Imported one.
 			{},                      // the local one trying to validate.
 		}
-		err := m.validateGlobals(globalDeclarations, 0, 9)
+		err := m.validateGlobals(api.CoreFeaturesV2, globalDeclarations, 0, 9)
 		require.NoError(t, err)
 	})
 }

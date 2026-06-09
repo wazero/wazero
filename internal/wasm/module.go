@@ -309,7 +309,7 @@ func (m *Module) Validate(enabledFeatures api.CoreFeatures) error {
 		return err
 	}
 
-	if err = m.validateGlobals(globals, uint32(len(functions)), MaximumGlobals); err != nil {
+	if err = m.validateGlobals(enabledFeatures, globals, uint32(len(functions)), MaximumGlobals); err != nil {
 		return err
 	}
 
@@ -488,20 +488,25 @@ func (m *Module) validateStartSection() error {
 	return nil
 }
 
-func (m *Module) validateGlobals(globals []GlobalType, numFuncts, maxGlobals uint32) error {
+func (m *Module) validateGlobals(enabledFeatures api.CoreFeatures, globals []GlobalType, numFuncts, maxGlobals uint32) error {
 	if uint32(len(globals)) > maxGlobals {
 		return fmt.Errorf("too many globals in a module")
 	}
 
-	// In the wasm 1.0 spec, global init expressions can only reference imported globals:
+	// In wasm 1.0/2.0, global init expressions can only reference imported globals:
 	//   https://www.w3.org/TR/2019/REC-wasm-core-1-20191205/#constant-expressions%E2%91%A0
-	// In 3.0 (GC / extended-const), all previously defined globals are allowed:
-	//   https://webassembly.github.io/gc/core/valid/instructions.html#constant-expressions
-	// TODO: gate this on enabledFeatures (CoreFeaturesGC / CoreFeaturesExtendedConst)
-	// and reject non-imported global.get when neither flag is set.
+	// Extended-const (included in wasm 3.0) allows global.get of any previously
+	// declared immutable global, plus arithmetic in init expressions:
+	//   https://www.w3.org/TR/2026/CRD-wasm-core-2-20260527/#extended-constant-expressions%E2%91%A0
+	extendedConst := enabledFeatures.IsEnabled(experimental.CoreFeaturesExtendedConst)
 	for i := range m.GlobalSection {
 		g := &m.GlobalSection[i]
-		visibleGlobals := globals[:m.ImportGlobalCount+uint32(i)]
+		var visibleGlobals []GlobalType
+		if extendedConst {
+			visibleGlobals = globals[:m.ImportGlobalCount+uint32(i)]
+		} else {
+			visibleGlobals = globals[:m.ImportGlobalCount]
+		}
 		if err := m.validateConstExpression(visibleGlobals, numFuncts, &g.Init, g.Type.ValType); err != nil {
 			return err
 		}
