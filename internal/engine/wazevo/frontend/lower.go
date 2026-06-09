@@ -37,10 +37,6 @@ type (
 		blockType *wasm.FunctionType
 		// clonedArgs hold the arguments to Else block.
 		clonedArgs ssa.Values
-		// hasCatchClauses is true for try_table frames that registered a
-		// handler. Used at OpcodeEnd to decide whether to emit the leave
-		// trampoline
-		hasCatchClauses bool
 	}
 
 	controlFrameKind byte
@@ -70,6 +66,7 @@ const (
 	controlFrameKindIfWithoutElse
 	controlFrameKindBlock
 	controlFrameKindTryTable
+	controlFrameKindTryTableWithCatch
 )
 
 // String implements fmt.Stringer for debugging.
@@ -87,6 +84,8 @@ func (k controlFrameKind) String() string {
 		return "block"
 	case controlFrameKindTryTable:
 		return "try_table"
+	case controlFrameKindTryTableWithCatch:
+		return "try_table_with_catch"
 	default:
 		panic(k)
 	}
@@ -95,6 +94,10 @@ func (k controlFrameKind) String() string {
 // isLoop returns true if this is a loop frame.
 func (ctrl *controlFrame) isLoop() bool {
 	return ctrl.kind == controlFrameKindLoop
+}
+
+func (ctrl *controlFrame) isTryCatch() bool {
+	return ctrl.kind == controlFrameKindTryTableWithCatch
 }
 
 // reset resets the state of loweringState for reuse.
@@ -1459,7 +1462,7 @@ func (c *Compiler) lowerCurrentOpcode() {
 			// For try_table with catch clauses, emit the leave trampoline
 			// before the jump to the following block. If there are no catch clauses,
 			// skip since they never pushed a handler.
-			if ctrl.kind == controlFrameKindTryTable && ctrl.hasCatchClauses {
+			if ctrl.isTryCatch() {
 				c.emitTryTableLeave()
 			}
 
@@ -1484,8 +1487,8 @@ func (c *Compiler) lowerCurrentOpcode() {
 			elseBlk := ctrl.blk
 			builder.SetCurrentBlock(elseBlk)
 			c.insertJumpToBlock(ctrl.clonedArgs, followingBlk)
-		case controlFrameKindTryTable:
-			if ctrl.hasCatchClauses && c.tryTableDepth > 0 {
+		case controlFrameKindTryTableWithCatch:
+			if c.tryTableDepth > 0 {
 				c.tryTableDepth--
 			}
 		}
@@ -3639,6 +3642,9 @@ func (c *Compiler) lowerCurrentOpcode() {
 					brArgs = append(brArgs, c.loadExnRef())
 				}
 
+				// Pop any enclosing try_table handlers that the jump crosses.
+				c.emitTryTableLeaves(int(cc.labelIdx))
+
 				jmpArgs := c.allocateVarLengthValues(len(brArgs), brArgs...)
 				c.insertJumpToBlock(jmpArgs, targetBlk)
 
@@ -3705,12 +3711,15 @@ func (c *Compiler) lowerCurrentOpcode() {
 		}
 
 		// Push the try_table control frame AFTER resolving catch labels.
+		kind := controlFrameKind(controlFrameKindTryTable)
+		if len(catchClauses) > 0 {
+			kind = controlFrameKindTryTableWithCatch
+		}
 		state.ctrlPush(controlFrame{
-			kind:                         controlFrameKindTryTable,
+			kind:                         kind,
 			originalStackLenWithoutParam: len(state.values) - len(bt.Params),
 			followingBlock:               followingBlk,
 			blockType:                    bt,
-			hasCatchClauses:              len(catchClauses) > 0,
 		})
 
 	case wasm.OpcodeRefAsNonNull:
@@ -4682,8 +4691,14 @@ func (c *Compiler) branchExitsTryTable(depth int) bool {
 	state := c.state()
 	tail := len(state.controlFrames) - 1
 	for i := 0; i < depth; i++ {
-		cf := &state.controlFrames[tail-i]
-		if cf.kind == controlFrameKindTryTable && cf.hasCatchClauses {
+		if state.controlFrames[tail-i].isTryCatch() {
+			return true
+		}
+	}
+	// A br to a non-loop target also exits that frame.
+	if depth <= tail {
+		cf := &state.controlFrames[tail-depth]
+		if !cf.isLoop() && cf.isTryCatch() {
 			return true
 		}
 	}
@@ -4696,8 +4711,14 @@ func (c *Compiler) emitTryTableLeaves(depth int) {
 	state := c.state()
 	tail := len(state.controlFrames) - 1
 	for i := 0; i < depth; i++ {
-		cf := &state.controlFrames[tail-i]
-		if cf.kind == controlFrameKindTryTable && cf.hasCatchClauses {
+		if state.controlFrames[tail-i].isTryCatch() {
+			c.emitTryTableLeave()
+		}
+	}
+	// A br to a non-loop target also exits that frame.
+	if depth <= tail {
+		cf := &state.controlFrames[tail-depth]
+		if !cf.isLoop() && cf.isTryCatch() {
 			c.emitTryTableLeave()
 		}
 	}

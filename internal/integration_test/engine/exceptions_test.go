@@ -59,6 +59,12 @@ var ehLocalsNestedCatchWasm []byte
 //go:embed testdata/eh_locals_cross_func.wasm
 var ehLocalsCrossFuncWasm []byte
 
+//go:embed testdata/eh_br_own_label.wasm
+var ehBrOwnLabelWasm []byte
+
+//go:embed testdata/eh_catch_outside.wasm
+var ehCatchOutsideWasm []byte
+
 // TestExceptionHandlingInterpreter runs EH tests only for the interpreter.
 func TestExceptionHandlingInterpreter(t *testing.T) {
 	cfg := wazero.NewRuntimeConfigInterpreter().
@@ -103,6 +109,12 @@ func runEHTests(t *testing.T, cfg wazero.RuntimeConfig) {
 	})
 	t.Run("locals_cross_func", func(t *testing.T) {
 		testEHLocalsCrossFunc(t, cfg)
+	})
+	t.Run("br_own_label", func(t *testing.T) {
+		testEHBrOwnLabel(t, cfg)
+	})
+	t.Run("catch_outside", func(t *testing.T) {
+		testEHCatchOutside(t, cfg)
 	})
 }
 
@@ -282,6 +294,37 @@ func testEHLocalsCrossFunc(t *testing.T, cfg wazero.RuntimeConfig) {
 	res, err := mod.ExportedFunction("f").Call(ctx)
 	require.NoError(t, err)
 	require.Equal(t, int32(0), api.DecodeI32(res[0]))
+}
+
+// testEHBrOwnLabel verifies that br to a try_table's own label pops its handler.
+func testEHBrOwnLabel(t *testing.T, cfg wazero.RuntimeConfig) {
+	ctx := context.Background()
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	mod, err := r.InstantiateWithConfig(ctx, ehBrOwnLabelWasm,
+		wazero.NewModuleConfig().WithStartFunctions())
+	require.NoError(t, err)
+
+	res, err := mod.ExportedFunction("run").Call(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), api.DecodeI32(res[0]))
+}
+
+// testEHCatchOutside verifies that a catch clause jumping outside an enclosing
+// try_table pops that try_table's handler.
+func testEHCatchOutside(t *testing.T, cfg wazero.RuntimeConfig) {
+	ctx := context.Background()
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	mod, err := r.InstantiateWithConfig(ctx, ehCatchOutsideWasm,
+		wazero.NewModuleConfig().WithStartFunctions())
+	require.NoError(t, err)
+
+	res, err := mod.ExportedFunction("run").Call(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), api.DecodeI32(res[0]))
 }
 
 // TestExceptionHandlingCompilationCache verifies that
