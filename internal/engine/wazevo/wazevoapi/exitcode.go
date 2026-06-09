@@ -142,9 +142,3 @@ func GoFunctionIndexFromExitCode(exitCode ExitCode) int {
 func TryTableIDFromExitCode(exitCode ExitCode) int {
 	return GoFunctionIndexFromExitCode(exitCode)
 }
-
-// CatchClauseInstance is a runtime catch clause with resolved tag index.
-type CatchClauseInstance struct {
-	Kind     byte   // wasm.CatchKindCatch, etc.
-	TagIndex uint32 // module-local tag index
-}
