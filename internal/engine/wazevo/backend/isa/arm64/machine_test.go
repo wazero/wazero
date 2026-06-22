@@ -58,6 +58,27 @@ func TestMachine_resolveAddressingMode(t *testing.T) {
 	})
 }
 
+func TestMachine_insertBTIForJumpTableTargets(t *testing.T) {
+	m := NewBackend().(*machine)
+	for _, l := range []label{1, 2} {
+		nop := m.allocateNop()
+		pos := m.labelPositionPool.GetOrAllocate(int(l))
+		pos.begin, pos.end = nop, nop
+	}
+	m.jmpTableTargets = [][]uint32{{1, 2, 1}}
+	m.jmpTableTargetsNext = 1
+
+	m.insertBTIForJumpTableTargets()
+	m.insertBTIForJumpTableTargets()
+
+	for _, l := range []label{1, 2} {
+		pos := m.labelPositionPool.Get(int(l))
+		require.Equal(t, bti, pos.begin.next.kind)
+		require.Equal(t, (*instruction)(nil), pos.begin.next.next)
+		require.Equal(t, pos.begin.next, pos.end)
+	}
+}
+
 func TestMachine_clobberedRegSlotSize(t *testing.T) {
 	m := &machine{clobberedRegs: make([]regalloc.VReg, 10)}
 	require.Equal(t, int64(160), m.clobberedRegSlotSize())

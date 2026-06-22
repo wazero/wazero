@@ -52,6 +52,7 @@ func TestMachine_CompileGoFunctionTrampoline(t *testing.T) {
 				},
 			},
 			exp: `
+	bti jc
 	movz x27, #0xa0, lsl 0
 	sub sp, sp, x27
 	stp x30, x27, [sp, #-0x10]!
@@ -122,6 +123,7 @@ func TestMachine_CompileGoFunctionTrampoline(t *testing.T) {
 	adr x27, #0x20
 	str x27, [x0, #0x30]
 	exit_sequence x0
+	bti jc
 	ldr x19, [x0, #0x60]
 	ldr x20, [x0, #0x70]
 	ldr x21, [x0, #0x80]
@@ -196,6 +198,7 @@ func TestMachine_CompileGoFunctionTrampoline(t *testing.T) {
 			},
 			needModuleContextPtr: true,
 			exp: `
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub x27, sp, #0x30
 	ldr x11, [x0, #0x28]
@@ -242,6 +245,7 @@ func TestMachine_CompileGoFunctionTrampoline(t *testing.T) {
 	adr x27, #0x20
 	str x27, [x0, #0x30]
 	exit_sequence x0
+	bti jc
 	ldr x19, [x0, #0x60]
 	ldr x20, [x0, #0x70]
 	ldr x21, [x0, #0x80]
@@ -284,6 +288,7 @@ func TestMachine_CompileGoFunctionTrampoline(t *testing.T) {
 			},
 			needModuleContextPtr: true,
 			exp: `
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub x27, sp, #0x30
 	ldr x11, [x0, #0x28]
@@ -333,6 +338,7 @@ func TestMachine_CompileGoFunctionTrampoline(t *testing.T) {
 	adr x27, #0x20
 	str x27, [x0, #0x30]
 	exit_sequence x0
+	bti jc
 	ldr x19, [x0, #0x60]
 	ldr x20, [x0, #0x70]
 	ldr x21, [x0, #0x80]
@@ -369,6 +375,7 @@ func TestMachine_CompileGoFunctionTrampoline(t *testing.T) {
 				Results: []ssa.Type{ssa.TypeI32},
 			},
 			exp: `
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub x27, sp, #0x20
 	ldr x11, [x0, #0x28]
@@ -414,6 +421,7 @@ func TestMachine_CompileGoFunctionTrampoline(t *testing.T) {
 	adr x27, #0x20
 	str x27, [x0, #0x30]
 	exit_sequence x0
+	bti jc
 	ldr x19, [x0, #0x60]
 	ldr x20, [x0, #0x70]
 	ldr x21, [x0, #0x80]
@@ -452,6 +460,7 @@ func TestMachine_CompileGoFunctionTrampoline(t *testing.T) {
 				Results: []ssa.Type{},
 			},
 			exp: `
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub x27, sp, #0x20
 	ldr x11, [x0, #0x28]
@@ -497,6 +506,7 @@ func TestMachine_CompileGoFunctionTrampoline(t *testing.T) {
 	adr x27, #0x20
 	str x27, [x0, #0x30]
 	exit_sequence x0
+	bti jc
 	ldr x19, [x0, #0x60]
 	ldr x20, [x0, #0x70]
 	ldr x21, [x0, #0x80]

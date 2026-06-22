@@ -2160,6 +2160,7 @@ func (m *machine) encodeWithoutSSA(root *instruction) {
 
 // Encode implements backend.Machine Encode.
 func (m *machine) Encode(ctx context.Context) (err error) {
+	m.insertEndbr64ForJumpTableTargets()
 	bufPtr := m.c.BufPtr()
 
 	var fn string
@@ -2246,6 +2247,32 @@ func (m *machine) Encode(ctx context.Context) (err error) {
 		}
 	}
 	return
+}
+
+func (m *machine) insertEndbr64ForJumpTableTargets() {
+	for i := 0; i < m.jmpTableTargetsNext; i++ {
+		for _, target := range m.jmpTableTargets[i] {
+			pos := m.labelPositionPool.Get(int(target))
+			if pos == nil || pos.begin == nil {
+				panic("BUG: jump table target without label position")
+			}
+			if next := pos.begin.next; next != nil && next.kind == endbr64 {
+				continue
+			}
+
+			endbr := m.allocateInstr()
+			endbr.asEndbr64()
+			endbr.prev = pos.begin
+			endbr.next = pos.begin.next
+			if endbr.next != nil {
+				endbr.next.prev = endbr
+			}
+			pos.begin.next = endbr
+			if pos.end == pos.begin {
+				pos.end = endbr
+			}
+		}
+	}
 }
 
 // ResolveRelocations implements backend.Machine.

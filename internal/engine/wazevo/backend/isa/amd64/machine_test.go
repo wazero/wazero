@@ -36,6 +36,27 @@ func Test_asImm32(t *testing.T) {
 	require.Equal(t, uint32(0), v)
 }
 
+func TestMachine_insertEndbr64ForJumpTableTargets(t *testing.T) {
+	m := NewBackend().(*machine)
+	for _, l := range []label{1, 2} {
+		nop := m.allocateNop()
+		pos := m.labelPositionPool.GetOrAllocate(int(l))
+		pos.begin, pos.end = nop, nop
+	}
+	m.jmpTableTargets = [][]uint32{{1, 2, 1}}
+	m.jmpTableTargetsNext = 1
+
+	m.insertEndbr64ForJumpTableTargets()
+	m.insertEndbr64ForJumpTableTargets()
+
+	for _, l := range []label{1, 2} {
+		pos := m.labelPositionPool.Get(int(l))
+		require.Equal(t, endbr64, pos.begin.next.kind)
+		require.Equal(t, (*instruction)(nil), pos.begin.next.next)
+		require.Equal(t, pos.begin.next, pos.end)
+	}
+}
+
 func TestMachine_getOperand_Reg(t *testing.T) {
 	for _, tc := range []struct {
 		name         string

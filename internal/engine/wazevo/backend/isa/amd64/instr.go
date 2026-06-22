@@ -33,6 +33,8 @@ func (i *instruction) String() string {
 	switch i.kind {
 	case nop0:
 		return "nop"
+	case endbr64:
+		return "endbr64"
 	case sourceOffsetInfo:
 		return fmt.Sprintf("source_offset_info %d", i.u1)
 	case ret:
@@ -663,6 +665,9 @@ type instructionKind byte
 const (
 	nop0 instructionKind = iota + 1
 
+	// endbr64 is a landing pad for Intel CET indirect branch tracking.
+	endbr64
+
 	// Integer arithmetic/bit-twiddling: (add sub and or xor mul, etc.) (32 64) (reg addr imm) reg
 	aluRmiR
 
@@ -1216,6 +1221,11 @@ func (i *instruction) asTailCallReturnCallIndirect(ptr operand, abi *backend.Fun
 
 func (i *instruction) asRet() *instruction {
 	i.kind = ret
+	return i
+}
+
+func (i *instruction) asEndbr64() *instruction {
+	i.kind = endbr64
 	return i
 }
 
@@ -2339,6 +2349,7 @@ const (
 
 var defKinds = [instrMax]defKind{
 	nop0:                   defKindNone,
+	endbr64:                defKindNone,
 	ret:                    defKindNone,
 	movRR:                  defKindOp2,
 	movRM:                  defKindNone,
@@ -2425,6 +2436,7 @@ const (
 
 var useKinds = [instrMax]useKind{
 	nop0:                   useKindNone,
+	endbr64:                useKindNone,
 	ret:                    useKindNone,
 	movRR:                  useKindOp1,
 	movRM:                  useKindOp1RegOp2,

@@ -59,6 +59,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	add sp, sp, #0x10
@@ -70,6 +71,7 @@ L0 (SSA Block: blk0):
 			name: "selects", m: testcases.Selects.Module,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	subs xzr, x4, x5
@@ -102,6 +104,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	ldr d1, #8; b 16; data.f64 64.000000
@@ -126,6 +129,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	add w8, w2, w3
@@ -163,6 +167,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	add x8, x2, x2
@@ -196,6 +201,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	mov x1, xzr
@@ -217,6 +223,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	mov x1, x2
@@ -239,6 +246,7 @@ L1 (SSA Block: blk1):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 L1 (SSA Block: blk1):
@@ -258,6 +266,7 @@ L1 (SSA Block: blk1):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 L1 (SSA Block: blk1):
@@ -286,6 +295,7 @@ L1 (SSA Block: blk1):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	mov x8, xzr
@@ -313,6 +323,7 @@ L1 (SSA Block: blk1):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 L1 (SSA Block: blk1):
@@ -336,6 +347,7 @@ L2 (SSA Block: blk2):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 L1 (SSA Block: blk1):
@@ -365,6 +377,7 @@ L3 (SSA Block: blk3):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 L1 (SSA Block: blk1):
@@ -387,6 +400,7 @@ L1 (SSA Block: blk1):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 L1 (SSA Block: blk1):
@@ -412,6 +426,7 @@ L3 (SSA Block: blk3):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	mov x8, xzr
@@ -439,6 +454,7 @@ L2 (SSA Block: blk2):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	mov x8, xzr
@@ -472,6 +488,7 @@ L3 (SSA Block: blk3):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	mov x8, xzr
@@ -507,6 +524,7 @@ L3 (SSA Block: blk3):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	cbz w2, #0x8 L2
@@ -532,6 +550,7 @@ L1 (SSA Block: blk1):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 L1 (SSA Block: blk1):
@@ -559,6 +578,7 @@ L2 (SSA Block: blk2):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 L1 (SSA Block: blk1):
@@ -593,6 +613,7 @@ L3 (SSA Block: blk3):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 L1 (SSA Block: blk1):
@@ -638,6 +659,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub sp, sp, #0x10
 	orr x27, xzr, #0x10
@@ -721,6 +743,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub sp, sp, #0x20
 	orr x27, xzr, #0x20
@@ -877,6 +900,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	orr x27, xzr, #0xc0
 	sub sp, sp, x27
 	stp x30, x27, [sp, #-0x10]!
@@ -970,6 +994,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	sxtw x0, w2
@@ -1016,6 +1041,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	clz w0, w2
@@ -1043,6 +1069,7 @@ L0 (SSA Block: blk0):
 			m:    testcases.FloatComparisons.Module,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	orr x27, xzr, #0x20
 	sub sp, sp, x27
 	stp x30, x27, [sp, #-0x10]!
@@ -1086,6 +1113,7 @@ L0 (SSA Block: blk0):
 			m:    testcases.FloatConversions.Module,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	msr fpsr, xzr
@@ -1308,6 +1336,7 @@ L3:
 			m:    testcases.NonTrappingFloatConversions.Module,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	fcvtzs x8, d0
@@ -1455,6 +1484,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str x19, [sp, #-0x10]!
 	str x20, [sp, #-0x10]!
@@ -1638,6 +1668,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub sp, sp, #0x10
 	orr x27, xzr, #0x10
@@ -1684,6 +1715,7 @@ L2:
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	uxtw x8, w2
@@ -1711,6 +1743,7 @@ L2:
 			name: "memory_stores", m: testcases.MemoryStores.Module,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	mov x8, xzr
@@ -1893,6 +1926,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub sp, sp, #0x20
 	orr x27, xzr, #0x20
@@ -1941,6 +1975,7 @@ L0 (SSA Block: blk0):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	orr w8, wzr, #0x1
@@ -2002,6 +2037,7 @@ L6 (SSA Block: blk6):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	orr w8, wzr, #0x6
@@ -2009,38 +2045,45 @@ L0 (SSA Block: blk0):
 	csel w8, w8, w2, hs
 	br_table_sequence x8, table_index=0
 L7 (SSA Block: blk7):
-	b #0x54 (L6)
+	bti jc
+	b #0x6c (L6)
 L8 (SSA Block: blk8):
+	bti jc
 L5 (SSA Block: blk5):
 	orr w0, wzr, #0xc
 	add sp, sp, #0x10
 	ldr x30, [sp], #0x10
 	ret
 L9 (SSA Block: blk9):
+	bti jc
 L4 (SSA Block: blk4):
 	movz w0, #0xd, lsl 0
 	add sp, sp, #0x10
 	ldr x30, [sp], #0x10
 	ret
 L10 (SSA Block: blk10):
+	bti jc
 L3 (SSA Block: blk3):
 	orr w0, wzr, #0xe
 	add sp, sp, #0x10
 	ldr x30, [sp], #0x10
 	ret
 L11 (SSA Block: blk11):
+	bti jc
 L2 (SSA Block: blk2):
 	orr w0, wzr, #0xf
 	add sp, sp, #0x10
 	ldr x30, [sp], #0x10
 	ret
 L12 (SSA Block: blk12):
+	bti jc
 L1 (SSA Block: blk1):
 	orr w0, wzr, #0x10
 	add sp, sp, #0x10
 	ldr x30, [sp], #0x10
 	ret
 L13 (SSA Block: blk13):
+	bti jc
 L6 (SSA Block: blk6):
 	movz w0, #0xb, lsl 0
 	add sp, sp, #0x10
@@ -2053,6 +2096,7 @@ L6 (SSA Block: blk6):
 			m:    testcases.VecShuffle.Module,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str q29, [sp, #-0x10]!
 	str q30, [sp, #-0x10]!
@@ -2074,6 +2118,7 @@ L0 (SSA Block: blk0):
 			m:    testcases.AtomicRmwAdd.Module,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	orr x27, xzr, #0x10
 	sub sp, sp, x27
 	stp x30, x27, [sp, #-0x10]!
@@ -2273,6 +2318,7 @@ L2:
 			m:    testcases.IcmpAndZero.Module,
 			afterFinalizeAMD64: `
 L0 (SSA Block: blk0):
+	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
 	testl %edi, %ecx
@@ -2290,6 +2336,7 @@ L2 (SSA Block: blk2):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	ands wzr, w2, w3
@@ -2311,6 +2358,7 @@ L2 (SSA Block: blk2):
 			m:    testcases.FibonacciTailRecursive.Module,
 			afterFinalizeAMD64: `
 L0 (SSA Block: blk0):
+	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
 	sub $16, %rsp
@@ -2343,6 +2391,7 @@ L5 (SSA Block: blk5):
 `,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	subs wzr, w2, #0x0
@@ -2374,6 +2423,7 @@ L5 (SSA Block: blk5):
 			name: "try_table_catch_all_empty", m: testcases.TryTableCatchAllEmpty.Module,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub sp, sp, #0x10
 	orr x27, xzr, #0x10
@@ -2392,6 +2442,7 @@ L0 (SSA Block: blk0):
 	csel w9, w10, w9, hs
 	br_table_sequence x9, table_index=0
 L4 (SSA Block: blk4):
+	bti jc
 L1 (SSA Block: blk1):
 	mov x0, xzr
 	add sp, sp, #0x10
@@ -2399,6 +2450,7 @@ L1 (SSA Block: blk1):
 	ldr x30, [sp], #0x10
 	ret
 L3 (SSA Block: blk3):
+	bti jc
 	ldr x9, [sp, #0x18]
 	str x9, [x8, #0x8]
 	ldr x9, [x8, #0x4b8]
@@ -2444,6 +2496,7 @@ L3 (SSA Block: blk3):
 			name: "try_table_catch_all_throw", m: testcases.TryTableCatchAllThrow.Module,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub sp, sp, #0x10
 	orr x27, xzr, #0x10
@@ -2462,6 +2515,7 @@ L0 (SSA Block: blk0):
 	csel w9, w10, w9, hs
 	br_table_sequence x9, table_index=0
 L4 (SSA Block: blk4):
+	bti jc
 L1 (SSA Block: blk1):
 	movz w0, #0x2a, lsl 0
 	add sp, sp, #0x10
@@ -2469,6 +2523,7 @@ L1 (SSA Block: blk1):
 	ldr x30, [sp], #0x10
 	ret
 L3 (SSA Block: blk3):
+	bti jc
 	ldr x9, [sp, #0x18]
 	str x9, [x8, #0x8]
 	ldr x9, [x8, #0x4a0]
@@ -2498,6 +2553,7 @@ L3 (SSA Block: blk3):
 			name: "try_table_catch_many_param_throw", m: testcases.TryTableCatchManyParamThrow.Module,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub sp, sp, #0x30
 	orr x27, xzr, #0x30
@@ -2521,6 +2577,7 @@ L0 (SSA Block: blk0):
 	csel w9, w10, w9, hs
 	br_table_sequence x9, table_index=0
 L4 (SSA Block: blk4):
+	bti jc
 	ldr x8, [x8, #0x4c8]
 	ldr w9, [x8]
 	ldr w10, [x8, #0x8]
@@ -2538,6 +2595,7 @@ L1 (SSA Block: blk1):
 	ldr x30, [sp], #0x10
 	ret
 L3 (SSA Block: blk3):
+	bti jc
 	ldr x9, [sp, #0x18]
 	str x9, [x8, #0x8]
 	ldr x9, [x8, #0x4a0]
@@ -2574,6 +2632,7 @@ L3 (SSA Block: blk3):
 			name: "try_table_catch_throw", m: testcases.TryTableCatchThrow.Module,
 			afterFinalizeARM64: `
 L0 (SSA Block: blk0):
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub sp, sp, #0x10
 	orr x27, xzr, #0x10
@@ -2592,6 +2651,7 @@ L0 (SSA Block: blk0):
 	csel w9, w10, w9, hs
 	br_table_sequence x9, table_index=0
 L4 (SSA Block: blk4):
+	bti jc
 L1 (SSA Block: blk1):
 	movz w0, #0x17, lsl 0
 	add sp, sp, #0x10
@@ -2599,6 +2659,7 @@ L1 (SSA Block: blk1):
 	ldr x30, [sp], #0x10
 	ret
 L3 (SSA Block: blk3):
+	bti jc
 	ldr x9, [sp, #0x18]
 	str x9, [x8, #0x8]
 	ldr x9, [x8, #0x4a0]

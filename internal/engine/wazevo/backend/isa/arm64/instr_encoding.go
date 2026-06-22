@@ -29,6 +29,10 @@ func (i *instruction) encode(m *machine) {
 	c := m.compiler
 	switch kind := i.kind; kind {
 	case nop0, emitSourceOffsetInfo, loadConstBlockArg:
+	case bti:
+		// bti encodes "BTI JC", a landing pad valid for both indirect jumps and calls.
+		// https://developer.arm.com/documentation/ddi0602/2024-03/Base-Instructions/BTI--Branch-Target-Identification-
+		c.Emit4Bytes(0xd503_24df)
 	case exitSequence:
 		encodeExitSequence(c, i.rn.reg())
 	case ret:

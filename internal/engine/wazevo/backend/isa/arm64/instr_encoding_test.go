@@ -23,6 +23,7 @@ func TestInstruction_encode(t *testing.T) {
 		setup func(*instruction)
 		want  string
 	}{
+		{want: "df2403d5", setup: func(i *instruction) { i.asBTI() }},
 		{want: "3f441bd5", setup: func(i *instruction) { i.asMovToFPSR(xzrVReg) }},
 		{want: "21441bd5", setup: func(i *instruction) { i.asMovToFPSR(x1VReg) }},
 		{want: "21443bd5", setup: func(i *instruction) { i.asMovFromFPSR(x1VReg) }},

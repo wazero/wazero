@@ -19,6 +19,7 @@ func TestMachine_setupPrologue(t *testing.T) {
 		{
 			spillSlotSize: 0,
 			exp: `
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str xzr, [sp, #-0x10]!
 	udf
@@ -28,6 +29,7 @@ func TestMachine_setupPrologue(t *testing.T) {
 			spillSlotSize: 0,
 			abi:           backend.FunctionABI{ArgStackSize: 16, RetStackSize: 16},
 			exp: `
+	bti jc
 	orr x27, xzr, #0x20
 	sub sp, sp, x27
 	stp x30, x27, [sp, #-0x10]!
@@ -38,6 +40,7 @@ func TestMachine_setupPrologue(t *testing.T) {
 		{
 			spillSlotSize: 16,
 			exp: `
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	sub sp, sp, #0x10
 	orr x27, xzr, #0x10
@@ -49,6 +52,7 @@ func TestMachine_setupPrologue(t *testing.T) {
 			spillSlotSize: 0,
 			clobberedRegs: []regalloc.VReg{v18VReg, v19VReg, x18VReg, x25VReg},
 			exp: `
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str q18, [sp, #-0x10]!
 	str q19, [sp, #-0x10]!
@@ -63,6 +67,7 @@ func TestMachine_setupPrologue(t *testing.T) {
 			spillSlotSize: 320,
 			clobberedRegs: []regalloc.VReg{v18VReg, v19VReg, x18VReg, x25VReg},
 			exp: `
+	bti jc
 	stp x30, xzr, [sp, #-0x10]!
 	str q18, [sp, #-0x10]!
 	str q19, [sp, #-0x10]!
@@ -79,6 +84,7 @@ func TestMachine_setupPrologue(t *testing.T) {
 			abi:           backend.FunctionABI{ArgStackSize: 320, RetStackSize: 160},
 			clobberedRegs: []regalloc.VReg{v18VReg, v19VReg, x18VReg, x25VReg},
 			exp: `
+	bti jc
 	orr x27, xzr, #0x1e0
 	sub sp, sp, x27
 	stp x30, x27, [sp, #-0x10]!
@@ -282,6 +288,7 @@ func TestMachine_CompileStackGrowCallSequence(t *testing.T) {
 	_ = m.CompileStackGrowCallSequence()
 
 	require.Equal(t, `
+	bti jc
 	str x1, [x0, #0x60]
 	str x2, [x0, #0x70]
 	str x3, [x0, #0x80]
@@ -328,6 +335,7 @@ func TestMachine_CompileStackGrowCallSequence(t *testing.T) {
 	adr x27, #0x20
 	str x27, [x0, #0x30]
 	exit_sequence x0
+	bti jc
 	ldr x1, [x0, #0x60]
 	ldr x2, [x0, #0x70]
 	ldr x3, [x0, #0x80]

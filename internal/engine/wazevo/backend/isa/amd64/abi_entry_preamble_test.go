@@ -20,6 +20,7 @@ func TestMachineCompileEntryPreamble(t *testing.T) {
 				Params: []ssa.Type{ssa.TypeI64, ssa.TypeI64},
 			},
 			exp: `
+	endbr64
 	movq %rax, %rdx
 	mov.q %rbp, 16(%rax)
 	mov.q %rsp, 24(%rax)
@@ -38,6 +39,7 @@ func TestMachineCompileEntryPreamble(t *testing.T) {
 				Params: []ssa.Type{ssa.TypeI64, ssa.TypeI64, ssa.TypeI32, ssa.TypeI64, ssa.TypeF32, ssa.TypeF64, ssa.TypeV128, ssa.TypeI64},
 			},
 			exp: `
+	endbr64
 	movq %rax, %rdx
 	mov.q %rbp, 16(%rax)
 	mov.q %rsp, 24(%rax)
@@ -63,6 +65,7 @@ func TestMachineCompileEntryPreamble(t *testing.T) {
 				Results: []ssa.Type{ssa.TypeI32, ssa.TypeV128, ssa.TypeI64, ssa.TypeF32, ssa.TypeF64},
 			},
 			exp: `
+	endbr64
 	movq %rax, %rdx
 	mov.q %rbp, 16(%rax)
 	mov.q %rsp, 24(%rax)
@@ -87,6 +90,7 @@ func TestMachineCompileEntryPreamble(t *testing.T) {
 				Results: []ssa.Type{ssa.TypeI32, ssa.TypeV128, ssa.TypeI64, ssa.TypeF32, ssa.TypeF64},
 			},
 			exp: `
+	endbr64
 	movq %rax, %rdx
 	mov.q %rbp, 16(%rax)
 	mov.q %rsp, 24(%rax)
@@ -120,6 +124,7 @@ func TestMachineCompileEntryPreamble(t *testing.T) {
 				},
 			},
 			exp: `
+	endbr64
 	movq %rax, %rdx
 	mov.q %rbp, 16(%rax)
 	mov.q %rsp, 24(%rax)
@@ -173,6 +178,7 @@ func TestMachineCompileEntryPreamble(t *testing.T) {
 				},
 			},
 			exp: `
+	endbr64
 	movq %rax, %rdx
 	mov.q %rbp, 16(%rax)
 	mov.q %rsp, 24(%rax)
@@ -232,6 +238,7 @@ func TestMachineCompileEntryPreamble(t *testing.T) {
 				},
 			},
 			exp: `
+	endbr64
 	movq %rax, %rdx
 	mov.q %rbp, 16(%rax)
 	mov.q %rsp, 24(%rax)

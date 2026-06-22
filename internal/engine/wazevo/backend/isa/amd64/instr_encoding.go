@@ -12,6 +12,9 @@ import (
 func (i *instruction) encode(c backend.Compiler) (needsLabelResolution bool) {
 	switch kind := i.kind; kind {
 	case nop0, sourceOffsetInfo, defineUninitializedReg, fcvtToSintSequence, fcvtToUintSequence, nopUseReg:
+	case endbr64:
+		// endbr64 is the landing pad required by Intel CET indirect branch tracking
+		c.Emit4Bytes(0xfa1e_0ff3)
 	case ret:
 		encodeRet(c)
 	case imm:

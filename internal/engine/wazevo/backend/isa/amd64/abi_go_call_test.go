@@ -36,6 +36,7 @@ func TestMachine_CompileGoFunctionTrampoline(t *testing.T) {
 			},
 			needModuleContextPtr: true,
 			exp: `
+	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
 	sub $40, %rsp
@@ -76,6 +77,7 @@ L2:
 	mov.q %r12, 48(%rax)
 	exit_sequence %rax
 L3:
+	endbr64
 	add $8, %rsp
 	movq 8(%rsp), %rbx
 	movss 16(%rsp), %xmm0
@@ -108,6 +110,7 @@ L3:
 			},
 			needModuleContextPtr: true,
 			exp: `
+	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
 	sub $40, %rsp
@@ -151,6 +154,7 @@ L2:
 	mov.q %r12, 48(%rax)
 	exit_sequence %rax
 L3:
+	endbr64
 	add $8, %rsp
 	movq 96(%rax), %rdx
 	movq 112(%rax), %r12
@@ -178,6 +182,7 @@ L3:
 				Results: []ssa.Type{ssa.TypeI32},
 			},
 			exp: `
+	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
 	sub $24, %rsp
@@ -217,6 +222,7 @@ L2:
 	mov.q %r12, 48(%rax)
 	exit_sequence %rax
 L3:
+	endbr64
 	add $8, %rsp
 	movq 96(%rax), %rdx
 	movq 112(%rax), %r12
@@ -256,6 +262,7 @@ L3:
 				},
 			},
 			exp: `
+	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
 	sub $248, %rsp
@@ -313,6 +320,7 @@ L2:
 	mov.q %r12, 48(%rax)
 	exit_sequence %rax
 L3:
+	endbr64
 	add $8, %rsp
 	movsd (%rsp), %xmm0
 	movdqu 8(%rsp), %xmm1
@@ -402,6 +410,7 @@ func TestMachine_CompileStackGrowCallSequence(t *testing.T) {
 	_ = m.CompileStackGrowCallSequence()
 
 	require.Equal(t, `
+	endbr64
 	pushq %rbp
 	movq %rsp, %rbp
 	mov.q %rdx, 96(%rax)
@@ -441,6 +450,7 @@ func TestMachine_CompileStackGrowCallSequence(t *testing.T) {
 	mov.q %r12, 48(%rax)
 	exit_sequence %rax
 L1:
+	endbr64
 	movq 96(%rax), %rdx
 	movq 112(%rax), %r12
 	movq 128(%rax), %r13
