@@ -27,6 +27,7 @@ func (b *builder) runPreBlockLayoutPasses() {
 	passRedundantPhiEliminationOpt(b)
 	passNopInstElimination(b)
 	passConstFoldingArithmeticOpt(b)
+	passCommonSubexpressionEliminationOpt(b)
 
 	// TODO: implement either conversion of irreducible CFG into reducible one, or irreducible CFG detection where we panic.
 	// 	WebAssembly program shouldn't result in irreducible CFG, but we should handle it properly in just in case.
@@ -35,7 +36,6 @@ func (b *builder) runPreBlockLayoutPasses() {
 	// TODO: implement more optimization passes like:
 	// 	block coalescing.
 	// 	Copy-propagation.
-	// 	Common subexpression elimination.
 	// 	and more!
 
 	// passDeadCodeEliminationOpt could be more accurate if we do this after other optimizations.
@@ -496,6 +496,95 @@ func simplifyBinaryInt(op Opcode, x, y Value, xi, yi *Instruction, xc, yc bool) 
 		}
 	}
 	return ValueInvalid, false
+}
+
+// cseKey identifies a pure value-producing computation. Two instructions with equal keys
+// compute the same value, so the dominated one can be replaced by the dominating one.
+type cseKey struct {
+	op        Opcode
+	u1, u2    uint64
+	v, v2, v3 Value
+	typ       Type
+}
+
+// cseRep is the representative (dominating) instruction recorded for a cseKey, together
+// with the position needed to answer "does it dominate another instruction?".
+type cseRep struct {
+	ret      Value
+	blk      *basicBlock
+	localIdx int
+}
+
+// cseEligible reports whether an instruction is a common-subexpression candidate: a pure,
+// single-value computation whose result is purely a function of its operands.
+//
+// Loads are excluded even though they have no SSA side effect: a store to an overlapping
+// address between two identical loads changes the result, so deduplicating them needs
+// alias analysis. Constants are excluded so the backend stays free to rematerialize an
+// immediate instead of keeping a value live across the whole function.
+func cseEligible(i *Instruction) bool {
+	if i.sideEffect() != sideEffectNone || !i.rValue.Valid() {
+		return false
+	}
+	if len(i.rValues.View()) != 0 || len(i.vs.View()) != 0 {
+		return false // multi-result or variadic ops aren't captured by the fixed-arg key.
+	}
+	switch i.opcode {
+	case OpcodeIconst, OpcodeF32const, OpcodeF64const, OpcodeVconst,
+		OpcodeLoad, OpcodeLoadSplat, OpcodeUload8, OpcodeUload16, OpcodeUload32,
+		OpcodeSload8, OpcodeSload16, OpcodeSload32:
+		return false
+	}
+	return true
+}
+
+// passCommonSubexpressionEliminationOpt removes redundant pure computations. Walking blocks
+// in reverse post-order (so a dominating definition is always seen first), it value-numbers
+// each eligible instruction by (opcode, resolved args, immediates, type). When an earlier
+// identical instruction dominates the current one, the current result is aliased to it and
+// passDeadCodeEliminationOpt deletes the now-dead instruction.
+//
+// Note: this uses a single representative per key rather than a full dominator-scoped table,
+// so it catches dominator-chain and straight-line redundancy (the common case) but may miss
+// computations duplicated across sibling branches. That can be tightened later if it pays.
+func passCommonSubexpressionEliminationOpt(b *builder) {
+	reps := make(map[cseKey]cseRep)
+	for blk := b.blockIteratorReversePostOrderBegin(); blk != nil; blk = b.blockIteratorReversePostOrderNext() {
+		localIdx := 0
+		for cur := blk.rootInstr; cur != nil; cur = cur.next {
+			localIdx++
+			if !cseEligible(cur) {
+				continue
+			}
+			// Resolve aliases so equal computations hash equally even when an operand was
+			// itself replaced by an earlier CSE/nop/const-fold rewrite.
+			key := cseKey{
+				op:  cur.opcode,
+				u1:  cur.u1,
+				u2:  cur.u2,
+				v:   b.resolveAlias(cur.v),
+				v2:  b.resolveAlias(cur.v2),
+				v3:  b.resolveAlias(cur.v3),
+				typ: cur.typ,
+			}
+
+			if rep, ok := reps[key]; ok && b.cseDominates(rep, blk, localIdx) {
+				b.alias(cur.Return(), rep.ret)
+				continue
+			}
+			reps[key] = cseRep{ret: cur.Return(), blk: blk, localIdx: localIdx}
+		}
+	}
+}
+
+// cseDominates reports whether the representative dominates the instruction at
+// (blk, localIdx). Within a block, an earlier instruction dominates a later one; across
+// blocks, it is the usual block dominance relation.
+func (b *builder) cseDominates(rep cseRep, blk *basicBlock, localIdx int) bool {
+	if rep.blk == blk {
+		return rep.localIdx < localIdx
+	}
+	return b.isDominatedBy(blk, rep.blk)
 }
 
 // passSortSuccessors sorts the successors of each block in the natural program order.
