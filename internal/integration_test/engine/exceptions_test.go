@@ -47,6 +47,24 @@ var ehBrOrphanWasm []byte
 //go:embed testdata/eh_br_stale_handler.wasm
 var ehBrStaleHandlerWasm []byte
 
+//go:embed testdata/eh_locals_corrupted.wasm
+var ehLocalsCorruptedWasm []byte
+
+//go:embed testdata/eh_locals_nested_nocatch.wasm
+var ehLocalsNestedNocatchWasm []byte
+
+//go:embed testdata/eh_locals_nested_catch.wasm
+var ehLocalsNestedCatchWasm []byte
+
+//go:embed testdata/eh_locals_cross_func.wasm
+var ehLocalsCrossFuncWasm []byte
+
+//go:embed testdata/eh_br_own_label.wasm
+var ehBrOwnLabelWasm []byte
+
+//go:embed testdata/eh_catch_outside.wasm
+var ehCatchOutsideWasm []byte
+
 // TestExceptionHandlingInterpreter runs EH tests only for the interpreter.
 func TestExceptionHandlingInterpreter(t *testing.T) {
 	cfg := wazero.NewRuntimeConfigInterpreter().
@@ -79,6 +97,24 @@ func runEHTests(t *testing.T, cfg wazero.RuntimeConfig) {
 	})
 	t.Run("br_stale_handler", func(t *testing.T) {
 		testBrStaleHandler(t, cfg)
+	})
+	t.Run("locals_corrupted", func(t *testing.T) {
+		testEHLocalsCorrupted(t, cfg)
+	})
+	t.Run("locals_nested_nocatch", func(t *testing.T) {
+		testEHLocalsNestedNocatch(t, cfg)
+	})
+	t.Run("locals_nested_catch", func(t *testing.T) {
+		testEHLocalsNestedCatch(t, cfg)
+	})
+	t.Run("locals_cross_func", func(t *testing.T) {
+		testEHLocalsCrossFunc(t, cfg)
+	})
+	t.Run("br_own_label", func(t *testing.T) {
+		testEHBrOwnLabel(t, cfg)
+	})
+	t.Run("catch_outside", func(t *testing.T) {
+		testEHCatchOutside(t, cfg)
 	})
 }
 
@@ -182,6 +218,111 @@ func testBrStaleHandler(t *testing.T, cfg wazero.RuntimeConfig) {
 	// Without fix: stale handler A catches $tag1 -> wrong checkpoint restore.
 	// With fix: outer handler catches $tag1 -> returns 1.
 	res, err := mod.ExportedFunction("test").Call(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), api.DecodeI32(res[0]))
+}
+
+// testEHLocalsCorrupted verifies that locals mutated inside a try_table body
+// retain their throw-time values when an exception is caught (issue #2503).
+func testEHLocalsCorrupted(t *testing.T, cfg wazero.RuntimeConfig) {
+	ctx := context.Background()
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	mod, err := r.InstantiateWithConfig(ctx, ehLocalsCorruptedWasm,
+		wazero.NewModuleConfig().WithStartFunctions())
+	require.NoError(t, err)
+
+	// f() sets flag=1, enters try_table, sets flag=0, then throws.
+	// The handler reads flag — must be 0 (throw-time), not 1 (entry-time).
+	res, err := mod.ExportedFunction("f").Call(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int32(0), api.DecodeI32(res[0]))
+}
+
+// testEHLocalsNestedNocatch verifies that a try_table with no catch clauses
+// nested inside one with catch clauses doesn't break locals tracking.
+func testEHLocalsNestedNocatch(t *testing.T, cfg wazero.RuntimeConfig) {
+	ctx := context.Background()
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	mod, err := r.InstantiateWithConfig(ctx, ehLocalsNestedNocatchWasm,
+		wazero.NewModuleConfig().WithStartFunctions())
+	require.NoError(t, err)
+
+	// The inner try_table (no catch) must not break the outer try body's
+	// locals save-area tracking. flag must be 0 at throw time.
+	res, err := mod.ExportedFunction("f").Call(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int32(0), api.DecodeI32(res[0]))
+}
+
+// testEHLocalsNestedCatch verifies that nested try_tables in the same function
+// share the locals save area so an outer handler sees throw-time local values
+// modified inside the inner try body.
+func testEHLocalsNestedCatch(t *testing.T, cfg wazero.RuntimeConfig) {
+	ctx := context.Background()
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	mod, err := r.InstantiateWithConfig(ctx, ehLocalsNestedCatchWasm,
+		wazero.NewModuleConfig().WithStartFunctions())
+	require.NoError(t, err)
+
+	// Inner try catches $t2, but thrower throws $t1 → outer catches.
+	// flag was set to 0 inside the inner body; outer must see 0.
+	res, err := mod.ExportedFunction("f").Call(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int32(0), api.DecodeI32(res[0]))
+}
+
+// testEHLocalsCrossFunc verifies cross-function try_table nesting: function A
+// has a try_table and calls B which also has a try_table. B throws an exception
+// caught by A. A's handler must see A's locals, not B's.
+func testEHLocalsCrossFunc(t *testing.T, cfg wazero.RuntimeConfig) {
+	ctx := context.Background()
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	mod, err := r.InstantiateWithConfig(ctx, ehLocalsCrossFuncWasm,
+		wazero.NewModuleConfig().WithStartFunctions())
+	require.NoError(t, err)
+
+	// A sets flag=0 inside its try body, then calls B which throws.
+	// A's handler must see flag=0 (A's throw-time value).
+	res, err := mod.ExportedFunction("f").Call(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int32(0), api.DecodeI32(res[0]))
+}
+
+// testEHBrOwnLabel verifies that br to a try_table's own label pops its handler.
+func testEHBrOwnLabel(t *testing.T, cfg wazero.RuntimeConfig) {
+	ctx := context.Background()
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	mod, err := r.InstantiateWithConfig(ctx, ehBrOwnLabelWasm,
+		wazero.NewModuleConfig().WithStartFunctions())
+	require.NoError(t, err)
+
+	res, err := mod.ExportedFunction("run").Call(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), api.DecodeI32(res[0]))
+}
+
+// testEHCatchOutside verifies that a catch clause jumping outside an enclosing
+// try_table pops that try_table's handler.
+func testEHCatchOutside(t *testing.T, cfg wazero.RuntimeConfig) {
+	ctx := context.Background()
+	r := wazero.NewRuntimeWithConfig(ctx, cfg)
+	defer r.Close(ctx)
+
+	mod, err := r.InstantiateWithConfig(ctx, ehCatchOutsideWasm,
+		wazero.NewModuleConfig().WithStartFunctions())
+	require.NoError(t, err)
+
+	res, err := mod.ExportedFunction("run").Call(ctx)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), api.DecodeI32(res[0]))
 }

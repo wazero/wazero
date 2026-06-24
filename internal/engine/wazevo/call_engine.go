@@ -62,6 +62,11 @@ type (
 		stack          []byte // cloned stack
 		// catchClauses describes what exceptions this handler catches.
 		catchClauses []wazevoapi.CatchClauseInstance
+		// localsSaveArea is a heap buffer where locals are mirrored inside
+		// try bodies. Handlers read from it to get updated values.
+		// Nil for nested same-function try_tables that reuse the enclosing
+		// handler's save area.
+		localsSaveArea []uint64
 		// moduleInstance is the module that set up this try handler.
 		// Used for tag matching in doHandleException (the tag index in
 		// catch clauses is relative to this module's tag index space).
@@ -136,6 +141,9 @@ type (
 		// when an exception is caught. Compiled code loads this from execCtx
 		// after the trampoline call to decide which handler to dispatch to.
 		caughtExceptionClauseIdx int64
+		// localsSaveAreaPtr points to the tryHandler's localsSaveArea slice
+		// backing array. Handlers load locals from this slice.
+		localsSaveAreaPtr uintptr
 	}
 )
 
@@ -603,14 +611,23 @@ func (c *callEngine) callWithStack(ctx context.Context, paramResultStack []uint6
 			// The encoded exit code (with tryTableID in upper bits) is on the
 			// Go call stack as the second trampoline argument, not in execCtx.exitCode.
 			tryTableEnterStack := goCallStackView(c.execCtx.stackPointerBeforeGoCall)
-			catchClauseTableIdx := wazevoapi.TryTableIDFromExitCode(wazevoapi.ExitCode(tryTableEnterStack[0]))
+			tryTableID := wazevoapi.TryTableIDFromExitCode(wazevoapi.ExitCode(tryTableEnterStack[0]))
 			mod := c.callerModuleInstance()
 			me := mod.Engine.(*moduleEngine)
-			clauses := me.parent.catchClauseTable[catchClauseTableIdx]
+			info := &me.parent.tryTableInfo[tryTableID]
 			returnAddress := c.execCtx.goCallReturnAddress
 			oldTop, oldSp := c.stackTop, uintptr(unsafe.Pointer(c.execCtx.stackPointerBeforeGoCall))
 			newSP, newFP, newTop, newStack := c.cloneStack(uintptr(len(c.stack)) + 16)
 			adjustClonedStack(oldSp, oldTop, newSP, newFP, newTop)
+
+			// Allocate a heap buffer for locals so handlers can read throw-time values.
+			// Nested try_tables in the same function (ReuseLocals) share the enclosing handler's save area.
+			var saveArea []uint64
+			if info.NumLocals > 0 && !info.ReuseLocals {
+				saveArea = make([]uint64, info.NumLocals*2) // 16 bytes per local
+				c.execCtx.localsSaveAreaPtr = uintptr(unsafe.Pointer(&saveArea[0]))
+			}
+
 			c.tryHandlers = append(c.tryHandlers, tryHandler{
 				sp:             newSP,
 				fp:             newFP,
@@ -618,8 +635,9 @@ func (c *callEngine) callWithStack(ctx context.Context, paramResultStack []uint6
 				returnAddress:  returnAddress,
 				savedRegisters: c.execCtx.savedRegisters,
 				stack:          newStack,
-				catchClauses:   clauses,
+				catchClauses:   info.CatchClauses,
 				moduleInstance: mod,
+				localsSaveArea: saveArea,
 			})
 			// Set clauseIdx = -1 (no exception) in execCtx for the compiled code
 			// to read after the trampoline returns.
@@ -628,9 +646,11 @@ func (c *callEngine) callWithStack(ctx context.Context, paramResultStack []uint6
 			afterGoFunctionCallEntrypoint(c.execCtx.goCallReturnAddress, c.execCtxPtr,
 				uintptr(unsafe.Pointer(c.execCtx.stackPointerBeforeGoCall)), c.execCtx.framePointerBeforeGoCall)
 		case wazevoapi.ExitCodeTryTableLeave:
-			// Pop the most recent try handler.
+			// Pop the most recent try handler and restore the locals save
+			// area pointer from the handler below (or clear it).
 			if len(c.tryHandlers) > 0 {
 				c.tryHandlers = c.tryHandlers[:len(c.tryHandlers)-1]
+				c.restoreLocalsSaveAreaPtr(len(c.tryHandlers) - 1)
 			}
 			c.execCtx.exitCode = wazevoapi.ExitCodeOK
 			afterGoFunctionCallEntrypoint(c.execCtx.goCallReturnAddress, c.execCtxPtr,
@@ -661,6 +681,10 @@ func (c *callEngine) doHandleException(exn *wasm.Exception) bool {
 				matched = true
 			}
 			if matched {
+				// Restore localsSaveAreaPtr from the matched handler or
+				// the nearest enclosing one (same-function reuse).
+				c.restoreLocalsSaveAreaPtr(i)
+
 				// Pop all handlers at and above this one.
 				c.tryHandlers = c.tryHandlers[:i]
 
@@ -685,6 +709,19 @@ func (c *callEngine) doHandleException(exn *wasm.Exception) bool {
 		}
 	}
 	return false
+}
+
+// restoreLocalsSaveAreaPtr walks tryHandlers from index `from` downward
+// and sets localsSaveAreaPtr to the first handler that owns a save area,
+// or clears it if none is found.
+func (c *callEngine) restoreLocalsSaveAreaPtr(from int) {
+	for i := from; i >= 0; i-- {
+		if sa := c.tryHandlers[i].localsSaveArea; len(sa) > 0 {
+			c.execCtx.localsSaveAreaPtr = uintptr(unsafe.Pointer(&sa[0]))
+			return
+		}
+	}
+	c.execCtx.localsSaveAreaPtr = 0
 }
 
 func (c *callEngine) callerModuleInstance() *wasm.ModuleInstance {

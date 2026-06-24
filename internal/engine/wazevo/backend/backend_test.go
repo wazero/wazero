@@ -2503,12 +2503,12 @@ L0 (SSA Block: blk0):
 	orr x27, xzr, #0x30
 	str x27, [sp, #-0x10]!
 	str x0, [sp, #0x10]
-	str x1, [sp, #0x18]
-	str w2, [sp, #0x20]
-	str w3, [sp, #0x24]
-	str w4, [sp, #0x28]
-	str w5, [sp, #0x2c]
-	str w6, [sp, #0x30]
+	str x1, [sp, #0x2c]
+	str w2, [sp, #0x18]
+	str w3, [sp, #0x1c]
+	str w4, [sp, #0x20]
+	str w5, [sp, #0x24]
+	str w6, [sp, #0x28]
 	str x1, [x0, #0x8]
 	ldr x8, [x0, #0x4b0]
 	movz x9, #0x1b, lsl 0
@@ -2538,7 +2538,18 @@ L1 (SSA Block: blk1):
 	ldr x30, [sp], #0x10
 	ret
 L3 (SSA Block: blk3):
-	ldr x9, [sp, #0x18]
+	ldr x9, [x8, #0x4d8]
+	ldr w10, [sp, #0x18]
+	str w10, [x9]
+	ldr w11, [sp, #0x1c]
+	str w11, [x9, #0x10]
+	ldr w12, [sp, #0x20]
+	str w12, [x9, #0x20]
+	ldr w13, [sp, #0x24]
+	str w13, [x9, #0x30]
+	ldr w14, [sp, #0x28]
+	str w14, [x9, #0x40]
+	ldr x9, [sp, #0x2c]
 	str x9, [x8, #0x8]
 	ldr x9, [x8, #0x4a0]
 	mov x0, x8
@@ -2547,15 +2558,15 @@ L3 (SSA Block: blk3):
 	mov x1, x0
 	ldr x8, [sp, #0x10]
 	ldr x9, [x8, #0x4c8]
-	ldr w10, [sp, #0x20]
+	ldr w10, [sp, #0x18]
 	str w10, [x9]
-	ldr w10, [sp, #0x24]
+	ldr w10, [sp, #0x1c]
 	str w10, [x9, #0x8]
-	ldr w10, [sp, #0x28]
+	ldr w10, [sp, #0x20]
 	str w10, [x9, #0x10]
-	ldr w10, [sp, #0x2c]
+	ldr w10, [sp, #0x24]
 	str w10, [x9, #0x18]
-	ldr w10, [sp, #0x30]
+	ldr w10, [sp, #0x28]
 	str w10, [x9, #0x20]
 	ldr x9, [x8, #0x4a8]
 	mov x0, x8

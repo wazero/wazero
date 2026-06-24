@@ -70,6 +70,10 @@ const (
 	// ExecutionContextOffsetCaughtExceptionClauseIdx is the matched catch clause index
 	// written by handleException and read by compiled handler dispatch code.
 	ExecutionContextOffsetCaughtExceptionClauseIdx Offset = 1232
+	// ExecutionContextOffsetLocalsSaveAreaPtr points to a heap-allocated buffer
+	// where locals are mirrored inside try_table bodies, so that handler blocks
+	// can read throw-time local values after stack-clone restore.
+	ExecutionContextOffsetLocalsSaveAreaPtr Offset = 1240
 )
 
 // ModuleContextOffsetData allows the compilers to get the information about offsets to the fields of wazevo.moduleContextOpaque,
