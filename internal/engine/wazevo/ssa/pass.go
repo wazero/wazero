@@ -26,6 +26,7 @@ func (b *builder) runPreBlockLayoutPasses() {
 	passCalculateImmediateDominators(b)
 	passRedundantPhiEliminationOpt(b)
 	passNopInstElimination(b)
+	passConstFoldingArithmeticOpt(b)
 
 	// TODO: implement either conversion of irreducible CFG into reducible one, or irreducible CFG detection where we panic.
 	// 	WebAssembly program shouldn't result in irreducible CFG, but we should handle it properly in just in case.
@@ -34,9 +35,7 @@ func (b *builder) runPreBlockLayoutPasses() {
 	// TODO: implement more optimization passes like:
 	// 	block coalescing.
 	// 	Copy-propagation.
-	// 	Constant folding.
 	// 	Common subexpression elimination.
-	// 	Arithmetic simplifications.
 	// 	and more!
 
 	// passDeadCodeEliminationOpt could be more accurate if we do this after other optimizations.
@@ -382,6 +381,121 @@ func passNopInstElimination(b *builder) {
 			}
 		}
 	}
+}
+
+// passConstFoldingArithmeticOpt performs constant folding and algebraic simplification
+// on integer arithmetic, the way Cranelift's mid-end does. Folded instructions are either
+// rewritten in place into a constant (const op const) or have their result aliased to an
+// existing value (algebraic identities like x+0 -> x); passDeadCodeEliminationOpt then
+// removes whatever became dead.
+//
+// Note: integer add/sub/mul/and/or/xor only. Floats (NaN/rounding corners), shifts,
+// and division (traps on /0) are intentionally deferred to keep this pass small and
+// obviously correct; add cases here when a benchmark shows they pay off.
+func passConstFoldingArithmeticOpt(b *builder) {
+	for blk := b.blockIteratorBegin(); blk != nil; blk = b.blockIteratorNext() {
+		for cur := blk.rootInstr; cur != nil; cur = cur.next {
+			switch cur.Opcode() {
+			case OpcodeIadd, OpcodeIsub, OpcodeImul, OpcodeBand, OpcodeBor, OpcodeBxor:
+			default:
+				continue
+			}
+
+			// Resolve aliases so we see constants produced by earlier passes/foldings.
+			x, y := cur.Arg2()
+			x, y = b.resolveAlias(x), b.resolveAlias(y)
+			xi, yi := b.InstructionOfValue(x), b.InstructionOfValue(y)
+			xc := xi != nil && xi.Constant()
+			yc := yi != nil && yi.Constant()
+
+			// Constant folding: both operands are integer constants.
+			if xc && yc {
+				res := foldBinaryIntConst(cur.Opcode(), xi.ConstantVal(), yi.ConstantVal())
+				cur.v, cur.v2 = ValueInvalid, ValueInvalid // drop operands so DCE can free them.
+				if x.Type().Bits() == 64 {
+					cur.AsIconst64(res)
+				} else {
+					cur.AsIconst32(uint32(res))
+				}
+				continue
+			}
+
+			// Algebraic identities: at most one operand is constant.
+			if alias, ok := simplifyBinaryInt(cur.Opcode(), x, y, xi, yi, xc, yc); ok {
+				b.alias(cur.Return(), alias)
+			}
+		}
+	}
+}
+
+// foldBinaryIntConst evaluates an integer binary op over two constants. The result is
+// stored back via AsIconst32/64, which truncates to the operand width, so wrapping the
+// uint64 arithmetic here is correct for both 32- and 64-bit operands.
+func foldBinaryIntConst(op Opcode, x, y uint64) uint64 {
+	switch op {
+	case OpcodeIadd:
+		return x + y
+	case OpcodeIsub:
+		return x - y
+	case OpcodeImul:
+		return x * y
+	case OpcodeBand:
+		return x & y
+	case OpcodeBor:
+		return x | y
+	case OpcodeBxor:
+		return x ^ y
+	default:
+		panic("BUG: unexpected opcode in foldBinaryIntConst: " + op.String())
+	}
+}
+
+// simplifyBinaryInt returns the value to alias the result to when an algebraic identity
+// applies (e.g. x+0 -> x, x*1 -> x, x*0 -> 0, x&x -> x). ok is false when none applies.
+func simplifyBinaryInt(op Opcode, x, y Value, xi, yi *Instruction, xc, yc bool) (Value, bool) {
+	isZero := func(c bool, in *Instruction) bool { return c && in.ConstantVal() == 0 }
+	isOne := func(c bool, in *Instruction) bool { return c && in.ConstantVal() == 1 }
+	switch op {
+	case OpcodeIadd, OpcodeBor, OpcodeBxor:
+		// x+0, x|0, x^0 -> x (and the symmetric 0 op x -> x).
+		if isZero(yc, yi) {
+			return x, true
+		}
+		if isZero(xc, xi) {
+			return y, true
+		}
+		if op == OpcodeBor && x == y { // x|x -> x.
+			return x, true
+		}
+	case OpcodeIsub:
+		if isZero(yc, yi) { // x-0 -> x.
+			return x, true
+		}
+	case OpcodeImul:
+		if isOne(yc, yi) {
+			return x, true
+		}
+		if isOne(xc, xi) {
+			return y, true
+		}
+		if isZero(yc, yi) { // x*0 -> 0; y is that zero constant.
+			return y, true
+		}
+		if isZero(xc, xi) { // 0*x -> 0.
+			return x, true
+		}
+	case OpcodeBand:
+		if x == y { // x&x -> x.
+			return x, true
+		}
+		if isZero(yc, yi) { // x&0 -> 0; y is that zero constant.
+			return y, true
+		}
+		if isZero(xc, xi) {
+			return x, true
+		}
+	}
+	return ValueInvalid, false
 }
 
 // passSortSuccessors sorts the successors of each block in the natural program order.
