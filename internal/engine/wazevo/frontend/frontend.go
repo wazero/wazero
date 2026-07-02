@@ -46,11 +46,15 @@ type Compiler struct {
 	memoryBaseVariable, memoryLenVariable ssa.Variable
 	needMemory                            bool
 	memoryShared                          bool
-	globalVariables                       []ssa.Variable
-	globalVariablesTypes                  []ssa.Type
-	mutableGlobalVariablesIndexes         []wasm.Index // index to ^.
-	needListener                          bool
-	needSourceOffsetInfo                  bool
+	// memoryMinSizeInBytes is the static minimum size of the memory in bytes
+	// (zero if there is no memory). Since memories never shrink, any access
+	// whose end is a constant within this bound can never be out of bounds.
+	memoryMinSizeInBytes          uint64
+	globalVariables               []ssa.Variable
+	globalVariablesTypes          []ssa.Type
+	mutableGlobalVariablesIndexes []wasm.Index // index to ^.
+	needListener                  bool
+	needSourceOffsetInfo          bool
 	// br is reused during lowering.
 	br            *bytes.Reader
 	loweringState loweringState
@@ -418,10 +422,14 @@ func (c *Compiler) declareWasmLocals() {
 func (c *Compiler) declareNecessaryVariables() {
 	if c.needMemory = c.m.MemorySection != nil; c.needMemory {
 		c.memoryShared = c.m.MemorySection.IsShared
+		c.memoryMinSizeInBytes = uint64(c.m.MemorySection.Min) * uint64(wasm.MemoryPageSize)
 	} else if c.needMemory = c.m.ImportMemoryCount > 0; c.needMemory {
 		for _, imp := range c.m.ImportSection {
 			if imp.Type == wasm.ExternTypeMemory {
 				c.memoryShared = imp.DescMem.IsShared
+				// The import's minimum is a type constraint on the provided
+				// memory, so it is a valid static lower bound as well.
+				c.memoryMinSizeInBytes = uint64(imp.DescMem.Min) * uint64(wasm.MemoryPageSize)
 				break
 			}
 		}
