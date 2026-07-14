@@ -4283,6 +4283,25 @@ func (c *Compiler) memOpSetup(baseAddr ssa.Value, constOffset, operationSizeInBy
 		}
 	}
 
+	// A constant base address whose access end lies within the memory's
+	// minimum size can never be out of bounds: memories only ever grow, so
+	// the declared minimum is a static lower bound on the current length.
+	if def := builder.InstructionOfValue(baseAddr); def != nil && def.Constant() {
+		if uint64(uint32(def.ConstantVal()))+ceil <= c.memoryMinSizeInBytes {
+			if !address.Valid() {
+				memBase := c.getMemoryBaseValue(false)
+				extBaseAddr := builder.AllocateInstruction().
+					AsUExtend(baseAddr, 32, 64).
+					Insert(builder).
+					Return()
+				address = builder.AllocateInstruction().
+					AsIadd(memBase, extBaseAddr).Insert(builder).Return()
+			}
+			c.recordKnownSafeBound(baseAddrID, ceil, address)
+			return
+		}
+	}
+
 	ceilConst := builder.AllocateInstruction()
 	ceilConst.AsIconst64(ceil)
 	builder.InsertInstruction(ceilConst)
