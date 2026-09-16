@@ -82,7 +82,7 @@ type RuntimeConfig interface {
 	//
 	// Those who wish to disable this, can like so:
 	//
-	//	r := wazero.NewRuntimeWithConfig(wazero.NewRuntimeConfig().WithDebugInfoEnabled(false)
+	//	r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().WithDebugInfoEnabled(false))
 	//
 	// When disabled, a stack trace message looks like:
 	//
@@ -119,8 +119,8 @@ type RuntimeConfig interface {
 	//
 	//	// Creates the new Cache and the runtime configuration with it.
 	//	cache := wazero.NewCompilationCache()
-	//	defer cache.Close()
-	//	config := wazero.NewRuntimeConfig().WithCompilationCache(c)
+	//	defer cache.Close(context.Background())
+	//	config := wazero.NewRuntimeConfig().WithCompilationCache(cache)
 	//
 	//	// Creates two runtimes while sharing compilation caches.
 	//	foo := wazero.NewRuntimeWithConfig(context.Background(), config)
@@ -574,7 +574,7 @@ type ModuleConfig interface {
 	//
 	// Here's an example that uses a custom clock:
 	//	moduleConfig = moduleConfig.
-	//		WithWalltime(func(context.Context) (sec int64, nsec int32) {
+	//		WithWalltime(func() (sec int64, nsec int32) {
 	//			return clock.walltime()
 	//		}, sys.ClockResolution(time.Microsecond.Nanoseconds()))
 	//
@@ -597,7 +597,7 @@ type ModuleConfig interface {
 	//
 	// Here's an example that uses a custom clock:
 	//	moduleConfig = moduleConfig.
-	//		WithNanotime(func(context.Context) int64 {
+	//		WithNanotime(func() int64 {
 	//			return clock.nanotime()
 	//		}, sys.ClockResolution(time.Microsecond.Nanoseconds()))
 	//
