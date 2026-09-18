@@ -170,6 +170,9 @@ func runEHTests(t *testing.T, cfg wazero.RuntimeConfig) {
 	t.Run("exnref_set_in_try_body_survives_collection", func(t *testing.T) {
 		testEHExnrefSetInTryBodySurvivesCollection(t, cfg)
 	})
+	t.Run("locals_after_callee_catch", func(t *testing.T) {
+		testEHLocalsAfterCalleeCatch(t, cfg)
+	})
 	t.Run("listeners_abort_unwound_frames", func(t *testing.T) {
 		testEHListenersAbortUnwoundFrames(t, cfg)
 	})
@@ -1065,9 +1068,6 @@ func testEHPlainCatchHoldsNothingPerThrow(t *testing.T, cfg wazero.RuntimeConfig
 // runs, but nothing else keeps it: it was made after the try_table's stack was saved, and
 // the normal path never reaches a use of it. In wazevo that leaves the locals save area as
 // the only place naming it.
-//
-// $make has no locals: a callee that catches with locals of its own leaves wazevo's locals
-// save area pointer on its own save area, which is a different bug.
 func testEHExnrefSetInTryBodySurvivesCollection(t *testing.T, cfg wazero.RuntimeConfig) {
 	ctx := context.Background()
 	r := wazero.NewRuntimeWithConfig(ctx, cfg)
@@ -1086,18 +1086,18 @@ func testEHExnrefSetInTryBodySurvivesCollection(t *testing.T, cfg wazero.Runtime
 	code[makeExn] = wasm.Code{Body: []byte{
 		wasm.OpcodeBlock, byte(exnref),
 		wasm.OpcodeTryTable, 0x40, 0x01, wasm.CatchKindCatchAllRef, 0x00,
-		wasm.OpcodeI32Const, 42, wasm.OpcodeThrow, 0x00,
+		wasm.OpcodeLocalGet, 0x00, wasm.OpcodeThrow, 0x00,
 		wasm.OpcodeEnd, wasm.OpcodeUnreachable, wasm.OpcodeEnd,
 		wasm.OpcodeEnd,
 	}}
-	code[makeDeep].LocalTypes, code[makeDeep].Body = ehDeepFrame(0x00, wasm.OpcodeCall, makeExn)
+	code[makeDeep].LocalTypes, code[makeDeep].Body = ehDeepFrame(0x00, wasm.OpcodeLocalGet, 0x00, wasm.OpcodeCall, makeExn)
 	code[payload] = wasm.Code{Body: ehPayloadBody}
 	code[run] = wasm.Code{
 		LocalTypes: []wasm.ValueType{exnref},
 		Body: []byte{
 			wasm.OpcodeBlock, 0x40,
 			wasm.OpcodeTryTable, 0x40, 0x01, wasm.CatchKindCatchAll, 0x00,
-			wasm.OpcodeI32Const, 0x01, wasm.OpcodeCall, makeDeep, wasm.OpcodeLocalSet, 0x00,
+			wasm.OpcodeI32Const, 42, wasm.OpcodeCall, makeDeep, wasm.OpcodeLocalSet, 0x00,
 			wasm.OpcodeCall, thrower,
 			wasm.OpcodeUnreachable,
 			wasm.OpcodeEnd, wasm.OpcodeUnreachable, wasm.OpcodeEnd,
@@ -1108,14 +1108,13 @@ func testEHExnrefSetInTryBodySurvivesCollection(t *testing.T, cfg wazero.Runtime
 	m := &wasm.Module{
 		TypeSection: []wasm.FunctionType{
 			{Params: []wasm.ValueType{i32}},                                    // 0: the tag
-			{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{exnref}}, // 1: $makeDeep
+			{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{exnref}}, // 1: $make, $makeDeep
 			{Params: []wasm.ValueType{exnref}, Results: []wasm.ValueType{i32}}, // 2: $payload
 			{Results: []wasm.ValueType{i32}},                                   // 3: $run
 			{},                                                                 // 4: $thrower
-			{Results: []wasm.ValueType{exnref}},                                // 5: $make
 		},
 		TagSection:      []wasm.Tag{{Type: 0}},
-		FunctionSection: []wasm.Index{4, 5, 1, 2, 3},
+		FunctionSection: []wasm.Index{4, 1, 1, 2, 3},
 		ExportSection:   []wasm.Export{{Type: wasm.ExternTypeFunc, Name: "run", Index: run}},
 		CodeSection:     code,
 	}
@@ -1125,6 +1124,88 @@ func testEHExnrefSetInTryBodySurvivesCollection(t *testing.T, cfg wazero.Runtime
 	res, err := mod.ExportedFunction("run").Call(ctx)
 	require.NoError(t, err)
 	require.Equal(t, int32(42), api.DecodeI32(res[0]))
+}
+
+// testEHLocalsAfterCalleeCatch sets a local inside a try body after calling a function that
+// catches an exception of its own, then throws, and the handler returns the local. The
+// callee's try_table has a local of its own to save, so its catch must leave that try_table
+// the way any other exit does: the caller's local.set has to land where the caller's handler
+// reloads from.
+func testEHLocalsAfterCalleeCatch(t *testing.T, cfg wazero.RuntimeConfig) {
+	const (
+		thrower = iota
+		catchesOwn
+		run
+	)
+	// catchesOwn (param i32) (result i32) catches its own throw and returns its param.
+	catchesOwnBody := []byte{
+		wasm.OpcodeBlock, 0x40,
+		wasm.OpcodeTryTable, 0x40, 0x01, wasm.CatchKindCatchAll, 0x00,
+		wasm.OpcodeCall, thrower,
+		wasm.OpcodeEnd, wasm.OpcodeEnd,
+		wasm.OpcodeLocalGet, 0x00, wasm.OpcodeEnd,
+	}
+	for _, tc := range []struct {
+		name string
+		// body runs inside the caller's try_table, after the call to catchesOwn. It sets
+		// local 0 to 42, then throws.
+		body []byte
+	}{
+		{
+			name: "set in the same try body",
+			body: []byte{
+				wasm.OpcodeI32Const, 42, wasm.OpcodeLocalSet, 0x00,
+				wasm.OpcodeCall, thrower,
+			},
+		},
+		{
+			// A try_table nested in the same function shares the save area of the one
+			// around it, rather than naming its own.
+			name: "set in a nested try body",
+			body: []byte{
+				wasm.OpcodeBlock, 0x40,
+				wasm.OpcodeTryTable, 0x40, 0x01, wasm.CatchKindCatchAll, 0x00,
+				wasm.OpcodeI32Const, 42, wasm.OpcodeLocalSet, 0x00,
+				wasm.OpcodeCall, thrower,
+				wasm.OpcodeEnd, wasm.OpcodeEnd,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			r := wazero.NewRuntimeWithConfig(ctx, cfg)
+			defer r.Close(ctx)
+
+			body := []byte{
+				wasm.OpcodeBlock, 0x40,
+				wasm.OpcodeTryTable, 0x40, 0x01, wasm.CatchKindCatchAll, 0x00,
+				wasm.OpcodeI32Const, 7, wasm.OpcodeCall, catchesOwn, wasm.OpcodeDrop,
+			}
+			body = append(body, tc.body...)
+			body = append(body,
+				wasm.OpcodeEnd, wasm.OpcodeEnd,
+				wasm.OpcodeLocalGet, 0x00, wasm.OpcodeEnd)
+
+			i32 := []wasm.ValueType{wasm.ValueTypeI32}
+			m := &wasm.Module{
+				TypeSection:     []wasm.FunctionType{{}, {Params: i32, Results: i32}, {Results: i32}},
+				TagSection:      []wasm.Tag{{Type: 0}},
+				FunctionSection: []wasm.Index{0, 1, 2},
+				ExportSection:   []wasm.Export{{Type: wasm.ExternTypeFunc, Name: "run", Index: run}},
+				CodeSection: []wasm.Code{
+					{Body: []byte{wasm.OpcodeThrow, 0x00, wasm.OpcodeEnd}},
+					{Body: catchesOwnBody},
+					{LocalTypes: i32, Body: body},
+				},
+			}
+
+			mod, err := r.Instantiate(ctx, encodeModule(m))
+			require.NoError(t, err)
+			res, err := mod.ExportedFunction("run").Call(ctx)
+			require.NoError(t, err)
+			require.Equal(t, int32(42), api.DecodeI32(res[0]))
+		})
+	}
 }
 
 // ehDeepFrameValues is how many i64s ehDeepFrame spills.

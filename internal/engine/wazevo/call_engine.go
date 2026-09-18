@@ -824,8 +824,10 @@ func (c *callEngine) doHandleException(ctx context.Context, exn *wasm.Exception)
 				// the nearest enclosing one (same-function reuse).
 				c.restoreLocalsSaveAreaPtr(i)
 
-				// Pop all handlers at and above this one.
-				c.tryHandlers = c.tryHandlers[:i]
+				// Pop the handlers above this one: the exception unwound their try_tables.
+				// This one stays until its dispatch stub, which is still inside the try_table,
+				// has reloaded the locals from its save area and leaves it like any other exit.
+				c.tryHandlers = c.tryHandlers[:i+1]
 
 				// Restore the cloned stack (like snapshot.doRestore).
 				spp := *(**uint64)(unsafe.Pointer(&h.sp))

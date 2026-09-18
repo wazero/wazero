@@ -3713,6 +3713,10 @@ func (c *Compiler) lowerCurrentOpcode() {
 				builder.SetCurrentBlock(handlerBlk)
 				c.reloadAfterCall()
 				c.reloadLocalsFromSaveArea()
+				// The handler block is the try_table's exit on this path, so it leaves it,
+				// but only after the reload: leaving moves the locals save area pointer off
+				// this try_table's save area.
+				c.emitTryTableLeave()
 
 				// Resolve the wasm target label.
 				targetBlk, _ := state.brTargetArgNumFor(cc.labelIdx)
