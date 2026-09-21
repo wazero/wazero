@@ -272,6 +272,12 @@ format:
 	@go run $(gosimports) -local github.com/tetratelabs/ -w $(shell find . -name '*.go' -type f)
 	@go run $(asmfmt) -w $(shell find . -name '*.s' -type f)
 
+# Requires Go 1.26+. Keep the analyzer list explicit so new Go releases do not
+# implicitly enable additional modernization rules.
+.PHONY: check.modernize
+check.modernize:
+	@go fix -diff -minmax ./...
+
 .PHONY: check  # Pre-flight check for pull requests
 check:
 # The following checks help ensure our platform-specific code used for system
