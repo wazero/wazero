@@ -582,7 +582,7 @@ func (f *logScopesFlag) String() string {
 }
 
 func (f *logScopesFlag) Set(input string) error {
-	for _, s := range strings.Split(input, ",") {
+	for s := range strings.SplitSeq(input, ",") {
 		switch s {
 		case "":
 			continue
