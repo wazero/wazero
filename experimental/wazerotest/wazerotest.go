@@ -371,10 +371,7 @@ func (f *Function) Definition() api.FunctionDefinition {
 }
 
 func (f *Function) Call(ctx context.Context, params ...uint64) ([]uint64, error) {
-	stackLen := len(f.ParamTypes)
-	if stackLen < len(f.ResultTypes) {
-		stackLen = len(f.ResultTypes)
-	}
+	stackLen := max(len(f.ParamTypes), len(f.ResultTypes))
 	stack := make([]uint64, stackLen)
 	copy(stack, params)
 	err := f.CallWithStack(ctx, stack)
