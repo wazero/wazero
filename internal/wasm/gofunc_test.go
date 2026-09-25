@@ -221,10 +221,7 @@ func Test_callGoFunc(t *testing.T) {
 			require.NoError(t, err)
 
 			resultLen := len(tc.expectedResults)
-			stackLen := len(tc.inputParams)
-			if resultLen > stackLen {
-				stackLen = resultLen
-			}
+			stackLen := max(resultLen, len(tc.inputParams))
 			stack := make([]uint64, stackLen)
 			copy(stack, tc.inputParams)
 

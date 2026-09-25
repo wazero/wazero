@@ -7,6 +7,18 @@ We welcome contributions from the community. Please read the following guideline
 - To ensure your change passes format checks, run `make check`. To format your files, you can run `make format`.
 - We follow standard Go table-driven tests and use an internal [testing library](./internal/testing/require) to assert correctness. To verify all tests pass, you can run `make test`.
 
+### Modernization
+
+Run `make check.modernize` with Go 1.26 or newer to check the selected modernization
+rules in the root module. The check prints suggested changes without modifying
+files and fails if any are needed. CI runs it separately from `make check`; building and testing
+wazero still supports the minimum Go version in `go.mod`.
+
+Only the `minmax` analyzer is enabled. To apply its suggestions, run
+`go fix -minmax ./...`, review the changes, and run `make test`. Add more analyzers
+explicitly in the Makefile only after reviewing and resolving their existing
+findings. Running all `go fix` analyzers is not required.
+
 ## DCO
 
 We require DCO signoff line in every commit to this repo.

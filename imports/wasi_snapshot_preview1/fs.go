@@ -979,11 +979,7 @@ func maxDirents(dirents []experimentalsys.Dirent, bufLen uint32) (bufToWrite uin
 			// we need to write DirentSize(24) + 4096 bytes to write the entry.
 			// In this case, we only write up to DirentSize(24) to allow the
 			// caller to resize.
-			if lenRemaining >= wasip1.DirentSize {
-				truncatedLen = wasip1.DirentSize
-			} else {
-				truncatedLen = lenRemaining
-			}
+			truncatedLen = min(lenRemaining, wasip1.DirentSize)
 			bufToWrite += truncatedLen
 			break
 		}
