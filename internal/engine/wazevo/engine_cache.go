@@ -1,6 +1,7 @@
 package wazevo
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -202,14 +203,17 @@ func serializeCompiledModule(wazeroVersion string, cm *compiledModule) io.Reader
 	return bytes.NewReader(buf.Bytes())
 }
 
-func deserializeCompiledModule(wazeroVersion string, reader io.ReadCloser) (cm *compiledModule, staleCache bool, err error) {
-	defer reader.Close()
+func deserializeCompiledModule(wazeroVersion string, rc io.ReadCloser) (cm *compiledModule, staleCache bool, err error) {
+	defer rc.Close()
+	// The entry is decoded in many small fields, so buffer it rather than
+	// issuing one read per field against the underlying cache file.
+	reader := bufio.NewReader(rc)
 	cacheHeaderSize := len(magic) + 1 /* version size */ + len(wazeroVersion) + 4 /* number of functions */
 
 	// Read the header before the native code.
 	header := make([]byte, cacheHeaderSize)
-	n, err := reader.Read(header)
-	if err != nil {
+	n, err := io.ReadFull(reader, header)
+	if err != nil && err != io.ErrUnexpectedEOF {
 		return nil, false, fmt.Errorf("compilationcache: error reading header: %v", err)
 	}
 
@@ -350,11 +354,10 @@ func deserializeCompiledModule(wazeroVersion string, reader io.ReadCloser) (cm *
 // given array as a buffer. This returns io.EOF if less than 8 bytes were read.
 func readUint64(reader io.Reader, b *[8]byte) (uint64, error) {
 	s := b[0:8]
-	n, err := reader.Read(s)
-	if err != nil {
-		return 0, err
-	} else if n < 8 { // more strict than reader.Read
+	if _, err := io.ReadFull(reader, s); err == io.ErrUnexpectedEOF {
 		return 0, io.EOF
+	} else if err != nil {
+		return 0, err
 	}
 
 	// Read the u64 from the underlying buffer.
