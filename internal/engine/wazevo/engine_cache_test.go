@@ -6,6 +6,7 @@ import (
 	"hash/crc32"
 	"io"
 	"testing"
+	"testing/iotest"
 
 	"github.com/tetratelabs/wazero/internal/testing/require"
 	"github.com/tetratelabs/wazero/internal/u32"
@@ -299,19 +300,34 @@ func TestDeserializeCompiledModule(t *testing.T) {
 		},
 	}
 
+	// A cache may return a reader that fills less than each requested field,
+	// so every case must decode the same way one byte at a time.
+	readers := []struct {
+		name string
+		wrap func(io.Reader) io.Reader
+	}{
+		{name: "full", wrap: func(r io.Reader) io.Reader { return r }},
+		{name: "one byte", wrap: iotest.OneByteReader},
+	}
+
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			cm, staleCache, err := deserializeCompiledModule(testVersion, io.NopCloser(bytes.NewReader(tc.in)))
+			for _, r := range readers {
+				r := r
+				t.Run(r.name, func(t *testing.T) {
+					cm, staleCache, err := deserializeCompiledModule(testVersion, io.NopCloser(r.wrap(bytes.NewReader(tc.in))))
 
-			if tc.expErr != "" {
-				require.EqualError(t, err, tc.expErr)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tc.expCompiledModule, cm)
+					if tc.expErr != "" {
+						require.EqualError(t, err, tc.expErr)
+					} else {
+						require.NoError(t, err)
+						require.Equal(t, tc.expCompiledModule, cm)
+					}
+
+					require.Equal(t, tc.expStaleCache, staleCache)
+				})
 			}
-
-			require.Equal(t, tc.expStaleCache, staleCache)
 		})
 	}
 }
