@@ -78,7 +78,7 @@ your use case (ex which language you are using to compile, a.k.a. target Wasm).
 Notes:
  * AssemblyScript has its own ABI which can optionally use [wasi-shim][17]
  * C (via clang) supports the maximum WASI functions due to [wasi-libc][16]
- * Rust supports WASI via its [wasm32-wasi][18] target.
+ * Rust supports WASI via its [wasm32-wasip1][18] target.
 
 <details><summary>Click to see the full list of supported WASI functions</summary>
 <p>

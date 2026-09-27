@@ -18,7 +18,7 @@ e.g. If your source is in Go, you might compile it with TinyGo.
 Below are notes wazero contributed so far, in alphabetical order by language.
 
 * [TinyGo]({{< relref "/tinygo.md" >}}) e.g. `tinygo build -o X.wasm -target=wasi X.go`
-* [Rust]({{< relref "/rust.md" >}}) e.g. `rustc -o X.wasm --target wasm32-wasi X.rs`
+* [Rust]({{< relref "/rust.md" >}}) e.g. `rustc -o X.wasm --target wasm32-wasip1 X.rs`
 * [Zig]({{< relref "/zig.md" >}}) e.g. `zig build-exe X.zig -target wasm32-wasi`
 
 wazero is a runtime that embeds in Go applications, not a web browser. As

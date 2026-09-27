@@ -9,11 +9,11 @@ architecture-specific binaries through three targets:
 
 * `wasm32-unknown-emscripten`: mostly for browser (JavaScript) use.
 * `wasm32-unknown-unknown`: for standalone use in or outside the browser.
-* `wasm32-wasi`: for use outside the browser.
+* `wasm32-wasip1`: for use outside the browser.
 
 This document is maintained by wazero, which is a WebAssembly runtime that
 embeds in Go applications. Hence, our notes focus on targets used outside the
-browser, tested by wazero: `wasm32-unknown-unknown` and `wasm32-wasi`.
+browser, tested by wazero: `wasm32-unknown-unknown` and `wasm32-wasip1`.
 
 This document also focuses on `rustc` as opposed to `cargo`, for precision and
 brevity.
@@ -22,7 +22,7 @@ brevity.
 
 When Rust compiles a `%.rs` file with a `wasm32-*` target, the output `%.wasm`
 depends on a subset of features in the [WebAssembly 1.0 Core specification]
-({{< ref "/specs#core" >}}). The [wasm32-wasi][15] target depends on [WASI]
+({{< ref "/specs#core" >}}). The [wasm32-wasip1][15] target depends on [WASI]
 ({{< ref "/specs#wasi" >}}) host functions as well.
 
 Unlike some compilers, Rust also supports importing custom host functions and
@@ -156,10 +156,10 @@ a stack-based virtual machine specification, so operates at a lower level than
 an operating system.
 
 For functionality the operating system would otherwise provide, you must use
-the `wasm32-wasi` target. This imports host functions in
+the `wasm32-wasip1` target. This imports host functions in
 [WASI]({{< ref "/specs#wasi" >}}).
 
-For example, `rustc -o hello.wasm --target wasm32-wasi hello.rs` compiles the
+For example, `rustc -o hello.wasm --target wasm32-wasip1 hello.rs` compiles the
 below `main` function into a WASI function exported as `_start`.
 ```rust
 fn main() {
@@ -196,9 +196,6 @@ Source changes:
 Those using cargo should also use the `--release` flag, which corresponds to
 `rustc -C debuginfo=0 -C opt-level=3`.
 
-Those using the `wasm32-wasi` target should consider the [cargo-wasi][14] crate
-as it dramatically reduces Wasm size.
-
 ### Performance
 
 Those with runtime performance constraints can change their source or set
@@ -226,5 +223,4 @@ source code may reduce binary size further.
 [11]: https://github.com/tetratelabs/wazero/tree/main/imports/wasi_snapshot_preview1/example/testdata/cargo-wasi
 [12]: https://github.com/rustwasm/wee_alloc
 [13]: https://doc.rust-lang.org/cargo/reference/profiles.html#profile-settings
-[14]: https://github.com/bytecodealliance/cargo-wasi
 [15]: https://github.com/rust-lang/rust/tree/1.68.0/library/std/src/sys/wasi
