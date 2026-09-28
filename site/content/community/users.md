@@ -78,6 +78,7 @@ considering their efforts before starting your own!
 | Name          | Description                              |
 |:--------------|------------------------------------------|
 | [wescale][44] | a database proxy that supports OnlineDDL |
+| [Renart](https://github.com/renart-data/renart) | Data platform that embeds Python type checking in Go via wazero |
 
 ### Transpilation
 | Name              | Description                                 |
