@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/tetratelabs/wazero/api"
+	"github.com/tetratelabs/wazero/experimental"
 	"github.com/tetratelabs/wazero/internal/testing/require"
 	"github.com/tetratelabs/wazero/internal/wasm"
 )
@@ -405,6 +406,45 @@ func TestInterpreter_Compile(t *testing.T) {
 		_, ok := e.compiledFunctions[errModule.ID]
 		require.False(t, ok)
 	})
+	t.Run("fail lazy", func(t *testing.T) {
+		e := NewEngine(testCtx, api.CoreFeaturesV1, nil).(*engine)
+
+		errModule := &wasm.Module{
+			TypeSection:     []wasm.FunctionType{{}},
+			FunctionSection: []wasm.Index{0, 0, 0},
+			CodeSection: []wasm.Code{
+				{Body: []byte{wasm.OpcodeEnd}},
+				{Body: []byte{wasm.OpcodeEnd}},
+				{Body: []byte{wasm.OpcodeCall}}, // Call instruction without immediate for call target index is invalid and should fail to compile.
+			},
+			ID: wasm.ModuleID{},
+		}
+
+		// Function bodies are lowered on first call, so compilation succeeds.
+		err := e.CompileModule(experimental.WithInterpreterLazyLowering(testCtx), errModule, nil, false)
+		require.NoError(t, err)
+		funcs, ok := e.getCompiledFunctions(errModule, false)
+		require.True(t, ok)
+
+		lower := func(f *compiledFunction) (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					err = r.(error)
+				}
+			}()
+			f.ensureLowered()
+			return nil
+		}
+		require.NoError(t, lower(&funcs[0]))
+		require.NoError(t, lower(&funcs[1]))
+
+		// The lowering error must be raised on every call, not only the first one,
+		// and the body must never be set.
+		const expErr = "failed to lower func[.$2] to interpreterir: handling instruction: apply stack failed for call: reading immediates: EOF"
+		require.EqualError(t, lower(&funcs[2]), expErr)
+		require.EqualError(t, lower(&funcs[2]), expErr)
+		require.Nil(t, funcs[2].body)
+	})
 	t.Run("ok", func(t *testing.T) {
 		e := NewEngine(testCtx, api.CoreFeaturesV1, nil).(*engine)
 
@@ -425,9 +465,42 @@ func TestInterpreter_Compile(t *testing.T) {
 		compiled, ok := e.compiledFunctions[okModule.ID]
 		require.True(t, ok)
 		require.Equal(t, len(okModule.FunctionSection), len(compiled.funcs))
+		// Eager by default: every body is lowered by CompileModule.
+		for i := range compiled.funcs {
+			require.NotNil(t, compiled.funcs[i].body)
+			require.Nil(t, compiled.funcs[i].lazy)
+		}
 
 		_, ok = e.compiledFunctions[okModule.ID]
 		require.True(t, ok)
+	})
+	t.Run("ok lazy", func(t *testing.T) {
+		e := NewEngine(testCtx, api.CoreFeaturesV1, nil).(*engine)
+
+		okModule := &wasm.Module{
+			TypeSection:     []wasm.FunctionType{{}},
+			FunctionSection: []wasm.Index{0, 0, 0},
+			CodeSection: []wasm.Code{
+				{Body: []byte{wasm.OpcodeEnd}},
+				{Body: []byte{wasm.OpcodeEnd}},
+				{Body: []byte{wasm.OpcodeEnd}},
+			},
+			ID: wasm.ModuleID{},
+		}
+		err := e.CompileModule(experimental.WithInterpreterLazyLowering(testCtx), okModule, nil, false)
+		require.NoError(t, err)
+
+		funcs, ok := e.getCompiledFunctions(okModule, false)
+		require.True(t, ok)
+		for i := range funcs {
+			require.Nil(t, funcs[i].body)
+		}
+
+		// Only the called function is lowered.
+		funcs[1].ensureLowered()
+		require.Nil(t, funcs[0].body)
+		require.NotNil(t, funcs[1].body)
+		require.Nil(t, funcs[2].body)
 	})
 }
 
@@ -445,7 +518,7 @@ func TestEngine_CachedCompiledFunctionPerModule(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, len(exp), len(actual))
 	for i := range actual {
-		require.Equal(t, exp[i], actual[i])
+		require.Equal(t, exp[i].body, actual[i].body)
 	}
 
 	e.deleteCompiledFunctions(m)
