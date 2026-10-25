@@ -73,11 +73,11 @@ func (e *engine) getCompiledModule(module *wasm.Module, listeners []experimental
 				cm.listenerAfterTrampolines[i] = after
 			}
 		}
-		e.addCompiledModuleToMemory(module, cm)
 		ssaBuilder := ssa.NewBuilder()
 		machine := newMachine()
 		be := backend.NewCompiler(context.Background(), machine, ssaBuilder)
 		cm.executables.compileEntryPreambles(module, machine, be)
+		e.addCompiledModuleToMemory(module, cm)
 
 		// Set the finalizer.
 		e.setFinalizer(cm.executables, executablesFinalizer)

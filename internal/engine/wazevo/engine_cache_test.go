@@ -2,12 +2,16 @@ package wazevo
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
+	"fmt"
 	"hash/crc32"
 	"io"
+	"sync"
 	"testing"
 	"testing/iotest"
 
+	"github.com/tetratelabs/wazero/internal/filecache"
 	"github.com/tetratelabs/wazero/internal/testing/require"
 	"github.com/tetratelabs/wazero/internal/u32"
 	"github.com/tetratelabs/wazero/internal/u64"
@@ -341,4 +345,131 @@ func Test_fileCacheKey(t *testing.T) {
 	result := fileCacheKey(m)
 	require.Equal(t, original, m.ID)
 	require.NotEqual(t, original, result)
+}
+
+func TestEngine_getCompiledModule_InitializesEntryPreambles(t *testing.T) {
+	ctx := context.Background()
+	fc := filecache.New(t.TempDir())
+
+	m := &wasm.Module{
+		TypeSection: []wasm.FunctionType{
+			{},
+			{Params: []wasm.ValueType{wasm.ValueTypeI32}, Results: []wasm.ValueType{wasm.ValueTypeI32}},
+		},
+		FunctionSection: []wasm.Index{0, 1},
+		CodeSection: []wasm.Code{
+			{Body: []byte{wasm.OpcodeEnd}},
+			{Body: []byte{wasm.OpcodeLocalGet, 0, wasm.OpcodeEnd}},
+		},
+		ID: wasm.ModuleID{1, 2, 3, 4, 5},
+	}
+
+	e1 := NewEngine(ctx, 0, fc).(*engine)
+	err := e1.CompileModule(ctx, m, nil, false)
+	require.NoError(t, err)
+
+	// Second engine with the same file cache, but empty in-memory table.
+	e2 := NewEngine(ctx, 0, fc).(*engine)
+	cm, ok, err := e2.getCompiledModule(m, nil, false)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NotNil(t, cm)
+
+	// Preambles must be compiled before or upon returning from getCompiledModule.
+	require.Equal(t, len(m.TypeSection), len(cm.entryPreamblesPtrs))
+	for i, ptr := range cm.entryPreamblesPtrs {
+		require.NotNil(t, ptr, i)
+	}
+
+	// Module published to memory must also have preambles initialized.
+	inMem, ok := e2.getCompiledModuleFromMemory(m, false)
+	require.True(t, ok)
+	require.Equal(t, len(m.TypeSection), len(inMem.entryPreamblesPtrs))
+	for i, ptr := range inMem.entryPreamblesPtrs {
+		require.NotNil(t, ptr, i)
+	}
+
+	// Instantiating module engine and resolving functions must not panic.
+	mi := &wasm.ModuleInstance{
+		Source:  m,
+		TypeIDs: make([]wasm.FunctionTypeID, len(m.TypeSection)),
+	}
+	me, err := e2.NewModuleEngine(m, mi)
+	require.NoError(t, err)
+	fn0 := me.NewFunction(0)
+	require.NotNil(t, fn0)
+	fn1 := me.NewFunction(1)
+	require.NotNil(t, fn1)
+}
+
+func TestEngine_getCompiledModule_ConcurrentPreamblesRace(t *testing.T) {
+	ctx := context.Background()
+	fc := filecache.New(t.TempDir())
+
+	m := &wasm.Module{
+		TypeSection: []wasm.FunctionType{
+			{},
+			{Params: []wasm.ValueType{wasm.ValueTypeI32}, Results: []wasm.ValueType{wasm.ValueTypeI32}},
+			{Params: []wasm.ValueType{wasm.ValueTypeI64}, Results: []wasm.ValueType{wasm.ValueTypeI64}},
+		},
+		FunctionSection: []wasm.Index{0, 1, 2},
+		CodeSection: []wasm.Code{
+			{Body: []byte{wasm.OpcodeEnd}},
+			{Body: []byte{wasm.OpcodeLocalGet, 0, wasm.OpcodeEnd}},
+			{Body: []byte{wasm.OpcodeLocalGet, 0, wasm.OpcodeEnd}},
+		},
+		ID: wasm.ModuleID{10, 20, 30, 40, 50},
+	}
+
+	// Populate file cache.
+	e1 := NewEngine(ctx, 0, fc).(*engine)
+	err := e1.CompileModule(ctx, m, nil, false)
+	require.NoError(t, err)
+
+	// Engine with empty in-memory table.
+	e2 := NewEngine(ctx, 0, fc).(*engine)
+
+	const goroutines = 30
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	start := make(chan struct{})
+
+	errs := make(chan error, goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			<-start
+
+			if err := e2.CompileModule(ctx, m, nil, false); err != nil {
+				errs <- err
+				return
+			}
+
+			mi := &wasm.ModuleInstance{
+				Source:  m,
+				TypeIDs: make([]wasm.FunctionTypeID, len(m.TypeSection)),
+			}
+			me, err := e2.NewModuleEngine(m, mi)
+			if err != nil {
+				errs <- err
+				return
+			}
+
+			for fidx := wasm.Index(0); fidx < wasm.Index(len(m.FunctionSection)); fidx++ {
+				fn := me.NewFunction(fidx)
+				if fn == nil {
+					errs <- fmt.Errorf("nil function %d", fidx)
+					return
+				}
+			}
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
 }
