@@ -140,6 +140,17 @@ func Test_pollOneoff_Errors(t *testing.T) {
 `,
 		},
 		{
+			name:           "nsubscriptions * 48 overflows uint32",
+			out:            128,        // past in
+			resultNevents:  512,        // past out
+			nsubscriptions: 0x20000001, // * 48 wraps around to 48
+			expectedErrno:  wasip1.ErrnoFault,
+			expectedLog: `
+==> wasi_snapshot_preview1.poll_oneoff(in=0,out=128,nsubscriptions=536870913)
+<== (nevents=,errno=EFAULT)
+`,
+		},
+		{
 			name:          "nsubscriptions zero",
 			out:           128, // past in
 			resultNevents: 512, // past out
