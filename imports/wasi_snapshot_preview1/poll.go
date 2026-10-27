@@ -2,6 +2,7 @@ package wasi_snapshot_preview1
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/tetratelabs/wazero/api"
@@ -60,18 +61,24 @@ func pollOneoffFn(_ context.Context, mod api.Module, params []uint64) sys.Errno 
 
 	mem := mod.Memory()
 
-	// Ensure capacity prior to the read loop to reduce error handling.
-	inBuf, ok := mem.Read(in, nsubscriptions*48)
+	// Ensure capacity prior to the read loop to reduce error handling. The
+	// sizes are computed in 64-bit so that a large nsubscriptions can't wrap
+	// around and yield a buffer smaller than the loop below expects.
+	inSize := uint64(nsubscriptions) * 48
+	outSize := uint64(nsubscriptions) * 32
+	if inSize > math.MaxUint32 || outSize > math.MaxUint32 {
+		return sys.EFAULT
+	}
+	inBuf, ok := mem.Read(in, uint32(inSize))
 	if !ok {
 		return sys.EFAULT
 	}
-	outBuf, ok := mem.Read(out, nsubscriptions*32)
+	outBuf, ok := mem.Read(out, uint32(outSize))
+	if !ok {
+		return sys.EFAULT
+	}
 	// zero-out all buffer before writing
 	clear(outBuf)
-
-	if !ok {
-		return sys.EFAULT
-	}
 
 	// Eagerly write the number of events which will equal subscriptions unless
 	// there's a fault in parsing (not processing).
