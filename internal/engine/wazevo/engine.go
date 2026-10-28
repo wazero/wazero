@@ -749,6 +749,18 @@ func (e *engine) NewModuleEngine(m *wasm.Module, mi *wasm.ModuleInstance) (wasm.
 			me.opaquePtr = &opaque[0]
 		}
 	}
+
+	// Initialize references before globals and elements can use them, and keep
+	// their addresses stable without allocating or mutating state during execution.
+	me.localFunctionInstances = make([]functionInstance, len(m.FunctionSection))
+	for i, typeIndex := range m.FunctionSection {
+		me.localFunctionInstances[i] = functionInstance{
+			executable:             &compiled.executable[compiled.functionOffsets[i]],
+			moduleContextOpaquePtr: me.opaquePtr,
+			typeID:                 mi.TypeIDs[typeIndex],
+			indexInModule:          m.ImportFunctionCount + wasm.Index(i),
+		}
+	}
 	return me, nil
 }
 

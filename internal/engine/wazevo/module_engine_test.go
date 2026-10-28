@@ -151,6 +151,94 @@ func TestModuleEngine_setupOpaque(t *testing.T) {
 	}
 }
 
+func TestModuleEngine_FunctionInstanceReference(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		importedCount uint32
+		host          bool
+	}{
+		{name: "local"},
+		{name: "imported and local", importedCount: 2},
+		{name: "host", host: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := &wasm.Module{
+				ImportFunctionCount: tc.importedCount,
+				FunctionSection:     []wasm.Index{1, 0, 1},
+				IsHostModule:        tc.host,
+			}
+			compiled := &compiledModule{
+				executables:     &executables{executable: make([]byte, 32)},
+				functionOffsets: []int{0, 8, 16},
+				offsets:         wazevoapi.NewModuleContextOffsetData(source, false),
+			}
+			e := &engine{compiledModules: map[wasm.ModuleID]*compiledModuleWithCount{
+				source.ID: {compiledModule: compiled},
+			}}
+			newModuleEngine := func() *moduleEngine {
+				mi := &wasm.ModuleInstance{Source: source, TypeIDs: []wasm.FunctionTypeID{11, 22}}
+				me, err := e.NewModuleEngine(source, mi)
+				require.NoError(t, err)
+				mi.Engine = me
+				return me.(*moduleEngine)
+			}
+			m, other := newModuleEngine(), newModuleEngine()
+
+			// References are also needed by globals and elements before DoneInstantiation.
+			refs := make([]wasm.Reference, int(tc.importedCount)+len(source.FunctionSection))
+			for i := range refs {
+				index := wasm.Index(i)
+				ref := m.FunctionInstanceReference(index)
+				refs[i] = ref
+				if index < tc.importedCount {
+					begin, _, _ := compiled.offsets.ImportedFunctionOffset(index)
+					require.Equal(t, uintptr(unsafe.Pointer(&m.opaque[begin])), ref)
+				} else {
+					localIndex := index - tc.importedCount
+					fi := wazevoapi.PtrFromUintptr[functionInstance](ref)
+					require.Equal(t, functionInstance{
+						executable:             &compiled.executable[compiled.functionOffsets[localIndex]],
+						moduleContextOpaquePtr: m.opaquePtr,
+						typeID:                 m.module.TypeIDs[source.FunctionSection[localIndex]],
+						indexInModule:          index,
+					}, *fi)
+				}
+				for j := 0; j < 100; j++ {
+					require.Equal(t, ref, m.FunctionInstanceReference(index))
+				}
+				// Instances sharing compiled code must not share function references.
+				require.NotEqual(t, ref, other.FunctionInstanceReference(index))
+				for _, previous := range refs[:i] {
+					require.NotEqual(t, previous, ref)
+				}
+			}
+			m.DoneInstantiation()
+			runtime.GC()
+			for i, ref := range refs {
+				require.Equal(t, ref, m.FunctionInstanceReference(wasm.Index(i)))
+			}
+			require.Equal(t, len(source.FunctionSection), len(m.localFunctionInstances))
+			require.Equal(t, float64(0), testing.AllocsPerRun(100, func() {
+				for i := range refs {
+					m.FunctionInstanceReference(wasm.Index(i))
+				}
+			}))
+
+			for i := 0; i < 8; i++ {
+				t.Run("concurrent_"+strconv.Itoa(i), func(t *testing.T) {
+					t.Parallel()
+					for j := 0; j < 100; j++ {
+						for index, ref := range refs {
+							require.Equal(t, ref, m.FunctionInstanceReference(wasm.Index(index)))
+						}
+					}
+				})
+			}
+			runtime.KeepAlive(other)
+		})
+	}
+}
+
 func TestModuleEngine_ResolveImportedFunction(t *testing.T) {
 	var op1, op2 byte = 0xaa, 0xbb
 	importing := &moduleEngine{

@@ -19,11 +19,12 @@ type (
 	// moduleEngine implements wasm.ModuleEngine.
 	moduleEngine struct {
 		// opaquePtr equals &opaque[0].
-		opaquePtr              *byte
-		parent                 *compiledModule
-		module                 *wasm.ModuleInstance
-		opaque                 moduleContextOpaque
-		localFunctionInstances []*functionInstance
+		opaquePtr *byte
+		parent    *compiledModule
+		module    *wasm.ModuleInstance
+		opaque    moduleContextOpaque
+		// localFunctionInstances is indexed by local function index and immutable after creation.
+		localFunctionInstances []functionInstance
 		importedFunctions      []importedFunction
 		listeners              []experimental.FunctionListener
 	}
@@ -326,18 +327,7 @@ func (m *moduleEngine) FunctionInstanceReference(funcIndex wasm.Index) wasm.Refe
 		return uintptr(unsafe.Pointer(&m.opaque[begin]))
 	}
 	localIndex := funcIndex - m.module.Source.ImportFunctionCount
-	p := m.parent
-	executable := &p.executable[p.functionOffsets[localIndex]]
-	typeID := m.module.TypeIDs[m.module.Source.FunctionSection[localIndex]]
-
-	lf := &functionInstance{
-		executable:             executable,
-		moduleContextOpaquePtr: m.opaquePtr,
-		typeID:                 typeID,
-		indexInModule:          funcIndex,
-	}
-	m.localFunctionInstances = append(m.localFunctionInstances, lf)
-	return uintptr(unsafe.Pointer(lf))
+	return uintptr(unsafe.Pointer(&m.localFunctionInstances[localIndex]))
 }
 
 // LookupFunction implements wasm.ModuleEngine.
