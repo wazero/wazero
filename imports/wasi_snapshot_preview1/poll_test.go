@@ -2,6 +2,7 @@ package wasi_snapshot_preview1_test
 
 import (
 	"io/fs"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -146,6 +147,50 @@ func Test_pollOneoff_Errors(t *testing.T) {
 			expectedErrno: wasip1.ErrnoInval,
 			expectedLog: `
 ==> wasi_snapshot_preview1.poll_oneoff(in=0,out=128,nsubscriptions=0)
+<== (nevents=,errno=EINVAL)
+`,
+		},
+		{
+			name:           "nsubscriptions subscription-size boundary exceeds memory",
+			out:            128,
+			resultNevents:  512,
+			nsubscriptions: math.MaxUint32 / 48,
+			expectedErrno:  wasip1.ErrnoFault,
+			expectedLog: `
+==> wasi_snapshot_preview1.poll_oneoff(in=0,out=128,nsubscriptions=89478485)
+<== (nevents=,errno=EFAULT)
+`,
+		},
+		{
+			name:           "nsubscriptions subscription-size overflow",
+			out:            128,
+			resultNevents:  512,
+			nsubscriptions: math.MaxUint32/48 + 1,
+			expectedErrno:  wasip1.ErrnoInval,
+			expectedLog: `
+==> wasi_snapshot_preview1.poll_oneoff(in=0,out=128,nsubscriptions=89478486)
+<== (nevents=,errno=EINVAL)
+`,
+		},
+		{
+			name:           "nsubscriptions multiplication overflow wrapped count",
+			out:            128,
+			resultNevents:  512,
+			nsubscriptions: 0x20000001,
+			expectedErrno:  wasip1.ErrnoInval,
+			expectedLog: `
+==> wasi_snapshot_preview1.poll_oneoff(in=0,out=128,nsubscriptions=536870913)
+<== (nevents=,errno=EINVAL)
+`,
+		},
+		{
+			name:           "nsubscriptions max uint32 overflow",
+			out:            128,
+			resultNevents:  512,
+			nsubscriptions: math.MaxUint32,
+			expectedErrno:  wasip1.ErrnoInval,
+			expectedLog: `
+==> wasi_snapshot_preview1.poll_oneoff(in=0,out=128,nsubscriptions=-1)
 <== (nevents=,errno=EINVAL)
 `,
 		},
@@ -930,4 +975,29 @@ func fdWriteSubFd(fd byte) []byte {
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, // pad to 32 bytes
 	}
+}
+
+// Test_pollOneoff_SubscriptionOverflow verifies that subscription counts
+// whose total buffer size overflows uint32 return EINVAL instead of
+// panicking on wrapped buffer reads.
+func Test_pollOneoff_SubscriptionOverflow(t *testing.T) {
+	mod, r, log := requireProxyModule(t, wazero.NewModuleConfig())
+	defer r.Close(testCtx)
+
+	in := uint32(64)
+	out := uint32(4096)
+	resultNevents := uint32(8192)
+	// 0x20000001 * 48 = 0x600000030 = 48 in uint32
+	// 0x20000001 * 32 = 0x400000020 = 32 in uint32
+	nsubscriptions := uint32(0x20000001)
+
+	maskMemory(t, mod, 16384)
+	mod.Memory().Write(in, fdWriteSubFd(byte(sys.FdStdout)))
+
+	requireErrnoResult(t, wasip1.ErrnoInval, mod, wasip1.PollOneoffName,
+		uint64(in), uint64(out), uint64(nsubscriptions), uint64(resultNevents))
+	require.Equal(t, `
+==> wasi_snapshot_preview1.poll_oneoff(in=64,out=4096,nsubscriptions=536870913)
+<== (nevents=,errno=EINVAL)
+`, "\n"+log.String())
 }
