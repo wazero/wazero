@@ -483,7 +483,7 @@ func (m *machine) resolveRelativeAddresses(ctx context.Context) {
 		}
 		if needRerun {
 			if wazevoapi.PerfMapEnabled {
-				wazevoapi.PerfMap.Clear()
+				wazevoapi.PerfMap.ClearFunction(fnIndex)
 			}
 		} else {
 			break

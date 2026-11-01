@@ -26,8 +26,10 @@ func init() {
 // Perfmap holds perfmap entries to be flushed into a perfmap file.
 type Perfmap struct {
 	entries []entry
-	mux     sync.Mutex
-	fh      *os.File
+	// entriesMux guards entries, which a module's compilation workers add to concurrently.
+	entriesMux sync.Mutex
+	mux        sync.Mutex
+	fh         *os.File
 }
 
 type entry struct {
@@ -52,12 +54,9 @@ func (f *Perfmap) Unlock() {
 // Note that the entries are not flushed into the perfmap file until Flush is called,
 // and the entries are module-scoped; Perfmap must be locked until Flush is called.
 func (f *Perfmap) AddModuleEntry(index int, offset int64, size uint64, name string) {
-	e := entry{index: index, offset: offset, size: size, name: name}
-	if f.entries == nil {
-		f.entries = []entry{e}
-		return
-	}
-	f.entries = append(f.entries, e)
+	f.entriesMux.Lock()
+	defer f.entriesMux.Unlock()
+	f.entries = append(f.entries, entry{index: index, offset: offset, size: size, name: name})
 }
 
 // Flush writes the perfmap entries into the perfmap file where the entries are adjusted by the given `addr` and `functionOffsets`.
@@ -78,9 +77,18 @@ func (f *Perfmap) Flush(addr uintptr, functionOffsets []int) {
 	f.entries = f.entries[:0]
 }
 
-// Clear clears the perfmap entries not yet flushed.
-func (f *Perfmap) Clear() {
-	f.entries = f.entries[:0]
+// ClearFunction drops the entries not yet flushed for the function at index, whose code is being laid out
+// again. The other functions' entries are kept, since a module's entries are flushed together.
+func (f *Perfmap) ClearFunction(index int) {
+	f.entriesMux.Lock()
+	defer f.entriesMux.Unlock()
+	kept := f.entries[:0]
+	for _, e := range f.entries {
+		if e.index != index {
+			kept = append(kept, e)
+		}
+	}
+	f.entries = kept
 }
 
 // AddEntry writes a perfmap entry directly into the perfmap file, not using the entries.
