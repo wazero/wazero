@@ -2,6 +2,7 @@ package wasm
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"math"
 	"testing"
@@ -1043,9 +1044,15 @@ func TestModule_declaredFunctionIndexes(t *testing.T) {
 }
 
 func TestModule_AssignModuleID(t *testing.T) {
-	getID := func(bin []byte, lsns []experimental.FunctionListener, withEnsureTermination bool) ModuleID {
+	getID := func(bin []byte, lsns []experimental.FunctionListener, withEnsureTermination bool, interval uint32) ModuleID {
+		if withEnsureTermination && interval == 0 {
+			interval = 1
+		}
+		if !withEnsureTermination {
+			interval = 0
+		}
 		m := Module{}
-		m.AssignModuleID(bin, lsns, withEnsureTermination)
+		m.AssignModuleID(bin, lsns, interval)
 		return m.ID
 	}
 
@@ -1056,6 +1063,7 @@ func TestModule_AssignModuleID(t *testing.T) {
 	for i, tc := range []struct {
 		bin                   []byte
 		withEnsureTermination bool
+		interval              uint32
 		listeners             []experimental.FunctionListener
 	}{
 		{bin: []byte{1, 2, 3}, withEnsureTermination: false},
@@ -1082,6 +1090,14 @@ func TestModule_AssignModuleID(t *testing.T) {
 		},
 		{bin: []byte{1, 2, 3, 4}, withEnsureTermination: false},
 		{bin: []byte{1, 2, 3, 4}, withEnsureTermination: true},
+		{bin: []byte{1, 2, 3, 4}, withEnsureTermination: true, interval: 2},
+		{bin: []byte{1, 2, 3, 4}, withEnsureTermination: true, interval: 4096},
+		{
+			bin:                   []byte{1, 2, 3, 4},
+			listeners:             []experimental.FunctionListener{ml},
+			withEnsureTermination: true,
+			interval:              4096,
+		},
 		{
 			bin:                   []byte{1, 2, 3, 4},
 			listeners:             []experimental.FunctionListener{ml},
@@ -1113,11 +1129,23 @@ func TestModule_AssignModuleID(t *testing.T) {
 			withEnsureTermination: false,
 		},
 	} {
-		id := getID(tc.bin, tc.listeners, tc.withEnsureTermination)
+		id := getID(tc.bin, tc.listeners, tc.withEnsureTermination, tc.interval)
 		_, exist := exists[id]
 		require.False(t, exist, i)
 		exists[id] = struct{}{}
 	}
+
+	t.Run("default interval keeps the ID", func(t *testing.T) {
+		// The interval of one generates the same code as before the interval was introduced, so it must not
+		// invalidate the existing cache entries.
+		bin := []byte{1, 2, 3}
+		h := sha256.New()
+		h.Write(bin)
+		h.Write([]byte{1})
+		var exp ModuleID
+		h.Sum(exp[:0])
+		require.Equal(t, exp, getID(bin, nil, true, 1))
+	})
 }
 
 type mockListener struct{}

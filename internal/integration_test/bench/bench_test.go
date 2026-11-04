@@ -39,6 +39,32 @@ func BenchmarkInvocation(b *testing.B) {
 	}
 }
 
+// BenchmarkCloseOnContextDone compares the invocation cost of the compiler with
+// RuntimeConfig.WithCloseOnContextDone disabled, enabled with the default
+// termination check interval, and enabled with larger intervals.
+func BenchmarkCloseOnContextDone(b *testing.B) {
+	if !platform.CompilerSupported() {
+		b.Skip()
+	}
+	for _, tc := range []struct {
+		name   string
+		config wazero.RuntimeConfig
+	}{
+		{name: "disabled", config: wazero.NewRuntimeConfigCompiler()},
+		{name: "interval_1", config: wazero.NewRuntimeConfigCompiler().WithCloseOnContextDone(true)},
+		{name: "interval_64", config: wazero.NewRuntimeConfigCompiler().WithCloseOnContextDone(true).WithCloseOnContextDoneInterval(64)},
+		{name: "interval_4096", config: wazero.NewRuntimeConfigCompiler().WithCloseOnContextDone(true).WithCloseOnContextDoneInterval(4096)},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			m := instantiateHostFunctionModuleWithEngine(b, tc.config)
+			defer m.Close(testCtx)
+			runStringManipulationBenches(b, m)
+			runReverseArrayBenches(b, m)
+			runRandomMatMul(b, m)
+		})
+	}
+}
+
 func BenchmarkInitialization(b *testing.B) {
 	b.Run("interpreter", func(b *testing.B) {
 		r := createRuntime(b, wazero.NewRuntimeConfigInterpreter())

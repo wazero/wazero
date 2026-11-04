@@ -72,6 +72,16 @@ func TestRuntimeConfig(t *testing.T) {
 			with:     func(c RuntimeConfig) RuntimeConfig { return c.WithCloseOnContextDone(true) },
 			expected: &runtimeConfig{ensureTermination: true},
 		},
+		{
+			name:     "WithCloseOnContextDoneInterval",
+			with:     func(c RuntimeConfig) RuntimeConfig { return c.WithCloseOnContextDoneInterval(4096) },
+			expected: &runtimeConfig{terminationCheckInterval: 4096},
+		},
+		{
+			name:     "WithCloseOnContextDoneInterval zero",
+			with:     func(c RuntimeConfig) RuntimeConfig { return c.WithCloseOnContextDoneInterval(0) },
+			expected: &runtimeConfig{terminationCheckInterval: 1},
+		},
 	}
 
 	for _, tt := range tests {
@@ -85,6 +95,22 @@ func TestRuntimeConfig(t *testing.T) {
 			require.Equal(t, &runtimeConfig{}, input)
 		})
 	}
+
+	t.Run("effectiveTerminationCheckInterval", func(t *testing.T) {
+		for _, tc := range []struct {
+			config   RuntimeConfig
+			expected uint32
+		}{
+			{config: NewRuntimeConfig(), expected: 0},
+			{config: NewRuntimeConfig().WithCloseOnContextDoneInterval(4096), expected: 0},
+			{config: NewRuntimeConfig().WithCloseOnContextDone(true), expected: 1},
+			{config: NewRuntimeConfig().WithCloseOnContextDone(true).WithCloseOnContextDoneInterval(4096), expected: 4096},
+			{config: NewRuntimeConfig().WithCloseOnContextDoneInterval(4096).WithCloseOnContextDone(true), expected: 4096},
+			{config: &runtimeConfig{ensureTermination: true}, expected: 1},
+		} {
+			require.Equal(t, tc.expected, tc.config.(*runtimeConfig).effectiveTerminationCheckInterval())
+		}
+	})
 
 	t.Run("memoryLimitPages invalid panics", func(t *testing.T) {
 		err := require.CapturePanic(func() {
@@ -647,7 +673,7 @@ func Test_compiledModule_Close(t *testing.T) {
 		var cs []*compiledModule
 		for i := 0; i < 10; i++ {
 			m := &wasm.Module{}
-			err := e.CompileModule(ctx, m, nil, false)
+			err := e.CompileModule(ctx, m, nil, 0)
 			require.NoError(t, err)
 			cs = append(cs, &compiledModule{module: m, compiledEngine: e})
 		}

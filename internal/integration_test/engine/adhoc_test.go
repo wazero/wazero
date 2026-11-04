@@ -53,6 +53,7 @@ var tests = map[string]testCase{
 	"un-signed extend global":                                          {f: testGlobalExtend},
 	"user-defined primitive in host func":                              {f: testUserDefinedPrimitiveHostFunc},
 	"ensures invocations terminate on module close":                    {f: testEnsureTerminationOnClose},
+	"ensures loops without host calls terminate":                       {f: testEnsureTerminationLoops},
 	"call host function indirectly":                                    {f: callHostFunctionIndirect},
 	"lookup function":                                                  {f: testLookupFunction},
 	"memory grow in recursive call":                                    {f: testMemoryGrowInRecursiveCall},
@@ -82,6 +83,22 @@ func TestEngineCompiler(t *testing.T) {
 		t.Skip()
 	}
 	runAllTests(t, tests, wazero.NewRuntimeConfigCompiler().WithCloseOnContextDone(true), false)
+}
+
+func TestEngineCompiler_CloseOnContextDoneInterval(t *testing.T) {
+	if !platform.CompilerSupported() {
+		t.Skip()
+	}
+	runAllTests(t, tests, wazero.NewRuntimeConfigCompiler().WithCloseOnContextDone(true).WithCloseOnContextDoneInterval(4096), false)
+
+	for _, interval := range []uint32{2, 1 << 20} {
+		interval := interval
+		t.Run(fmt.Sprintf("loops with interval %d", interval), func(t *testing.T) {
+			t.Parallel()
+			config := wazero.NewRuntimeConfigCompiler().WithCloseOnContextDone(true).WithCloseOnContextDoneInterval(interval)
+			testEnsureTerminationLoops(t, wazero.NewRuntimeWithConfig(testCtx, config))
+		})
+	}
 }
 
 func TestEngineInterpreter(t *testing.T) {
@@ -183,6 +200,109 @@ func testEnsureTerminationOnClose(t *testing.T, r wazero.Runtime) {
 		_, err = infinite.Call(context.Background())
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "module closed with exit_code(2)")
+	})
+}
+
+// terminationLoopsWasm returns a module whose infinite loops never call a host function:
+//
+//	(module
+//	  (func $nop)
+//	  (func (export "empty_loop") (loop (br 0)))
+//	  (func (export "call_loop") (loop (call $nop) (br 0)))
+//	  (func (export "count") (param i32) (result i32) (local i32)
+//	    (loop
+//	      (local.set 1 (i32.add (local.get 1) (i32.const 1)))
+//	      (br_if 0 (local.tee 0 (i32.sub (local.get 0) (i32.const 1)))))
+//	    (local.get 1)))
+func terminationLoopsWasm() []byte {
+	return binaryencoding.EncodeModule(&wasm.Module{
+		TypeSection: []wasm.FunctionType{
+			{},
+			{Params: []wasm.ValueType{i32}, Results: []wasm.ValueType{i32}, ParamNumInUint64: 1, ResultNumInUint64: 1},
+		},
+		FunctionSection: []wasm.Index{0, 0, 0, 1},
+		CodeSection: []wasm.Code{
+			{Body: []byte{wasm.OpcodeEnd}},
+			{Body: []byte{wasm.OpcodeLoop, 0x40, wasm.OpcodeBr, 0, wasm.OpcodeEnd, wasm.OpcodeEnd}},
+			{Body: []byte{wasm.OpcodeLoop, 0x40, wasm.OpcodeCall, 0, wasm.OpcodeBr, 0, wasm.OpcodeEnd, wasm.OpcodeEnd}},
+			{LocalTypes: []wasm.ValueType{i32}, Body: []byte{
+				wasm.OpcodeLoop, 0x40,
+				wasm.OpcodeLocalGet, 1, wasm.OpcodeI32Const, 1, wasm.OpcodeI32Add, wasm.OpcodeLocalSet, 1,
+				wasm.OpcodeLocalGet, 0, wasm.OpcodeI32Const, 1, wasm.OpcodeI32Sub, wasm.OpcodeLocalTee, 0,
+				wasm.OpcodeBrIf, 0,
+				wasm.OpcodeEnd,
+				wasm.OpcodeLocalGet, 1,
+				wasm.OpcodeEnd,
+			}},
+		},
+		ExportSection: []wasm.Export{
+			{Name: "empty_loop", Type: wasm.ExternTypeFunc, Index: 1},
+			{Name: "call_loop", Type: wasm.ExternTypeFunc, Index: 2},
+			{Name: "count", Type: wasm.ExternTypeFunc, Index: 3},
+		},
+	})
+}
+
+// testEnsureTerminationLoops ensures that infinite loops which never call a host function are terminated
+// regardless of the termination check interval, and that finite loops are not affected by the checks.
+func testEnsureTerminationLoops(t *testing.T, r wazero.Runtime) {
+	compiled, err := r.CompileModule(testCtx, terminationLoopsWasm())
+	require.NoError(t, err)
+
+	// The loops below terminate within a few milliseconds even with a large interval, so the generous bound only
+	// guards against hanging.
+	const maxDelay = 10 * time.Second
+
+	for _, fn := range []string{"empty_loop", "call_loop"} {
+		fn := fn
+		t.Run(fn, func(t *testing.T) {
+			t.Run("context cancel", func(t *testing.T) {
+				m, err := r.InstantiateModule(testCtx, compiled, wazero.NewModuleConfig().WithName(t.Name()))
+				require.NoError(t, err)
+				ctx, cancel := context.WithCancel(testCtx)
+				go func() {
+					time.Sleep(50 * time.Millisecond)
+					cancel()
+				}()
+				start := time.Now()
+				_, err = m.ExportedFunction(fn).Call(ctx)
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "module closed with context canceled")
+				require.True(t, time.Since(start) < maxDelay)
+			})
+			t.Run("context timeout", func(t *testing.T) {
+				m, err := r.InstantiateModule(testCtx, compiled, wazero.NewModuleConfig().WithName(t.Name()))
+				require.NoError(t, err)
+				ctx, cancel := context.WithTimeout(testCtx, 50*time.Millisecond)
+				defer cancel()
+				_, err = m.ExportedFunction(fn).Call(ctx)
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "module closed with context deadline exceeded")
+			})
+			t.Run("explicit close of module", func(t *testing.T) {
+				m, err := r.InstantiateModule(testCtx, compiled, wazero.NewModuleConfig().WithName(t.Name()))
+				require.NoError(t, err)
+				go func() {
+					time.Sleep(50 * time.Millisecond)
+					require.NoError(t, m.CloseWithExitCode(testCtx, 2))
+				}()
+				_, err = m.ExportedFunction(fn).Call(testCtx)
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "module closed with exit_code(2)")
+			})
+		})
+	}
+
+	t.Run("finite loop", func(t *testing.T) {
+		m, err := r.InstantiateModule(testCtx, compiled, wazero.NewModuleConfig().WithName(t.Name()))
+		require.NoError(t, err)
+		count := m.ExportedFunction("count")
+		// Repeated calls reuse the same call engine, so the countdown is carried over between them.
+		for _, n := range []uint64{1, 2, 3, 4095, 4096, 4097, 100_000} {
+			res, err := count.Call(testCtx, n)
+			require.NoError(t, err)
+			require.Equal(t, n, res[0])
+		}
 	})
 }
 

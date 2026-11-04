@@ -179,14 +179,14 @@ func NewRuntimeWithConfig(ctx context.Context, rConfig RuntimeConfig) Runtime {
 	}
 	store := wasm.NewStore(config.enabledFeatures, engine)
 	return &runtime{
-		cache:                 cacheImpl,
-		store:                 store,
-		enabledFeatures:       config.enabledFeatures,
-		memoryLimitPages:      config.memoryLimitPages,
-		memoryCapacityFromMax: config.memoryCapacityFromMax,
-		dwarfDisabled:         config.dwarfDisabled,
-		storeCustomSections:   config.storeCustomSections,
-		ensureTermination:     config.ensureTermination,
+		cache:                    cacheImpl,
+		store:                    store,
+		enabledFeatures:          config.enabledFeatures,
+		memoryLimitPages:         config.memoryLimitPages,
+		memoryCapacityFromMax:    config.memoryCapacityFromMax,
+		dwarfDisabled:            config.dwarfDisabled,
+		storeCustomSections:      config.storeCustomSections,
+		terminationCheckInterval: config.effectiveTerminationCheckInterval(),
 	}
 }
 
@@ -208,7 +208,9 @@ type runtime struct {
 	// See /RATIONALE.md
 	closed atomic.Uint64
 
-	ensureTermination bool
+	// terminationCheckInterval is zero when RuntimeConfig.WithCloseOnContextDone is disabled.
+	// Otherwise, it is the number of loop headers between termination checks.
+	terminationCheckInterval uint32
 }
 
 // Module implements Runtime.Module.
@@ -258,8 +260,8 @@ func (r *runtime) CompileModule(ctx context.Context, binary []byte) (CompiledMod
 	if err != nil {
 		return nil, err
 	}
-	internal.AssignModuleID(binary, listeners, r.ensureTermination)
-	if err = r.store.Engine.CompileModule(ctx, internal, listeners, r.ensureTermination); err != nil {
+	internal.AssignModuleID(binary, listeners, r.terminationCheckInterval)
+	if err = r.store.Engine.CompileModule(ctx, internal, listeners, r.terminationCheckInterval); err != nil {
 		return nil, err
 	}
 	return c, nil

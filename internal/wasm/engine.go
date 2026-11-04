@@ -14,7 +14,11 @@ type Engine interface {
 	Close() (err error)
 
 	// CompileModule implements the same method as documented on wasm.Engine.
-	CompileModule(ctx context.Context, module *Module, listeners []experimental.FunctionListener, ensureTermination bool) error
+	//
+	// terminationCheckInterval is zero when termination checks (RuntimeConfig.WithCloseOnContextDone) are disabled.
+	// Otherwise, it is the number of loop headers executed between termination checks; 1 means every loop header.
+	// Engines may check more often than requested.
+	CompileModule(ctx context.Context, module *Module, listeners []experimental.FunctionListener, terminationCheckInterval uint32) error
 
 	// CompiledModuleCount is exported for testing, to track the size of the compilation cache.
 	CompiledModuleCount() uint32

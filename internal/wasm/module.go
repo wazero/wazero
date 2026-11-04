@@ -211,7 +211,9 @@ const (
 
 // AssignModuleID calculates a sha256 checksum on `wasm` and other args, and set Module.ID to the result.
 // See the doc on Module.ID on what it's used for.
-func (m *Module) AssignModuleID(wasm []byte, listeners []experimental.FunctionListener, withEnsureTermination bool) {
+//
+// terminationCheckInterval is zero when termination checks are disabled. See wasm.Engine CompileModule.
+func (m *Module) AssignModuleID(wasm []byte, listeners []experimental.FunctionListener, terminationCheckInterval uint32) {
 	h := sha256.New()
 	h.Write(wasm)
 	// Use the pre-allocated space backed by m.ID below.
@@ -223,8 +225,14 @@ func (m *Module) AssignModuleID(wasm []byte, listeners []experimental.FunctionLi
 		h.Write(m.ID[:5])
 	}
 	// Write the flag of ensureTermination to the checksum.
-	m.ID[0] = boolToByte(withEnsureTermination)
+	m.ID[0] = boolToByte(terminationCheckInterval > 0)
 	h.Write(m.ID[:1])
+	// The interval changes the generated code only when it is greater than one. Not writing it otherwise keeps
+	// the IDs of the default configurations unchanged.
+	if terminationCheckInterval > 1 {
+		binary.LittleEndian.PutUint32(m.ID[:], terminationCheckInterval)
+		h.Write(m.ID[:4])
+	}
 	// Get checksum by passing the slice underlying m.ID.
 	h.Sum(m.ID[:0])
 }
