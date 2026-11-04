@@ -18,9 +18,10 @@ func TestCompiler_LowerToSSA(t *testing.T) {
 	// what output should look like, you can run:
 	// `~/wasmtime/target/debug/clif-util wasm --target aarch64-apple-darwin testcase.wat -p -t`
 	for _, tc := range []struct {
-		name              string
-		ensureTermination bool
-		needListener      bool
+		name string
+		// terminationCheckInterval is zero when termination checks are disabled.
+		terminationCheckInterval uint32
+		needListener             bool
 		// m is the *wasm.Module to be compiled in this test.
 		m *wasm.Module
 		// targetIndex is the index of a local function to be compiled in this test.
@@ -251,7 +252,7 @@ blk1: () <-- (blk0,blk1)
 		},
 		{
 			name: "loop - br / ensure termination", m: testcases.LoopBr.Module,
-			ensureTermination: true,
+			terminationCheckInterval: 1,
 			exp: `
 signatures:
 	sig2: i64_v
@@ -276,6 +277,69 @@ blk0: (exec_ctx:i64, module_ctx:i64)
 blk1: () <-- (blk0,blk1)
 	v2:i64 = Load exec_ctx, 0x58
 	CallIndirect v2:sig2, exec_ctx
+	Jump blk1
+`,
+		},
+		{
+			name: "loop - br / ensure termination with interval", m: testcases.LoopBr.Module,
+			terminationCheckInterval: 4096,
+			exp: `
+signatures:
+	sig2: i64_v
+
+blk0: (exec_ctx:i64, module_ctx:i64)
+	Jump blk1
+
+blk1: () <-- (blk0,blk4)
+	v2:i64 = Load exec_ctx, 0x4e8
+	v3:i64 = Iconst_64 0x1
+	v4:i64 = Isub v2, v3
+	Store v4, exec_ctx, 0x4e8
+	v5:i64 = Iconst_64 0x0
+	v6:i32 = Icmp le_s, v4, v5
+	Brnz v6, blk3
+	Jump blk4
+
+blk2: ()
+
+blk3: () <-- (blk1)
+	v7:i64 = Iconst_64 0x1000
+	Store v7, exec_ctx, 0x4e8
+	v8:i64 = Load exec_ctx, 0x58
+	CallIndirect v8:sig2, exec_ctx
+	Jump blk4
+
+blk4: () <-- (blk1,blk3)
+	Jump blk1
+`,
+			expAfterPasses: `
+signatures:
+	sig2: i64_v
+
+blk0: (exec_ctx:i64, module_ctx:i64)
+	Jump fallthrough
+
+blk1: () <-- (blk0,blk4)
+	v2:i64 = Load exec_ctx, 0x4e8
+	v3:i64 = Iconst_64 0x1
+	v4:i64 = Isub v2, v3
+	Store v4, exec_ctx, 0x4e8
+	v5:i64 = Iconst_64 0x0
+	v6:i32 = Icmp le_s, v4, v5
+	Brz v6, blk5
+	Jump fallthrough
+
+blk3: () <-- (blk1)
+	v7:i64 = Iconst_64 0x1000
+	Store v7, exec_ctx, 0x4e8
+	v8:i64 = Load exec_ctx, 0x58
+	CallIndirect v8:sig2, exec_ctx
+	Jump blk4
+
+blk5: () <-- (blk1)
+	Jump fallthrough
+
+blk4: () <-- (blk5,blk3)
 	Jump blk1
 `,
 		},
@@ -2563,7 +2627,7 @@ blk9: () <-- (blk4)
 			b := ssa.NewBuilder()
 
 			offset := wazevoapi.NewModuleContextOffsetData(tc.m, tc.needListener)
-			fc := NewFrontendCompiler(tc.m, b, &offset, tc.ensureTermination, tc.needListener, false)
+			fc := NewFrontendCompiler(tc.m, b, &offset, tc.terminationCheckInterval, tc.needListener, false)
 			typeIndex := tc.m.FunctionSection[tc.targetIndex]
 			code := &tc.m.CodeSection[tc.targetIndex]
 			fc.Init(tc.targetIndex, typeIndex, &tc.m.TypeSection[typeIndex], code.LocalTypes, code.Body, tc.needListener, 0)
@@ -2785,7 +2849,7 @@ func TestKnownSafeBound_valid(t *testing.T) {
 }
 
 func TestCompiler_finalizeKnownSafeBoundsAtTheEndOoBlock(t *testing.T) {
-	c := NewFrontendCompiler(&wasm.Module{}, ssa.NewBuilder(), nil, false, false, false)
+	c := NewFrontendCompiler(&wasm.Module{}, ssa.NewBuilder(), nil, 0, false, false)
 	blk := c.ssaBuilder.AllocateBasicBlock()
 	require.True(t, len(c.getKnownSafeBoundsAtTheEndOfBlocks(blk.ID()).View()) == 0)
 	c.ssaBuilder.SetCurrentBlock(blk)
@@ -2806,7 +2870,7 @@ func TestCompiler_finalizeKnownSafeBoundsAtTheEndOoBlock(t *testing.T) {
 
 func TestCompiler_initializeCurrentBlockKnownBounds(t *testing.T) {
 	t.Run("single (sealed)", func(t *testing.T) {
-		c := NewFrontendCompiler(&wasm.Module{}, ssa.NewBuilder(), nil, false, false, false)
+		c := NewFrontendCompiler(&wasm.Module{}, ssa.NewBuilder(), nil, 0, false, false)
 		builder := c.ssaBuilder
 		child := builder.AllocateBasicBlock()
 		{
@@ -2837,7 +2901,7 @@ func TestCompiler_initializeCurrentBlockKnownBounds(t *testing.T) {
 		require.Equal(t, ssa.Value(54321), kb.absoluteAddr)
 	})
 	t.Run("single (unsealed)", func(t *testing.T) {
-		c := NewFrontendCompiler(&wasm.Module{}, ssa.NewBuilder(), nil, false, false, false)
+		c := NewFrontendCompiler(&wasm.Module{}, ssa.NewBuilder(), nil, 0, false, false)
 		builder := c.ssaBuilder
 		child := builder.AllocateBasicBlock()
 		{
@@ -2867,7 +2931,7 @@ func TestCompiler_initializeCurrentBlockKnownBounds(t *testing.T) {
 		require.NotEqual(t, ssa.Value(54321), kb.absoluteAddr)
 	})
 	t.Run("multiple predecessors", func(t *testing.T) {
-		c := NewFrontendCompiler(&wasm.Module{}, ssa.NewBuilder(), nil, false, false, false)
+		c := NewFrontendCompiler(&wasm.Module{}, ssa.NewBuilder(), nil, 0, false, false)
 		builder := c.ssaBuilder
 		child := builder.AllocateBasicBlock()
 		{

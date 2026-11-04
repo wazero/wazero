@@ -147,6 +147,11 @@ type (
 		// memclrAddress holds the address of memclrNoHeapPointers implemented
 		// by the Go runtime. See memclr.go.
 		memclrAddress uintptr
+		// terminationCheckCountdown is the number of loop headers left until the next termination check.
+		// It is only used by the code compiled with a termination check interval greater than one.
+		// Compiled code decrements it at every loop header, and calls the checkModuleExitCode trampoline and
+		// resets it to the interval once it reaches zero. The zero value makes the first loop header check.
+		terminationCheckCountdown int64
 	}
 )
 

@@ -32,6 +32,8 @@ type Compiler struct {
 	memmoveSig             ssa.Signature
 	memclrSig              ssa.Signature
 	ensureTermination      bool
+	// terminationCheckInterval is the number of loop headers between termination checks when ensureTermination is true.
+	terminationCheckInterval uint32
 
 	// Followings are reset by per function.
 
@@ -111,13 +113,17 @@ type (
 var knownSafeBoundsAtTheEndOfBlockNil = wazevoapi.NewNilVarLength[knownSafeBoundWithID]()
 
 // NewFrontendCompiler returns a frontend Compiler.
-func NewFrontendCompiler(m *wasm.Module, ssaBuilder ssa.Builder, offset *wazevoapi.ModuleContextOffsetData, ensureTermination bool, listenerOn bool, sourceInfo bool) *Compiler {
+//
+// terminationCheckInterval is zero when termination checks are disabled, and otherwise the number of loop headers
+// executed between the calls to the checkModuleExitCode trampoline.
+func NewFrontendCompiler(m *wasm.Module, ssaBuilder ssa.Builder, offset *wazevoapi.ModuleContextOffsetData, terminationCheckInterval uint32, listenerOn bool, sourceInfo bool) *Compiler {
 	c := &Compiler{
 		m:                                 m,
 		ssaBuilder:                        ssaBuilder,
 		br:                                bytes.NewReader(nil),
 		offset:                            offset,
-		ensureTermination:                 ensureTermination,
+		ensureTermination:                 terminationCheckInterval > 0,
+		terminationCheckInterval:          terminationCheckInterval,
 		needSourceOffsetInfo:              sourceInfo,
 		tryTableMetadata:                  &localTryTableMetadata{},
 		varLengthKnownSafeBoundWithIDPool: wazevoapi.NewVarLengthPool[knownSafeBoundWithID](),

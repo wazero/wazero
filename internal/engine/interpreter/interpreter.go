@@ -504,7 +504,9 @@ func (f internalFunction) SourceOffsetForPC(pc experimental.ProgramCounter) uint
 const callFrameStackSize = 0
 
 // CompileModule implements the same method as documented on wasm.Engine.
-func (e *engine) CompileModule(_ context.Context, module *wasm.Module, listeners []experimental.FunctionListener, ensureTermination bool) error {
+func (e *engine) CompileModule(_ context.Context, module *wasm.Module, listeners []experimental.FunctionListener, terminationCheckInterval uint32) error {
+	// The interpreter checks the termination at every loop header regardless of the interval.
+	ensureTermination := terminationCheckInterval > 0
 	if _, ok := e.getCompiledFunctions(module, true); ok { // cache hit!
 		return nil
 	}

@@ -168,6 +168,26 @@ type RuntimeConfig interface {
 	// When the invocations of api.Function are closed due to this, sys.ExitError is raised to the callers and
 	// the api.Module from which the functions are derived is made closed.
 	WithCloseOnContextDone(bool) RuntimeConfig
+
+	// WithCloseOnContextDoneInterval sets how often the compiler checks the termination conditions
+	// enabled by WithCloseOnContextDone. It has no effect unless WithCloseOnContextDone is enabled.
+	//
+	// By default (n = 1), the check runs at every loop header, which exits to Go on every loop
+	// iteration. For CPU-heavy guests with tight loops this overhead can dominate the execution time.
+	// With n > 1, every loop header decrements a counter kept in the execution context, and the check
+	// runs only when the counter reaches zero, after which the counter is reset to n. A guest stuck in
+	// an infinite loop is therefore still terminated, but the termination is observed after at most n
+	// further loop iterations instead of one.
+	//
+	// Larger values reduce the overhead of WithCloseOnContextDone at the cost of a longer delay
+	// between the cancellation of the context (or Close of the module) and the actual termination.
+	// Values in the low thousands usually remove most of the overhead while keeping the delay well
+	// below a millisecond. Zero is treated as 1.
+	//
+	// The value is part of the compilation, so modules compiled with different intervals do not
+	// share compilation cache entries. The interpreter ignores this setting and checks at every
+	// loop header.
+	WithCloseOnContextDoneInterval(n uint32) RuntimeConfig
 }
 
 // NewRuntimeConfig returns a RuntimeConfig using the compiler if it is supported in this environment,
@@ -190,14 +210,18 @@ type runtimeConfig struct {
 	cache                 CompilationCache
 	storeCustomSections   bool
 	ensureTermination     bool
+	// terminationCheckInterval is the number of loop headers between termination checks
+	// when ensureTermination is true. See WithCloseOnContextDoneInterval.
+	terminationCheckInterval uint32
 }
 
 // engineLessConfig helps avoid copy/pasting the wrong defaults.
 var engineLessConfig = &runtimeConfig{
-	enabledFeatures:       api.CoreFeaturesV2,
-	memoryLimitPages:      wasm.MemoryLimitPages,
-	memoryCapacityFromMax: false,
-	dwarfDisabled:         false,
+	enabledFeatures:          api.CoreFeaturesV2,
+	memoryLimitPages:         wasm.MemoryLimitPages,
+	memoryCapacityFromMax:    false,
+	dwarfDisabled:            false,
+	terminationCheckInterval: 1,
 }
 
 type engineKind int
@@ -263,6 +287,28 @@ func (c *runtimeConfig) WithCloseOnContextDone(ensure bool) RuntimeConfig {
 	ret := c.clone()
 	ret.ensureTermination = ensure
 	return ret
+}
+
+// WithCloseOnContextDoneInterval implements RuntimeConfig.WithCloseOnContextDoneInterval
+func (c *runtimeConfig) WithCloseOnContextDoneInterval(n uint32) RuntimeConfig {
+	ret := c.clone()
+	if n == 0 {
+		n = 1
+	}
+	ret.terminationCheckInterval = n
+	return ret
+}
+
+// effectiveTerminationCheckInterval returns zero when WithCloseOnContextDone is disabled, and
+// the number of loop headers between termination checks otherwise.
+func (c *runtimeConfig) effectiveTerminationCheckInterval() uint32 {
+	if !c.ensureTermination {
+		return 0
+	}
+	if c.terminationCheckInterval == 0 {
+		return 1
+	}
+	return c.terminationCheckInterval
 }
 
 // WithMemoryLimitPages implements RuntimeConfig.WithMemoryLimitPages

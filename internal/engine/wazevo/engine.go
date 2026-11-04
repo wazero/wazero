@@ -143,13 +143,13 @@ func NewEngine(ctx context.Context, _ api.CoreFeatures, fc filecache.Cache) wasm
 }
 
 // CompileModule implements wasm.Engine.
-func (e *engine) CompileModule(ctx context.Context, module *wasm.Module, listeners []experimental.FunctionListener, ensureTermination bool) (err error) {
+func (e *engine) CompileModule(ctx context.Context, module *wasm.Module, listeners []experimental.FunctionListener, terminationCheckInterval uint32) (err error) {
 	if wazevoapi.PerfMapEnabled {
 		wazevoapi.PerfMap.Lock()
 		defer wazevoapi.PerfMap.Unlock()
 	}
 
-	if _, ok, err := e.getCompiledModule(module, listeners, ensureTermination); ok { // cache hit!
+	if _, ok, err := e.getCompiledModule(module, listeners, terminationCheckInterval > 0); ok { // cache hit!
 		return nil
 	} else if err != nil {
 		return err
@@ -158,7 +158,7 @@ func (e *engine) CompileModule(ctx context.Context, module *wasm.Module, listene
 	if wazevoapi.DeterministicCompilationVerifierEnabled {
 		ctx = wazevoapi.NewDeterministicCompilationVerifierContext(ctx, len(module.CodeSection))
 	}
-	cm, err := e.compileModule(ctx, module, listeners, ensureTermination)
+	cm, err := e.compileModule(ctx, module, listeners, terminationCheckInterval)
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func (e *engine) CompileModule(ctx context.Context, module *wasm.Module, listene
 
 	if wazevoapi.DeterministicCompilationVerifierEnabled {
 		for i := 0; i < wazevoapi.DeterministicCompilationVerifyingIter; i++ {
-			_, err := e.compileModule(ctx, module, listeners, ensureTermination)
+			_, err := e.compileModule(ctx, module, listeners, terminationCheckInterval)
 			if err != nil {
 				return err
 			}
@@ -225,7 +225,7 @@ func (exec *executables) compileEntryPreambles(m *wasm.Module, machine backend.M
 	}
 }
 
-func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listeners []experimental.FunctionListener, ensureTermination bool) (*compiledModule, error) {
+func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listeners []experimental.FunctionListener, terminationCheckInterval uint32) (*compiledModule, error) {
 	if module.IsHostModule {
 		return e.compileHostModule(ctx, module, listeners)
 	}
@@ -233,7 +233,7 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 	withListener := len(listeners) > 0
 	cm := &compiledModule{
 		offsets: wazevoapi.NewModuleContextOffsetData(module, withListener), parent: e, module: module,
-		ensureTermination: ensureTermination,
+		ensureTermination: terminationCheckInterval > 0,
 		executables:       &executables{},
 	}
 
@@ -263,7 +263,7 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 
 	if workers := experimental.GetCompilationWorkers(ctx); workers <= 1 {
 		// Compile with a single goroutine.
-		fe := frontend.NewFrontendCompiler(module, ssaBuilder, &cm.offsets, ensureTermination, withListener, needSourceInfo)
+		fe := frontend.NewFrontendCompiler(module, ssaBuilder, &cm.offsets, terminationCheckInterval, withListener, needSourceInfo)
 
 		for i := range module.CodeSection {
 			if wazevoapi.DeterministicCompilationVerifierEnabled {
@@ -317,7 +317,7 @@ func (e *engine) compileModule(ctx context.Context, module *wasm.Module, listene
 				ssaBuilder := ssa.NewBuilder()
 				be := backend.NewCompiler(ctx, machine, ssaBuilder)
 				fe := frontend.NewFrontendCompiler(
-					module, ssaBuilder, &cm.offsets, ensureTermination, withListener, needSourceInfo).
+					module, ssaBuilder, &cm.offsets, terminationCheckInterval, withListener, needSourceInfo).
 					WithTryTableMetadata(sharedTTM)
 
 				for {

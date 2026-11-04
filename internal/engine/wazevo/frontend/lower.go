@@ -1429,16 +1429,11 @@ func (c *Compiler) lowerCurrentOpcode() {
 		c.switchTo(originalLen, loopHeader)
 
 		if c.ensureTermination {
-			checkModuleExitCodePtr := builder.AllocateInstruction().
-				AsLoad(c.execCtxPtrValue,
-					wazevoapi.ExecutionContextOffsetCheckModuleExitCodeTrampolineAddress.U32(),
-					ssa.TypeI64,
-				).Insert(builder).Return()
-
-			args := c.allocateVarLengthValues(1, c.execCtxPtrValue)
-			builder.AllocateInstruction().
-				AsCallIndirect(checkModuleExitCodePtr, &c.checkModuleExitCodeSig, args).
-				Insert(builder)
+			if c.terminationCheckInterval > 1 {
+				c.insertTerminationCheckWithCountdown()
+			} else {
+				c.insertTerminationCheck()
+			}
 		}
 	case wasm.OpcodeIf:
 		bt := c.readBlockType()
@@ -5246,4 +5241,65 @@ func (c *Compiler) boundsCheckInMemory(memLen, offset, size ssa.Value) {
 	builder.AllocateInstruction().
 		AsExitIfTrueWithCode(c.execCtxPtrValue, cmp, wazevoapi.ExitCodeMemoryOutOfBounds).
 		Insert(builder)
+}
+
+// insertTerminationCheck inserts the call to the checkModuleExitCode trampoline at the current position.
+func (c *Compiler) insertTerminationCheck() {
+	builder := c.ssaBuilder
+	checkModuleExitCodePtr := builder.AllocateInstruction().
+		AsLoad(c.execCtxPtrValue,
+			wazevoapi.ExecutionContextOffsetCheckModuleExitCodeTrampolineAddress.U32(),
+			ssa.TypeI64,
+		).Insert(builder).Return()
+
+	args := c.allocateVarLengthValues(1, c.execCtxPtrValue)
+	builder.AllocateInstruction().
+		AsCallIndirect(checkModuleExitCodePtr, &c.checkModuleExitCodeSig, args).
+		Insert(builder)
+}
+
+// insertTerminationCheckWithCountdown inserts the termination check that only calls the checkModuleExitCode
+// trampoline once in c.terminationCheckInterval executions:
+//
+//	countdown := execCtx.terminationCheckCountdown - 1
+//	execCtx.terminationCheckCountdown = countdown
+//	if countdown <= 0 {
+//		execCtx.terminationCheckCountdown = c.terminationCheckInterval
+//		checkModuleExitCode(execCtx)
+//	}
+func (c *Compiler) insertTerminationCheckWithCountdown() {
+	builder := c.ssaBuilder
+	offset := wazevoapi.ExecutionContextOffsetTerminationCheckCountdown.U32()
+
+	countdown := builder.AllocateInstruction().
+		AsLoad(c.execCtxPtrValue, offset, ssa.TypeI64).
+		Insert(builder).Return()
+	one := builder.AllocateInstruction().AsIconst64(1).Insert(builder).Return()
+	next := builder.AllocateInstruction().AsIsub(countdown, one).Insert(builder).Return()
+	builder.AllocateInstruction().
+		AsStore(ssa.OpcodeStore, next, c.execCtxPtrValue, offset).
+		Insert(builder)
+	zero := builder.AllocateInstruction().AsIconst64(0).Insert(builder).Return()
+	expired := builder.AllocateInstruction().
+		AsIcmp(next, zero, ssa.IntegerCmpCondSignedLessThanOrEqual).
+		Insert(builder).Return()
+
+	checkBlk := builder.AllocateBasicBlock()
+	followingBlk := builder.AllocateBasicBlock()
+	builder.AllocateInstruction().AsBrnz(expired, ssa.ValuesNil, checkBlk).Insert(builder)
+	c.insertJumpToBlock(ssa.ValuesNil, followingBlk)
+
+	builder.SetCurrentBlock(checkBlk)
+	interval := builder.AllocateInstruction().
+		AsIconst64(uint64(c.terminationCheckInterval)).
+		Insert(builder).Return()
+	builder.AllocateInstruction().
+		AsStore(ssa.OpcodeStore, interval, c.execCtxPtrValue, offset).
+		Insert(builder)
+	c.insertTerminationCheck()
+	c.insertJumpToBlock(ssa.ValuesNil, followingBlk)
+
+	builder.SetCurrentBlock(followingBlk)
+	builder.Seal(checkBlk)
+	builder.Seal(followingBlk)
 }
