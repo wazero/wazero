@@ -4,6 +4,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"time"
 
 	experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
@@ -518,6 +519,59 @@ func readdir(f readdirFile, path string, n int) (dirents []experimentalsys.Diren
 		dirents = append(dirents, experimentalsys.Dirent{Name: t.Name(), Ino: ino, Type: t.Mode().Type()})
 	}
 	return
+}
+
+// readdirnamesFile is the method of os.File that readdirnames calls.
+type readdirnamesFile interface {
+	Readdirnames(n int) ([]string, error)
+}
+
+// readdirnames lists the names in a directory and runs lstat on each name.
+// It skips a name whose lstat returns EBADF or ENOENT.
+//
+// On darwin, /dev/fd lists the kqueue descriptor of the Go runtime, and lstat
+// of that descriptor returns EBADF. os.File.Readdir returns that error for
+// the whole directory. os.File.ReadDir does the same before Go 1.27.
+// See https://go.dev/issue/80143
+func readdirnames(
+	f readdirnamesFile,
+	dirPath string,
+	n int,
+	lstat func(string) (sys.Stat_t, experimentalsys.Errno),
+) (dirents []experimentalsys.Dirent, errno experimentalsys.Errno) {
+	for {
+		names, e := f.Readdirnames(n)
+		if errno = experimentalsys.UnwrapOSError(e); errno != 0 {
+			return nil, errno
+		}
+
+		dirents = make([]experimentalsys.Dirent, 0, len(names))
+		dirChecked := false
+		for _, name := range names {
+			var st sys.Stat_t
+			switch st, errno = lstat(path.Join(dirPath, name)); errno {
+			case 0:
+				dirents = append(dirents, experimentalsys.Dirent{Name: name, Ino: st.Ino, Type: st.Mode.Type()})
+			case experimentalsys.EBADF:
+			case experimentalsys.ENOENT:
+				// The entry was removed, or the directory was renamed or
+				// removed. In the second case lstat(dirPath) fails as well.
+				if !dirChecked {
+					if _, errno = lstat(dirPath); errno != 0 {
+						return nil, errno
+					}
+					dirChecked = true
+				}
+			default:
+				return nil, errno
+			}
+		}
+
+		// Read the next batch when this one had only skipped entries.
+		if n <= 0 || len(names) == 0 || len(dirents) > 0 {
+			return dirents, 0
+		}
+	}
 }
 
 func write(w io.Writer, buf []byte) (n int, errno experimentalsys.Errno) {
