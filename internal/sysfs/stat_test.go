@@ -21,6 +21,7 @@ func TestStat(t *testing.T) {
 	require.EqualErrno(t, experimentalsys.ENOENT, errno)
 
 	var st sys.Stat_t
+	var emptyDirNlink uint64
 
 	t.Run("empty dir", func(t *testing.T) {
 		st, errno = stat(tmpDir)
@@ -29,12 +30,15 @@ func TestStat(t *testing.T) {
 		require.True(t, st.Mode.IsDir())
 		require.NotEqual(t, uint64(0), st.Ino)
 
-		// We expect one link: the directory itself
-		expectedNlink := uint64(1)
-		if dirNlinkIncludesDot {
-			expectedNlink++
+		// Directory link counts depend on the filesystem: POSIX filesystems
+		// such as ext4, xfs, tmpfs, and APFS report 2 (including "."), whereas
+		// btrfs, Windows, and unsupported platforms report 1.
+		emptyDirNlink = st.Nlink
+		if runtime.GOOS == "windows" {
+			require.Equal(t, uint64(1), emptyDirNlink, runtime.GOOS)
+		} else {
+			require.True(t, emptyDirNlink == 1 || emptyDirNlink == 2, runtime.GOOS)
 		}
-		require.Equal(t, expectedNlink, st.Nlink, runtime.GOOS)
 	})
 
 	subdir := path.Join(tmpDir, "sub")
@@ -53,30 +57,34 @@ func TestStat(t *testing.T) {
 		st, errno = stat(tmpDir)
 		require.EqualErrno(t, 0, errno)
 
-		// We expect two links: the directory itself and the subdir
-		expectedNlink := uint64(2)
-		if dirNlinkIncludesDot {
-			expectedNlink++
-		} else if runtime.GOOS == "windows" {
-			expectedNlink = 1 // directory count is not returned.
+		// Filesystems that report Nlink == 2 on an empty directory increment
+		// Nlink for each subdirectory's ".." entry; filesystems such as btrfs
+		// and NTFS keep directory Nlink at 1.
+		expectedNlink := uint64(1)
+		if emptyDirNlink == 2 {
+			expectedNlink = 3
 		}
 		require.Equal(t, expectedNlink, st.Nlink, runtime.GOOS)
 	})
 
 	// TODO: Investigate why Nlink increases on BSD when a file is added, but
 	// not Linux.
+	testStatFileAndSymlinks(t, tmpDir, subdir, stSubdir)
+}
 
+func testStatFileAndSymlinks(t *testing.T, tmpDir, subdir string, stSubdir sys.Stat_t) {
 	file := path.Join(tmpDir, "file")
 	var stFile sys.Stat_t
 
 	t.Run("file", func(t *testing.T) {
 		require.NoError(t, os.WriteFile(file, nil, 0o400))
 
+		var errno experimentalsys.Errno
 		stFile, errno = stat(file)
 		require.EqualErrno(t, 0, errno)
 
 		require.False(t, stFile.Mode.IsDir())
-		require.NotEqual(t, uint64(0), st.Ino)
+		require.NotEqual(t, uint64(0), stFile.Ino)
 	})
 
 	t.Run("link to file", func(t *testing.T) {

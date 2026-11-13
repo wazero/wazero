@@ -13,12 +13,6 @@ import (
 	"github.com/tetratelabs/wazero/sys"
 )
 
-// dirNlinkIncludesDot is true because even though os.File filters out dot
-// entries, the underlying syscall.Stat includes them.
-//
-// Note: this is only used in tests
-const dirNlinkIncludesDot = true
-
 func lstat(path string) (sys.Stat_t, experimentalsys.Errno) {
 	if info, err := os.Lstat(path); err != nil {
 		return sys.Stat_t{}, experimentalsys.UnwrapOSError(err)

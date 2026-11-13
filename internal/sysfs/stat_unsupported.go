@@ -13,12 +13,6 @@ import (
 // Note: go:build constraints must be the same as /sys.stat_unsupported.go for
 // the same reasons.
 
-// dirNlinkIncludesDot might be true for some operating systems, which can have
-// new stat_XX.go files as necessary.
-//
-// Note: this is only used in tests
-const dirNlinkIncludesDot = false
-
 func lstat(path string) (sys.Stat_t, experimentalsys.Errno) {
 	if info, err := os.Lstat(path); err != nil {
 		return sys.Stat_t{}, experimentalsys.UnwrapOSError(err)
