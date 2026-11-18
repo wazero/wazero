@@ -124,7 +124,7 @@ experience.
 
 [17]: https://trivy.dev/
 
-[18]: https://aquasecurity.github.io/trivy/dev/docs/advanced/modules/
+[18]: https://trivy.dev/docs/latest/advanced/modules/
 
 [19]: https://github.com/Boostport/mjml-go
 
