@@ -176,7 +176,7 @@ WebAssembly text format.
 
 The other Guest function, such as `ptrToString` are too much code to inline
 into this document, If you need these, you can copy them from the
-[example project][8] or add a dependency on [tinymem][9].
+[example project][8].
 
 ## System Calls
 
@@ -341,7 +341,6 @@ functions, such as `fmt.Println`, which can require 100KB of wasm.
 [6]: https://github.com/tetratelabs/wazero/tree/main/site/content/languages/tinygo.md
 [7]: https://github.com/tetratelabs/wazero/stargazers
 [8]: https://github.com/tetratelabs/wazero/tree/main/examples/allocation/tinygo
-[9]: https://github.com/tetratelabs/tinymem
 [11]: https://github.com/tinygo-org/tinygo/blob/v0.25.0/targets/wasi.json
 [12]: https://github.com/WebAssembly/wasi-libc
 [13]: https://github.com/tinygo-org/tinygo/blob/v0.25.0/src/runtime/runtime_wasm_wasi.go#L34-L62
