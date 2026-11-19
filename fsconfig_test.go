@@ -1,6 +1,7 @@
 package wazero
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/tetratelabs/wazero/experimental/sys"
@@ -60,8 +61,11 @@ func TestFSConfig(t *testing.T) {
 		tc := tt
 
 		t.Run(tc.name, func(t *testing.T) {
-			fs, guestPaths := tc.input.(*fsConfig).preopens()
-			require.Equal(t, tc.expectedFS, fs)
+			fsList, guestPaths := tc.input.(*fsConfig).preopens()
+			require.Equal(t, len(tc.expectedFS), len(fsList))
+			for i := range tc.expectedFS {
+				require.Equal(t, fmt.Sprintf("%v", tc.expectedFS[i]), fmt.Sprintf("%v", fsList[i]))
+			}
 			require.Equal(t, tc.expectedGuestPaths, guestPaths)
 		})
 	}

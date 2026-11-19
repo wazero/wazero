@@ -23,6 +23,13 @@ func newOsFile(path string, flag experimentalsys.Oflag, perm fs.FileMode, f *os.
 	return &osFile{path: path, flag: flag, perm: perm, reopenDir: true, file: f, fd: f.Fd()}
 }
 
+// newRootOsFile creates an osFile that re-opens via an os.Root for sandbox safety.
+// absPath is used for Windows readdir inode lookups; rootPath is the relative
+// path within root used for reopen.
+func newRootOsFile(absPath, rootPath string, flag experimentalsys.Oflag, perm fs.FileMode, f *os.File, root *os.Root) experimentalsys.File {
+	return &osFile{path: absPath, flag: flag, perm: perm, reopenDir: true, file: f, fd: f.Fd(), root: root, rootPath: rootPath}
+}
+
 // osFile is a file opened with this package, and uses os.File or syscalls to
 // implement api.File.
 type osFile struct {
@@ -31,6 +38,13 @@ type osFile struct {
 	perm fs.FileMode
 	file *os.File
 	fd   uintptr
+
+	// root, when non-nil, is the os.Root used to open this file. reopen()
+	// uses it to re-open the file within the sandbox instead of bypassing
+	// it via the absolute path.
+	root *os.Root
+	// rootPath is the path relative to root, used for reopen when root is set.
+	rootPath string
 
 	// reopenDir is true if reopen should be called before Readdir. This flag
 	// is deferred until Readdir to prevent redundant rewinds. This could
@@ -113,10 +127,21 @@ func (f *osFile) reopen() (errno experimentalsys.Errno) {
 
 	// Clear any create or trunc flag, as we are re-opening, not re-creating.
 	flag := f.flag &^ (experimentalsys.O_CREAT | experimentalsys.O_TRUNC)
-	file, errno := OpenFile(f.path, flag, f.perm)
-	if errno != 0 {
-		return errno
+
+	var file *os.File
+	if f.root != nil {
+		var err error
+		file, err = f.root.OpenFile(f.rootPath, toOsOpenFlag(flag), f.perm)
+		if err != nil {
+			return unwrapRootError(err)
+		}
+	} else {
+		file, errno = OpenFile(f.path, flag, f.perm)
+		if errno != 0 {
+			return errno
+		}
 	}
+
 	errno = f.checkSameFile(file)
 	if errno != 0 {
 		return errno

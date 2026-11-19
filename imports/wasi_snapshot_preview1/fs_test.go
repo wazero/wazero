@@ -3459,7 +3459,7 @@ func Test_pathFilestatSetTimes(t *testing.T) {
 	file := "file"
 	writeFile(t, tmpDir, file, []byte("012"))
 	link := file + "-link"
-	require.NoError(t, os.Symlink(joinPath(tmpDir, file), joinPath(tmpDir, link)))
+	require.NoError(t, os.Symlink(file, joinPath(tmpDir, link)))
 
 	mod, r, log := requireProxyModule(t, wazero.NewModuleConfig().
 		WithSysWalltime().

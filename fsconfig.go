@@ -75,10 +75,11 @@ type FSConfig interface {
 	//
 	// # Isolation
 	//
-	// The guest will have full access to this directory including escaping it
-	// via relative path lookups like "../../". Full access includes operations
-	// such as creating or deleting files, limited to any host level access
-	// controls.
+	// The guest is sandboxed to this directory via os.Root (Go 1.24+).
+	// Relative path lookups like "../../" and symlinks that point outside
+	// the directory are blocked. Within the directory, the guest has full
+	// access including creating or deleting files, limited to any host
+	// level access controls.
 	//
 	// # os.DirFS
 	//
@@ -91,8 +92,8 @@ type FSConfig interface {
 	// beginning at `guestPath`.
 	//
 	// This is the same as WithDirMount except only read operations are
-	// permitted. However, escaping the directory via relative path lookups
-	// like "../../" is still allowed.
+	// permitted. The same directory sandboxing applies: relative path lookups
+	// and symlinks that escape the directory are blocked.
 	WithReadOnlyDirMount(dir, guestPath string) FSConfig
 
 	// WithFSMount assigns a fs.FS file system for any paths beginning at

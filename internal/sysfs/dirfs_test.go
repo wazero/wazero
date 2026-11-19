@@ -1,7 +1,6 @@
 package sysfs
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -40,18 +39,12 @@ func TestDirFS(t *testing.T) {
 	})
 }
 
-func TestDirFS_join(t *testing.T) {
-	testFS := DirFS("/").(*dirFS)
-	require.Equal(t, "/", testFS.join(""))
-	require.Equal(t, "/", testFS.join("."))
-	require.Equal(t, "/", testFS.join("/"))
-	require.Equal(t, "/tmp", testFS.join("tmp"))
-
-	testFS = DirFS(".").(*dirFS)
-	require.Equal(t, ".", testFS.join(""))
-	require.Equal(t, ".", testFS.join("."))
-	require.Equal(t, ".", testFS.join("/"))
-	require.Equal(t, "."+string(os.PathSeparator)+"tmp", testFS.join("tmp"))
+func TestDirFS_clean(t *testing.T) {
+	testFS := DirFS(".").(*dirFS)
+	require.Equal(t, ".", testFS.clean(""))
+	require.Equal(t, ".", testFS.clean("."))
+	require.Equal(t, ".", testFS.clean("/"))
+	require.Equal(t, "tmp", testFS.clean("tmp"))
 }
 
 func TestDirFS_String(t *testing.T) {
@@ -581,7 +574,7 @@ func TestDirFS_Utimesns(t *testing.T) {
 				require.NoError(t, errno)
 
 				link := file + "-link"
-				require.NoError(t, os.Symlink(file, link))
+				require.NoError(t, os.Symlink("file", link))
 
 				dir := path.Join(tmpDir, "dir")
 				errno = os.Mkdir(dir, 0o700)
@@ -644,11 +637,11 @@ func TestDirFS_OpenFile(t *testing.T) {
 
 	testOpen_O_RDWR(t, tmpDir, testFS)
 
-	t.Run("path outside root valid", func(t *testing.T) {
+	t.Run("path outside root blocked", func(t *testing.T) {
 		_, err := testFS.OpenFile("../foo", sys.O_RDONLY, 0)
 
-		// sys.FS allows relative path lookups
-		require.True(t, errors.Is(err, fs.ErrNotExist))
+		// os.Root blocks paths that escape the root directory.
+		require.True(t, err != 0, "expected non-zero errno for path escaping root")
 	})
 }
 
@@ -770,4 +763,51 @@ func TestDirFS_Readlink(t *testing.T) {
 
 	testFS := DirFS(tmpDir)
 	testReadlink(t, testFS, testFS)
+}
+
+func TestDirFS_SymlinkEscapeBlocked(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks require elevated privileges on Windows")
+	}
+
+	// Create the sandbox directory and a secret file outside it.
+	outer := t.TempDir()
+	sandbox := path.Join(outer, "sandbox")
+	require.NoError(t, os.Mkdir(sandbox, 0o700))
+	require.NoError(t, os.WriteFile(path.Join(outer, "secret.txt"), []byte("sensitive"), 0o600))
+
+	testFS := DirFS(sandbox)
+
+	// A guest creates a symlink pointing to ../secret.txt (outside sandbox).
+	require.EqualErrno(t, 0, testFS.Symlink("../secret.txt", "escape-link"))
+
+	// Attempting to open the escaping symlink must fail.
+	_, errno := testFS.OpenFile("escape-link", sys.O_RDONLY, 0)
+	require.True(t, errno != 0, "opening a symlink that escapes the root must fail")
+
+	// Stat through the escaping symlink must also fail.
+	_, errno = testFS.Stat("escape-link")
+	require.True(t, errno != 0, "stat through an escaping symlink must fail")
+
+	// Lstat on the symlink itself should succeed (it doesn't follow the link).
+	st, errno := testFS.Lstat("escape-link")
+	require.EqualErrno(t, 0, errno)
+	require.True(t, st.Mode&fs.ModeSymlink != 0, "lstat should report a symlink")
+
+	// Readlink should report the target without following it.
+	dst, errno := testFS.Readlink("escape-link")
+	require.EqualErrno(t, 0, errno)
+	require.Equal(t, "../secret.txt", dst)
+
+	// Deeper relative escape.
+	require.EqualErrno(t, 0, testFS.Symlink("../../etc/passwd", "deep-escape"))
+	_, errno = testFS.OpenFile("deep-escape", sys.O_RDONLY, 0)
+	require.True(t, errno != 0, "opening a deeper escaping symlink must fail")
+
+	// A symlink within the sandbox should still work.
+	require.NoError(t, os.WriteFile(path.Join(sandbox, "local.txt"), []byte("ok"), 0o600))
+	require.EqualErrno(t, 0, testFS.Symlink("local.txt", "good-link"))
+	f, errno := testFS.OpenFile("good-link", sys.O_RDONLY, 0)
+	require.EqualErrno(t, 0, errno)
+	require.EqualErrno(t, 0, f.Close())
 }
