@@ -133,7 +133,7 @@ func (f *osFile) reopen() (errno experimentalsys.Errno) {
 		var err error
 		file, err = f.root.OpenFile(f.rootPath, toOsOpenFlag(flag), f.perm)
 		if err != nil {
-			return experimentalsys.UnwrapOSError(err)
+			return unwrapRootError(err)
 		}
 	} else {
 		file, errno = OpenFile(f.path, flag, f.perm)

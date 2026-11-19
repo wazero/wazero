@@ -20,7 +20,7 @@ func rootUtimens(root *os.Root, path string, atim, mtim int64) experimentalsys.E
 	if atim == experimentalsys.UTIME_OMIT || mtim == experimentalsys.UTIME_OMIT {
 		info, err := root.Stat(path)
 		if err != nil {
-			return experimentalsys.UnwrapOSError(err)
+			return unwrapRootError(err)
 		}
 		st := sys.NewStat_t(info)
 		if atim == experimentalsys.UTIME_OMIT {
@@ -30,5 +30,5 @@ func rootUtimens(root *os.Root, path string, atim, mtim int64) experimentalsys.E
 			mtim = st.Mtim
 		}
 	}
-	return experimentalsys.UnwrapOSError(root.Chtimes(path, epochNanosToTime(atim), epochNanosToTime(mtim)))
+	return unwrapRootError(root.Chtimes(path, epochNanosToTime(atim), epochNanosToTime(mtim)))
 }
