@@ -1978,6 +1978,10 @@ func (m *machine) lowerCall(si *ssa.Instruction) {
 		// Since Go 1.24 it may also use DX, which is not reserved for the function call's 3 args.
 		// https://github.com/golang/go/blob/go1.24.0/src/runtime/memmove_amd64.s#L123
 		m.insert(m.allocateInstr().asDefineUninitializedReg(regInfo.RealRegToVReg[rdx]))
+		// Go assembly assumes X15 is zero under ABIInternal. Without this,
+		// runtime.memclrNoHeapPointers stores whatever generated code left there.
+		// https://github.com/golang/go/blob/go1.24.0/src/cmd/compile/abi-internal.md#architecture-specifics
+		m.insert(m.allocateInstr().asZeros(xmm15VReg))
 	}
 
 	if isDirectCall {
